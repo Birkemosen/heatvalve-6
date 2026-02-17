@@ -11,13 +11,14 @@ and WS2812 RGB status LED. Connects to Power, Analog, and Motor sections.
                         HeatValve-6 : Controller
   ┌───────────────────────────────────────────────────────────────────────┐
   │                                                                       │
-  │  ◄── 3V3_LOG (from Power) ──────────────────┐                        │
-  │  ◄── GND ───────────────────────────────────┐│                        │
-  │                                              ││                        │
-  │            ┌────────────────────────┐        ││                        │
-  │            │    ESP32-S3 Super Mini │        ││                        │
-  │            │        (U_ESP)        │        ││                        │
-  │            │                        │  3V3,GND                        │
+  │  ◄── VBUS (from Power) ── D_5V (Schottky) ──┐                        │
+  │  ◄── 3V3_LOG (from Power) ────────────────┐ │                        │
+  │  ◄── GND ─────────────────────────────────┐│ │                        │
+  │                                            ││ │                        │
+  │            ┌────────────────────────┐      ││ │                        │
+  │            │    ESP32-S3 Super Mini │      ││ │                        │
+  │            │        (U_ESP)        │      ││ │                        │
+  │            │                        │  5V,GND                        │
   │            │  GPIO2  (MUX)     ────>│────────────────────────────────>│─→ Motor: MUX
   │            │  GPIO11 (ENA0)    ────>│────────────────────────────────>│─→ Motor: nSLEEP #1
   │            │  GPIO3  (ENA1)    ────>│────────────────────────────────>│─→ Motor: nSLEEP #2
@@ -46,7 +47,7 @@ and WS2812 RGB status LED. Connects to Power, Analog, and Motor sections.
   │                                                                     │
   └───────────────────────────────────────────────────────────────────────┘
 
-  Connections:  ══> Power section (3V3_LOG, GND)
+  Connections:  ══> Power section (VBUS via D_5V → ESP32 5V, 3V3_LOG for pull-ups, GND)
                 ──> Motor section (MUX, DIR1/2, ENA0-2)
                 <── Analog section (TACHO from U5)
                 ──> Analog section (I2C_SDA, I2C_SCL)
@@ -56,18 +57,29 @@ and WS2812 RGB status LED. Connects to Power, Analog, and Motor sections.
 ## ESP32-S3 Super Mini Module (U_ESP)
 
 The ESP32-S3 Super Mini is a pre-built module with onboard USB-C, antenna, flash,
-PSRAM, and 3.3V regulator (bypassed - we use external 3V3_LOG).
+PSRAM, and 3.3V regulator. Powered via 5V pin through a Schottky diode from VBUS.
 
 ### Module Power
 
 | Pin | Net | Connection |
 |-----|-----|------------|
-| 3V3 | 3V3_LOG | ← Power section (AMS1117 output) |
+| 5V | VBUS_ESP | ← VBUS via D_5V Schottky diode (~4.7V) |
+| 3V3 | - | NOT connected externally (module's onboard LDO generates 3.3V from 5V pin) |
 | GND | GND | Ground plane |
-| 5V/VBUS | - | NOT connected (module USB not used for power) |
 
-Note: The module's onboard USB-C is available for programming/debugging.
-Power is supplied externally via 3V3_LOG for clean analog performance.
+### Backfeed Protection Diode
+
+| Ref | Value | Footprint | Net From | Net To | Purpose |
+|-----|-------|-----------|----------|--------|---------|
+| D_5V | SS14 (1A/40V Schottky) | SMA (DO-214AC) | VBUS | VBUS_ESP (ESP32 5V pin) | Prevents backfeed when module USB-C is connected for programming |
+
+Notes:
+- D_5V Schottky diode (~0.3V drop at 200mA) isolates board VBUS from module's onboard USB.
+- When both USBs are connected, current cannot flow between the two 5V sources.
+- Module's onboard LDO (typically ME6211, min Vin ~3.5V) works fine at ~4.7V.
+- 1A rating sufficient for ESP32-S3 peak consumption (~350mA WiFi burst).
+- 3V3_LOG (AMS1117) powers I2C pull-ups, UART pull-ups, 1-Wire, and INA219/LMV358 — NOT the ESP32.
+- Module's onboard USB-C remains available for programming/debugging.
 
 ### GPIO Assignments
 
@@ -244,17 +256,20 @@ On-module WS2812 connected to GPIO48. No external components needed.
 | Purple | Solid | Calibration in progress |
 | White | Flash | Command received |
 
-## ESP32 Decoupling
+## 3V3_LOG Local Decoupling
 
 | Ref | Value | Footprint | Net From | Net To | Purpose |
 |-----|-------|-----------|----------|--------|---------|
-| C_ESP1 | 100nF | C0603 | 3V3_LOG (at ESP32) | GND | HF decoupling |
-| C_ESP2 | 10µF | C0603 | 3V3_LOG (at ESP32) | GND | Bulk decoupling |
+| C_ESP1 | 100nF | C0603 | 3V3_LOG (controller area) | GND | HF decoupling for I2C/UART/1-Wire pull-ups |
+| C_ESP2 | 10µF | C0603 | 3V3_LOG (controller area) | GND | Bulk decoupling for local 3V3_LOG loads |
+
+Note: ESP32 module has its own onboard decoupling on 5V input and internal 3.3V rail.
 
 ## Connections to Other Sections
 
 ### → Power Section
-- 3V3_LOG input (module power)
+- VBUS → D_5V → ESP32 5V pin (module power)
+- 3V3_LOG (I2C/UART/1-Wire pull-ups, local decoupling)
 - GND
 
 ### → Motor Section
@@ -275,6 +290,7 @@ On-module WS2812 connected to GPIO48. No external components needed.
 | Ref | Component | Value | Footprint | LCSC | Category |
 |-----|-----------|-------|-----------|------|----------|
 | U_ESP | ESP32-S3 Super Mini | Module | - | - | Manual |
+| D_5V | Schottky diode | SS14 (1A/40V) | SMA (DO-214AC) | C2480 | Basic |
 | R18 | Resistor | 470Ω | R0603 | C23179 | Basic |
 | R19 | Resistor | 470Ω | R0603 | C23179 | Basic |
 | R20 | Resistor | 4.7kΩ | R0603 | C23162 | Basic |

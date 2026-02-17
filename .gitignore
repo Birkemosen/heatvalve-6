@@ -1,1 +1,22 @@
+# macOS
 .DS_Store
+
+# ESPHome build artifacts
+.esphome/
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# IDE
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Local secrets (copy secrets.yaml, rename, and add your credentials)
+# secrets.yaml is kept as a template with placeholder values

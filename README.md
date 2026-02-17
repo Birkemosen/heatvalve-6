@@ -1,4 +1,4 @@
-# HeatValve-6
+# HeatValve-6 (CURRENTLY UNTESTED)
 
 ESPHome firmware for HeatValve-6 floor heating valve controller using ESP32-S3 Super Mini with 3x DRV8837 motor drivers.
 

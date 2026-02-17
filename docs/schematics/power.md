@@ -3,8 +3,8 @@
 ## Overview
 
 USB-C input with 2× 5.1kΩ on CC1/CC2 to GND (sink signature). Delivers 5V from any USB-C source (PD or non-PD) without a PD controller.
-Dual 3.3V rails: switching (motor) and linear (logic) for noise isolation.
-LED on 3V3_MOT (motor rail power indicator). 3V3_LOG/ESP32 power indicated by ESP32 module LEDs.
+Three power paths: VBUS → ESP32 (via Schottky diode), VBUS → MT2492 → 3V3_MOT (motors), VBUS → AMS1117 → 3V3_LOG (analog/peripherals).
+LED on 3V3_MOT (motor rail power indicator). ESP32 power indicated by module LEDs.
 
 ## Block Diagram
 
@@ -17,14 +17,17 @@ LED on 3V3_MOT (motor rail power indicator). 3V3_LOG/ESP32 power indicated by ES
   │                           │                  │    (Sync Buck)   │   (3.3V)
   │                           │                  │    C5,C6 L1 C7,C8 │  LED_MOT
   │                           │                  │    R6,R7 (FB)    │  R_LED_MOT
-  │                           │                  └──→ C1,C2 ──→ AMS1117 (U2) ──→ C3,C4 ──→ 3V3_LOG ══> Controller
-  │                           │                       (Linear)    (3.3V, ESP32 LEDs)
+  │                           │                  ├──→ C1,C2 ──→ AMS1117 (U2) ──→ C3,C4 ──→ 3V3_LOG ══> Analog/Peripherals
+  │                           │                  │    (Linear)    (3.3V: INA219, I2C, 1-Wire)
+  │                           │                  └──→ D_5V (Schottky) ──→ VBUS_ESP ══> ESP32 5V pin
+  │                           │                       (~0.3V drop → ~4.7V)     (module's LDO → 3.3V)
   │  GND ═══════════════════════════════════════════════════════════════╧══════> GND plane
   │                                                                     │
   └─────────────────────────────────────────────────────────────────────┘
 
   Signal flow: USB-C (5V) → VBUS → MT2492 → 3V3_MOT (motors)
-                                    → AMS1117 → 3V3_LOG (logic/analog)
+                                    → AMS1117 → 3V3_LOG (analog/peripherals)
+                                    → D_5V → ESP32 5V pin (~4.7V)
 ```
 
 ## Power Rails
@@ -32,8 +35,9 @@ LED on 3V3_MOT (motor rail power indicator). 3V3_LOG/ESP32 power indicated by ES
 | Rail | Voltage | Source | Purpose |
 |------|---------|--------|---------|
 | VBUS | 5V | USB-C (J1) direct | Main input rail |
+| VBUS_ESP | ~4.7V | VBUS via D_5V (Schottky) | ESP32 module 5V pin (module's LDO → 3.3V) |
 | 3V3_MOT | 3.3V | MT2492 (synchronous switching) | Motor drivers, optocouplers |
-| 3V3_LOG | 3.3V | AMS1117 (linear) | ESP32, INA219, I2C, 1-Wire |
+| 3V3_LOG | 3.3V | AMS1117 (linear) | INA219, LMV358, I2C/UART/1-Wire pull-ups |
 
 ## Net List
 
@@ -154,6 +158,18 @@ Notes:
 - No separate bulk needed on 3V3_MOT — output ceramics C7+C8 (2×22µF = 44µF) are adequate.
 - 220µF avoids USB-C inrush issues (940µF could trip some USB sources on plug-in).
 
+### ESP32 Backfeed Protection Diode (D_5V)
+
+| Ref | Value | Footprint | Net From | Net To | Purpose |
+|-----|-------|-----------|----------|--------|---------|
+| D_5V | SS14 (1A/40V Schottky) | SMA (DO-214AC) | VBUS | VBUS_ESP (ESP32 5V pin) | Backfeed protection |
+
+Notes:
+- Schottky diode (~0.3V forward drop at 200mA) isolates board VBUS from ESP32 module's onboard USB-C.
+- When programming via module USB while board is powered, current cannot backfeed between USB sources.
+- ~4.7V is sufficient for module's onboard LDO (min Vin typically ~3.5V).
+- 1A rating sufficient for ESP32-S3 peak consumption (~350mA WiFi burst). LCSC C2480 (Basic part).
+
 ### Motor rail power LED (3V3_MOT)
 
 | Ref | Value | Footprint | Net From | Net To | Purpose |
@@ -164,28 +180,30 @@ Notes:
 Notes:
 - LED_MOT indicates 3V3_MOT is present (MT2492 up); lights as soon as motor rail is up.
 - Green LED at 1kΩ draws ~1.5mA (dim but visible, low power).
-- 3V3_LOG/ESP32 power: use the LEDs on the ESP32 module (no separate board LED on 3V3_LOG).
+- ESP32 power: indicated by module's onboard LEDs. No separate board LED on 3V3_LOG.
 
 ## Power Sequencing
 
 1. USB-C connected → source detects sink (5.1kΩ on CC) → VBUS rises to 5V
 2. MT2492 starts → 3V3_MOT available (~1ms); LED_MOT lights
-3. AMS1117 starts → 3V3_LOG available (~1ms)
-4. ESP32 boots from 3V3_LOG (module LEDs indicate logic power/activity)
+3. AMS1117 starts → 3V3_LOG available (~1ms); INA219, LMV358, pull-ups powered
+4. VBUS → D_5V → ESP32 5V pin (~4.7V) → module's onboard LDO → 3.3V → ESP32 boots
 
 ## Design Notes
 
 - 2× 5.1kΩ on CC1/CC2 to GND: simple USB Type-C sink (Ra). Delivers 5V from any USB-C source (PD or non-PD) without a PD controller on the board. **PD chargers (sources with PD controller) are supported:** they detect the sink and supply default 5V when no PD negotiation occurs. No 9V/12V/20V request possible.
-- AMS1117 (linear) provides clean 3V3 for analog (INA219) and digital (ESP32).
-- MT2492 (synchronous switching) provides efficient high-current 3V3 for motors (96% efficiency).
-- Both regulators fed from VBUS, independent paths.
-- No power path MOSFETs needed (single USB-C source).
+- ESP32 powered via VBUS through D_5V Schottky diode (~4.7V on module's 5V pin). Module's onboard LDO generates 3.3V for the ESP32.
+- AMS1117 (linear) provides clean 3V3_LOG for analog (INA219, LMV358) and peripherals (I2C, UART, 1-Wire pull-ups).
+- MT2492 (synchronous switching) provides efficient high-current 3V3_MOT for motors (96% efficiency).
+- All three paths fed from VBUS, independent.
+- D_5V prevents backfeed when programming via module's onboard USB-C while board is powered.
 
 ## BOM Summary (Power Section)
 
 | Ref | Component | Value | Footprint | LCSC | Category |
 |-----|-----------|-------|-----------|------|----------|
 | J1 | USB-C connector | GT-USB-7010ASV or USB-TYPE-C-006 | USB-C / 6-pin | C2988369 / C2927026 | - |
+| D_5V | Schottky diode | SS14 (1A/40V) | SMA (DO-214AC) | C2480 | Basic |
 | U2 | Linear regulator | AMS1117-3.3 | SOT-223 | C6186 | Basic |
 | U3 | Sync. switching reg. | MT2492 | SOT-23-6 | C89358 | - |
 | L1 | Inductor | 4.7µH | 4x4mm SMD | TBD | TBD |

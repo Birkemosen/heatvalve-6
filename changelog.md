@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.0.1 — Power & Docs Update (2026-02-13)
+
+### Hardware
+- ESP32 powered via 5V pin (VBUS) through SS14 Schottky diode for backfeed protection
+- AMS1117 (3V3_LOG) now powers analog/peripherals only, not ESP32
+- Added D_5V (SS14, 1A/40V, SMA) to BOM
+
+### Documentation
+- Updated power architecture: three independent paths (ESP32, 3V3_MOT, 3V3_LOG)
+- Updated README GPIO table to match current design
+
+---
+
 ## v1.0.0 — Initial Release (2026-02-13)
 
 Complete redesign of HeatValve-6 floor heating valve controller.
