@@ -1,0 +1,322 @@
+# ============================================
+# HeatValve-6 : ESP32-S3 Super Mini Board Configuration
+# ============================================
+# Hardware: ESP32-S3 Super Mini + 3x DRV8837 Motor Driver
+# Motor control: Multiplexed design with current-based endstop detection
+#
+# DRV8837 #1: Motor 1+2 (OUT1/OUT2, nSLEEP → GPIO11)
+# DRV8837 #2: Motor 3+4 (OUT1/OUT2, nSLEEP → GPIO3)
+# DRV8837 #3: Motor 5+6 (OUT1/OUT2, nSLEEP → GPIO4)
+#
+# All DRV8837 IN1 → GPIO6 (Direction 1)
+# All DRV8837 IN2 → GPIO5 (Direction 2)
+#
+# Motor Negative (via GAQY212GSX optocouplers):
+#   N1 = Odd motors (1,3,5)  when Mux=HIGH
+#   N2 = Even motors (2,4,6) when Mux=LOW
+#
+# Current sensing: INA219 (I2C, 0x40) with 100mΩ shunt on MCOM
+# Tacho: LMV358 conditioning circuit → GPIO7
+#
+# NOTE: Only ONE motor can run at a time due to multiplexing!
+
+esphome:
+  name: ${name}
+  on_boot:
+    - priority: 600  # Early boot - show blue LED
+      then:
+        - script.execute: led_status_boot
+    - priority: -200  # Late boot - start maintenance
+      then:
+        - delay: ${onboot_valve_calibration_delay}
+        - script.execute: valve_maintenance
+
+  project:
+    name: "birkemosen.heatvalve-6"
+    version: "${revision}.dev"
+  platformio_options:
+    board_build.f_flash: 80000000L
+    board_build.flash_mode: qio
+    board_build.flash_size: 4MB
+
+substitutions:
+  # Board and compilation
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework: esp-idf
+
+  # ============================================
+  # DRV8837 Motor Driver Pins
+  # ============================================
+  # Direction (shared by all DRV8837)
+  motor_mux_pin: GPIO2        # Mux: HIGH=N1 (odd motors), LOW=N2 (even motors)
+  motor_dir1_pin: GPIO6       # IN1 on all DRV8837: direction control
+  motor_dir2_pin: GPIO5       # IN2 on all DRV8837: direction control
+  
+  # nSLEEP / Enable (one per DRV8837, active HIGH)
+  motor_ena0_pin: GPIO11      # DRV8837 #1 nSLEEP: Motors 1 & 2
+  motor_ena1_pin: GPIO3       # DRV8837 #2 nSLEEP: Motors 3 & 4 - WARNING: Strapping pin!
+  motor_ena2_pin: GPIO4       # DRV8837 #3 nSLEEP: Motors 5 & 6
+  
+  # ============================================
+  # Sensing Pins
+  # ============================================
+  tacho_pin: GPIO7            # Tacho input (LMV358 conditioned, software inverted)
+  # Current sensing via INA219 on I2C bus (address 0x40)
+  
+  # ============================================
+  # I2C Pins
+  # ============================================
+  i2c_sda_pin: GPIO9          # I2C Data
+  i2c_scl_pin: GPIO8          # I2C Clock
+  
+  # ============================================
+  # Other Pins
+  # ============================================
+  onewire_pin: GPIO10         # Dallas 1-Wire bus
+  status_led_pin: GPIO48      # WS2812 RGB LED
+  
+  # Spare: GPIO1, GPIO12, GPIO13
+
+esp32:
+  board: ${board}
+  variant: ${variant}
+  framework:
+    type: ${framework}
+    version: recommended
+    sdkconfig_options:
+      CONFIG_COMPILER_OPTIMIZATION_SIZE: y
+
+preferences:
+  flash_write_interval: 0s  # Write to flash immediately on change
+
+ota:
+  - platform: esphome
+
+safe_mode:
+
+# ============================================
+# Status LED (WS2812 RGB with status colors)
+# ============================================
+# Color codes:
+#   GREEN (solid)     = Normal, connected to Home Assistant
+#   GREEN (breathing) = Normal, standalone mode
+#   BLUE (flashing)   = Booting / WiFi connecting
+#   CYAN (solid)      = Motor running
+#   YELLOW (solid)    = Warning (temp sensor offline)
+#   ORANGE (flashing) = No 1-Wire sensors found
+#   RED (solid)       = Error (API disconnected + standalone off)
+#   RED (flashing)    = Critical error (motor stall/overcurrent)
+#   PURPLE (solid)    = Calibration in progress
+#   WHITE (flash)     = Command received
+
+# Status tracking global
+globals:
+  - id: led_status_code
+    type: int
+    restore_value: no
+    initial_value: '0'  # 0=boot, 1=ok, 2=standalone, 3=motor, 4=warning, 5=error, 6=critical, 7=calibrating
+
+light:
+  - platform: esp32_rmt_led_strip
+    name: "${name} Status LED"
+    id: ${id_prefix}status_led
+    icon: "mdi:alarm-light"
+    rgb_order: GRB
+    pin: ${status_led_pin}
+    num_leds: 1
+    chipset: ws2812
+    restore_mode: ALWAYS_OFF
+    entity_category: config
+    effects:
+      - pulse:
+          name: "Breathing"
+          transition_length: 2s
+          update_interval: 2s
+          min_brightness: 10%
+          max_brightness: 40%
+      - strobe:
+          name: "Fast Blink"
+          colors:
+            - state: true
+              duration: 200ms
+            - state: false
+              duration: 200ms
+      - strobe:
+          name: "Slow Blink"
+          colors:
+            - state: true
+              duration: 500ms
+            - state: false
+              duration: 500ms
+
+# ============================================
+# Status LED Control Scripts
+# ============================================
+script:
+  # Boot/connecting - Blue flashing
+  - id: led_status_boot
+    then:
+      - lambda: id(led_status_code) = 0;
+      - light.turn_on:
+          id: ${id_prefix}status_led
+          brightness: 40%
+          red: 0%
+          green: 0%
+          blue: 100%
+          effect: "Fast Blink"
+
+  # Normal connected - Green solid
+  - id: led_status_ok
+    then:
+      - lambda: id(led_status_code) = 1;
+      - light.turn_on:
+          id: ${id_prefix}status_led
+          brightness: 30%
+          red: 0%
+          green: 100%
+          blue: 0%
+          effect: "None"
+
+  # Standalone mode - Green breathing
+  - id: led_status_standalone
+    then:
+      - lambda: id(led_status_code) = 2;
+      - light.turn_on:
+          id: ${id_prefix}status_led
+          brightness: 30%
+          red: 0%
+          green: 100%
+          blue: 0%
+          effect: "Breathing"
+
+  # Motor running - Cyan solid
+  - id: led_status_motor
+    then:
+      - lambda: id(led_status_code) = 3;
+      - light.turn_on:
+          id: ${id_prefix}status_led
+          brightness: 50%
+          red: 0%
+          green: 100%
+          blue: 100%
+          effect: "None"
+
+  # Warning - Yellow solid
+  - id: led_status_warning
+    then:
+      - lambda: id(led_status_code) = 4;
+      - light.turn_on:
+          id: ${id_prefix}status_led
+          brightness: 40%
+          red: 100%
+          green: 70%
+          blue: 0%
+          effect: "None"
+
+  # Error - Red solid
+  - id: led_status_error
+    then:
+      - lambda: id(led_status_code) = 5;
+      - light.turn_on:
+          id: ${id_prefix}status_led
+          brightness: 50%
+          red: 100%
+          green: 0%
+          blue: 0%
+          effect: "None"
+
+  # Critical error - Red flashing
+  - id: led_status_critical
+    then:
+      - lambda: id(led_status_code) = 6;
+      - light.turn_on:
+          id: ${id_prefix}status_led
+          brightness: 80%
+          red: 100%
+          green: 0%
+          blue: 0%
+          effect: "Fast Blink"
+
+  # Calibration - Purple solid
+  - id: led_status_calibrating
+    then:
+      - lambda: id(led_status_code) = 7;
+      - light.turn_on:
+          id: ${id_prefix}status_led
+          brightness: 50%
+          red: 80%
+          green: 0%
+          blue: 100%
+          effect: "None"
+
+  # Flash white (command received) - returns to previous state
+  - id: led_flash_command
+    then:
+      - lambda: |-
+          int prev = id(led_status_code);
+      - light.turn_on:
+          id: ${id_prefix}status_led
+          brightness: 100%
+          red: 100%
+          green: 100%
+          blue: 100%
+          effect: "None"
+      - delay: 100ms
+      - script.execute: led_update_status
+
+  # Update LED based on current system status
+  - id: led_update_status
+    then:
+      - lambda: |-
+          // Check conditions in priority order
+          
+          // Motor running - highest visual priority
+          if (id(motor_turning)) {
+            id(led_status_motor).execute();
+            return;
+          }
+          
+          // Check WiFi and API status
+          bool wifi_ok = wifi::global_wifi_component->is_connected();
+          bool api_ok = api_is_connected();
+          
+          // Not connected to WiFi
+          if (!wifi_ok) {
+            id(led_status_boot).execute();
+            return;
+          }
+          
+          // WiFi OK but API not connected
+          if (!api_ok) {
+            // Check if standalone mode is enabled
+            if (id(${id_prefix}standalone_mode).state) {
+              id(led_status_standalone).execute();
+            } else {
+              id(led_status_error).execute();
+            }
+            return;
+          }
+          
+          // All OK - green
+          id(led_status_ok).execute();
+
+# ============================================
+# Status LED Update Interval
+# ============================================
+interval:
+  - interval: 2s
+    then:
+      - script.execute: led_update_status
+
+# ============================================
+# I2C Bus (for display or sensors)
+# ============================================
+i2c:
+  sda: ${i2c_sda_pin}
+  scl: ${i2c_scl_pin}
+  scan: true
+
+psram:
+  mode: octal
+  speed: 80MHz

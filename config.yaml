@@ -1,0 +1,444 @@
+# ============================================
+# HeatValve-6 - Example Config
+# ============================================
+# Complete 6-zone example for ESP32-S3 Super Mini
+# with 3x DRV8837 motor drivers.
+#
+# SETUP: Clone this repo to heatvalve-6/ subfolder:
+#   /config/
+#   ├── config.yaml        (copy this file here)
+#   ├── secrets.yaml
+#   └── heatvalve-6/     (this repo)
+#
+# HARDWARE:
+#   - ESP32-S3 Super Mini
+#   - 3x DRV8837 motor drivers (single H-bridge each)
+#   - 2x GAQY212GSX optocouplers (motor negative switching)
+#   - 6x motor valves with current-based endstop detection
+#
+# For flashing: press BOOT button for 2-3 seconds before serial init
+# After OTA update: press EN (reset) button to run firmware
+
+# Temporary fix for ADC library (https://github.com/esphome/issues/issues/6455)
+external_components:
+  - source: github://pr#9021 #https://github.com/esphome/esphome/pull/9021
+    refresh: 30s
+    components:
+      - adc
+
+# ============================================
+# General Configuration
+# ============================================
+substitutions:
+  name: heatvalve-6
+  friendly_name: "HeatValve-6"
+  id_prefix: "heating_"
+  revision: "3.0.0"
+   
+  # Multi-controller configuration
+  controller_id: "1"  # Change to "2" for second controller
+  total_controllers: "2"  # Total number of controllers in the system
+    
+  #time
+  TZ: "Europe/Zurich" #timezone
+  reboot_days_of_week: "MON"
+  reboot_hours: "5"
+  reboot_minutes: "0"
+  reboot_seconds: "0"
+  onboot_valve_calibration_delay: "1min"
+  
+  # Valve maintenance (exercise valves to prevent sticking)
+  # Set to "0s" to disable periodic maintenance
+  valve_maintenance_interval: "7d"  # 7 days
+  
+  # Dallas temperature sensors (run 1-wire scan to get addresses)
+  # Sensor 1: 0x2A00000034ED7428
+  # Sensor 2: 0x5400000036B9A528
+  # Sensor 3: 0x120000003497E728
+  # TODO: Identify which sensor is input (supply) and which is output (return)
+  #       Hold each sensor to identify by temperature change in web UI
+  dallasaddress_input: "0x2A00000034ED7428"
+  dallasaddress_output: "0x5400000036B9A528"
+  dallasaddress_extra: "0x120000003497E728"
+  
+  adc_zero_calibration: "-0.075"
+  pump_mac_address: "AA:BB:CC:DD:EE:FF"
+  
+  # ============================================
+  # CONTROL PROFILE
+  # ============================================
+  # NOTE: ESPHome does not support substitutions in !include paths.
+  # To change control profile, manually replace the path in all zone includes below.
+  # Options:
+  #   heatvalve-6/zones/tanh.yaml   (default)
+  #   heatvalve-6/zones/linear.yaml
+  #   heatvalve-6/zones/pid.yaml
+  #   heatvalve-6/zones/remote.yaml
+
+# ============================================
+# Web Server
+# ============================================
+web_server:
+  port: 80
+  version: 3
+  log: false  # Disable for better performance
+  sorting_groups:
+    # Zone groups (one per zone)
+    - id: sorting_group_zone_1
+      name: "Zone 1: WC"
+      sorting_weight: 10
+    - id: sorting_group_zone_2
+      name: "Zone 2: Storage"
+      sorting_weight: 11
+    - id: sorting_group_zone_3
+      name: "Zone 3: Living Room"
+      sorting_weight: 12
+    - id: sorting_group_zone_4
+      name: "Zone 4: Dining Room"
+      sorting_weight: 13
+    - id: sorting_group_zone_5
+      name: "Zone 5: Kitchen"
+      sorting_weight: 14
+    - id: sorting_group_zone_6
+      name: "Zone 6: Office"
+      sorting_weight: 15
+    - id: sorting_group_zone_7
+      name: "Zone 7: Bedroom"
+      sorting_weight: 16
+    - id: sorting_group_zone_8
+      name: "Zone 8: Bathroom"
+      sorting_weight: 17
+    # System groups
+    - id: sorting_group_settings
+      name: "Settings"
+      sorting_weight: 80
+    - id: sorting_group_status
+      name: "Status"
+      sorting_weight: 81
+    - id: sorting_group_debug
+      name: "Debug"
+      sorting_weight: 90
+
+api:
+  reboot_timeout: 30min
+
+# ============================================
+# WiFi Configuration
+# ============================================
+# Configure directly here or use: wifi: !include heatvalve-6/core/wifi.yaml
+wifi:
+  networks:
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_password
+  # Additional networks (optional):
+  # - ssid: !secret wifi_ssid_2
+  #   password: !secret wifi_password_2
+  #   priority: 2
+  ap:
+    ssid: "UFH_Fallback"
+    password: !secret fallback_password
+  
+  # WiFi optimization for hardware interference
+  power_save_mode: none          # Disable power saving for better stability
+  output_power: 17dB             # Reduce TX power (default 20dB) - try 15dB or 12dB if issues persist
+  # fast_connect: true           # Skip scanning, connect faster (requires static IP)
+  # enable_btm: false            # Disable BSS Transition Management
+  # enable_rrm: false            # Disable Radio Resource Management
+
+captive_portal:
+
+ota:
+  platform: esphome
+  password: !secret ota_password
+
+# ============================================
+# Valve Maintenance
+# ============================================
+script:
+  - id: valve_maintenance
+    then:
+      - logger.log: "Valve maintenance"
+      - script.execute: calibrate_CH1_cover
+      - delay: 300s
+      - script.execute: calibrate_CH2_cover
+      - delay: 300s
+      - script.execute: calibrate_CH3_cover
+      - delay: 300s
+      - script.execute: calibrate_CH4_cover
+      - delay: 300s
+      - script.execute: calibrate_CH5_cover
+      - delay: 300s
+      - script.execute: calibrate_CH6_cover
+      - delay: 300s
+      - script.execute: calibrate_CH7_cover
+      - delay: 300s
+      - script.execute: calibrate_CH8_cover
+
+# ============================================
+# Packages
+# ============================================
+packages:
+  # Board (ESP32-S3 Super Mini only)
+  board: !include heatvalve-6/boards/esp32-s3.yaml
+  
+  # Core infrastructure
+  core_settings: !include heatvalve-6/core/settings.yaml
+  logger: !include heatvalve-6/core/logger.yaml
+  motor_driver: !include heatvalve-6/core/motor_driver.yaml  # DRV8837 motor control
+  time: !include heatvalve-6/core/time.yaml
+  switch_others: !include heatvalve-6/core/switch_others.yaml
+  sensor_others: !include heatvalve-6/core/sensor_others.yaml
+  onewire: !include heatvalve-6/core/onewire.yaml
+
+  # ============================================
+  # Hydraulic Balancing (comment out to disable)
+  # ============================================
+  hydraulic: !include heatvalve-6/modes/hydraulic.yaml
+
+  # ============================================
+  # Optional: Pump control via ESP-NOW
+  # ============================================
+  pump_control: !include
+    file: heatvalve-6/optional/pump_control.yaml
+    vars:
+      pump_mac_address: ${pump_mac_address}
+      circulation_check_interval: "24h"
+      circulation_run_duration: "5min"
+
+  # ============================================
+  # Optional: MQTT Ecodan integration
+  # ============================================
+  # mqtt_ecodan: !include heatvalve-6/optional/mqtt_ecodan.yaml
+
+  # ============================================
+  # ZONES
+  # ============================================
+  # Control profile options (use same for all zones):
+  #   heatvalve-6/zones/tanh.yaml   - Smooth tanh curve control
+  #   heatvalve-6/zones/linear.yaml - Linear proportional control
+  #   heatvalve-6/zones/pid.yaml    - PID control with auto-tune
+  #   heatvalve-6/zones/remote.yaml - External/Home Assistant control
+  #
+  # Motor mapping (DRV8837):
+  #   motor_number: 1-6 (maps to physical motor outputs)
+  #     Motors 1,2 = DRV8837 #1 (nSLEEP=GPIO2)
+  #     Motors 3,4 = DRV8837 #2 (nSLEEP=GPIO3)
+  #     Motors 5,6 = DRV8837 #3 (nSLEEP=GPIO4)
+  #   Odd motors (1,3,5) = Mux HIGH (N1)
+  #   Even motors (2,4,6) = Mux LOW (N2)
+  
+  zone_1: !include
+    file: heatvalve-6/zones/tanh.yaml
+    # file: heatvalve-6/zones/linear.yaml
+    # file: heatvalve-6/zones/pid.yaml
+    # file: heatvalve-6/zones/remote.yaml
+    vars:
+      zone_number: "1"
+      motor_number: "1"
+      id: wc
+      friendly_name: "WC"
+      temperature_sensor: corridor_temp
+      zone_area_default: "4"
+      zone_max_opening_default: "90"
+      default_preset: HOME
+      preset_home_temp: "21 °C"
+      preset_away_temp: "19 °C"
+      preset_boost_temp: "23 °C"
+      check_interval: "15min"
+      tanh_steepness: "0.70"
+
+  zone_2: !include
+    file: heatvalve-6/zones/tanh.yaml
+    # file: heatvalve-6/zones/linear.yaml
+    # file: heatvalve-6/zones/pid.yaml
+    # file: heatvalve-6/zones/remote.yaml
+    vars:
+      zone_number: "2"
+      motor_number: "2"
+      id: storage
+      friendly_name: "Storage"
+      temperature_sensor: storage_temp
+      zone_area_default: "6"
+      zone_max_opening_default: "90"
+      default_preset: HOME
+      preset_home_temp: "21 °C"
+      preset_away_temp: "19 °C"
+      preset_boost_temp: "23 °C"
+      check_interval: "16min"
+      tanh_steepness: "0.70"
+
+  zone_3: !include
+    file: heatvalve-6/zones/tanh.yaml
+    # file: heatvalve-6/zones/linear.yaml
+    # file: heatvalve-6/zones/pid.yaml
+    # file: heatvalve-6/zones/remote.yaml
+    vars:
+      zone_number: "3"
+      motor_number: "3"
+      id: living
+      friendly_name: "Living Room"
+      temperature_sensor: living_temp
+      zone_area_default: "25"
+      zone_max_opening_default: "90"
+      default_preset: HOME
+      preset_home_temp: "21 °C"
+      preset_away_temp: "19 °C"
+      preset_boost_temp: "23 °C"
+      check_interval: "17min"
+      tanh_steepness: "0.70"
+
+  zone_4: !include
+    file: heatvalve-6/zones/tanh.yaml
+    # file: heatvalve-6/zones/linear.yaml
+    # file: heatvalve-6/zones/pid.yaml
+    # file: heatvalve-6/zones/remote.yaml
+    vars:
+      zone_number: "4"
+      motor_number: "4"
+      id: dining
+      friendly_name: "Dining Room"
+      temperature_sensor: living_temp
+      zone_area_default: "15"
+      zone_max_opening_default: "90"
+      default_preset: HOME
+      preset_home_temp: "21 °C"
+      preset_away_temp: "19 °C"
+      preset_boost_temp: "23 °C"
+      check_interval: "18min"
+      tanh_steepness: "0.70"
+
+  zone_5: !include
+    file: heatvalve-6/zones/tanh.yaml
+    # file: heatvalve-6/zones/linear.yaml
+    # file: heatvalve-6/zones/pid.yaml
+    # file: heatvalve-6/zones/remote.yaml
+    vars:
+      zone_number: "5"
+      motor_number: "5"
+      id: kitchen
+      friendly_name: "Kitchen"
+      temperature_sensor: living_temp
+      zone_area_default: "12"
+      zone_max_opening_default: "90"
+      default_preset: HOME
+      preset_home_temp: "21 °C"
+      preset_away_temp: "19 °C"
+      preset_boost_temp: "23 °C"
+      check_interval: "15min"
+      tanh_steepness: "0.70"
+
+  zone_6: !include
+    file: heatvalve-6/zones/tanh.yaml
+    # file: heatvalve-6/zones/linear.yaml
+    # file: heatvalve-6/zones/pid.yaml
+    # file: heatvalve-6/zones/remote.yaml
+    vars:
+      zone_number: "6"
+      motor_number: "6"
+      id: office
+      friendly_name: "Office"
+      temperature_sensor: office_temp
+      zone_area_default: "10"
+      zone_max_opening_default: "90"
+      default_preset: HOME
+      preset_home_temp: "21 °C"
+      preset_away_temp: "19 °C"
+      preset_boost_temp: "23 °C"
+      check_interval: "16min"
+      tanh_steepness: "0.70"
+
+  # Zone 7-8 disabled (6-motor DRV8837 configuration)
+  # Add 4th DRV8837 to re-enable motor 7-8
+  # zone_7: !include
+  #   file: heatvalve-6/zones/tanh.yaml
+  #   vars:
+  #     zone_number: "7"
+  #     motor_number: "7"
+  #     id: bedroom
+  #     friendly_name: "Bedroom"
+  #     temperature_sensor: bedroom_temp
+
+  # zone_8: !include
+  #   file: heatvalve-6/zones/tanh.yaml
+  #   vars:
+  #     zone_number: "8"
+  #     motor_number: "8"
+  #     id: bathroom
+  #     friendly_name: "Bathroom"
+  #     temperature_sensor: bathroom_temp
+
+# ============================================
+# TEMPERATURE SENSORS
+# ============================================
+# Choose sensor type based on your setup.
+# The sensor ID must match the zone's temperature_sensor variable.
+
+sensor:
+  # ============================================
+  # Option 1: Home Assistant sensors (recommended)
+  # ============================================
+  - platform: homeassistant
+    name: "Corridor Temperature"
+    entity_id: sensor.corridor_temperature
+    id: corridor_temp
+
+  - platform: homeassistant
+    name: "Storage Temperature"
+    entity_id: sensor.storage_temperature
+    id: storage_temp
+
+  - platform: homeassistant
+    name: "Living Room Temperature"
+    entity_id: sensor.living_room_temperature
+    id: living_temp
+
+  - platform: homeassistant
+    name: "Office Temperature"
+    entity_id: sensor.office_temperature
+    id: office_temp
+
+  - platform: homeassistant
+    name: "Bedroom Temperature"
+    entity_id: sensor.bedroom_temperature
+    id: bedroom_temp
+
+  - platform: homeassistant
+    name: "Bathroom Temperature"
+    entity_id: sensor.bathroom_temperature
+    id: bathroom_temp
+
+  # ============================================
+  # Option 2: Dallas/OneWire DS18B20 sensors
+  # ============================================
+  # - platform: dallas_temp
+  #   address: 0x1234567890abcdef
+  #   name: "Living Room Temperature"
+  #   id: living_temp
+
+  # ============================================
+  # Option 3: DHT22/DHT11 sensors
+  # ============================================
+  # - platform: dht
+  #   model: DHT22
+  #   pin: GPIO25
+  #   temperature:
+  #     name: "Living Room Temperature"
+  #     id: living_temp
+
+  # ============================================
+  # Option 4: BLE Xiaomi sensors
+  # ============================================
+  # esp32_ble_tracker:
+  # - platform: xiaomi_lywsdcgq
+  #   mac_address: "58:2D:34:37:F1:10"
+  #   temperature:
+  #     name: "Living Room Temperature"
+  #     id: living_temp
+
+  # ============================================
+  # Option 5: I2C sensors (SHT3x, BME280)
+  # ============================================
+  # - platform: sht3xd
+  #   temperature:
+  #     name: "Living Room Temperature"
+  #     id: living_temp

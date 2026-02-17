@@ -1,0 +1,242 @@
+# ============================================
+# Zone Base Infrastructure (DRV8837)
+# ============================================
+# Common components for all control profiles.
+# Uses DRV8837 motor driver with current-based endstop detection.
+#
+# Required vars:
+#   zone_number: "1"             # 1-6
+#   motor_number: "1"            # 1-6 (motor assigned to this zone)
+#   id: "living"
+#   friendly_name: "Living Room"
+#
+# Optional vars:
+#   current_factor: "1.7"        # Multiplier for mean current (endstop detection)
+#   zone_area_default: "15"
+#   zone_max_opening_default: "90"
+
+# ============================================
+# Zone State Globals
+# ============================================
+globals:
+  - id: ${id_prefix}zone_${zone_number}_state
+    type: int
+    initial_value: '-1'  # -1=unknown, 0=overheated, 1=satisfied, 2=demand
+    
+  - id: ${id_prefix}zone_${zone_number}_was_overheated
+    type: bool
+    initial_value: 'false'
+    
+  - id: ${id_prefix}zone_${zone_number}_hydraulic_factor
+    type: float
+    initial_value: '0.0'
+
+  # Motor operation tracking for this zone
+  - id: zone_${zone_number}_motor_running
+    type: bool
+    initial_value: 'false'
+
+# ============================================
+# Zone Parameters
+# ============================================
+number:
+  - platform: template
+    name: "${friendly_name} Area"
+    id: ${id_prefix}zone_${zone_number}_area
+    icon: "mdi:floor-plan"
+    unit_of_measurement: "m²"
+    optimistic: true
+    min_value: 1
+    max_value: 100
+    step: 0.5
+    restore_value: true
+    initial_value: ${zone_area_default}
+    web_server:
+      sorting_group_id: sorting_group_zone_${zone_number}
+    
+  - platform: template
+    name: "${friendly_name} Max Opening"
+    id: ${id_prefix}zone_${zone_number}_max_opening
+    icon: "mdi:valve-open"
+    unit_of_measurement: "%"
+    optimistic: true
+    min_value: 50
+    max_value: 100
+    step: 5
+    restore_value: true
+    initial_value: ${zone_max_opening_default}
+    web_server:
+      sorting_group_id: sorting_group_zone_${zone_number}
+
+# ============================================
+# Valve Cover (endstop-based)
+# ============================================
+cover:
+  - platform: endstop
+    name: "CH${zone_number}"
+    device_class: shutter
+    id: CH${zone_number}_cover
+    
+    open_action:
+      - script.execute: motor_zone_${zone_number}_open
+          
+    open_duration: 60s
+    open_endstop: endstop_${zone_number}_sensor
+    
+    close_action:
+      - script.execute: motor_zone_${zone_number}_close
+          
+    close_duration: 60s
+    close_endstop: endstop_${zone_number}_sensor
+    
+    stop_action:
+      - script.execute: motor_zone_${zone_number}_stop
+      
+    max_duration: 65s
+    web_server:
+      sorting_group_id: sorting_group_zone_${zone_number}
+
+# ============================================
+# Zone Motor Control Switches
+# ============================================
+switch:
+  - platform: template
+    name: "Run ${friendly_name} Check"
+    turn_on_action:
+      - script.execute: TH${zone_number}_check
+    web_server:
+      sorting_group_id: sorting_group_zone_${zone_number}
+
+# ============================================
+# Endstop Sensor (uses global motor_endstop_event)
+# ============================================
+binary_sensor:
+  - platform: template
+    id: endstop_${zone_number}_sensor
+    name: "Endstop CH${zone_number}"
+    internal: true
+    lambda: |-
+      // Only trigger when THIS zone's motor is running
+      if (!id(zone_${zone_number}_motor_running)) {
+        return false;
+      }
+      // Check global endstop event from motor_driver.yaml
+      return id(motor_endstop_event);
+    on_press:
+      then:
+        - lambda: |-
+            ESP_LOGI("endstop", "CH${zone_number} endstop reached (motor ${motor_number})");
+            
+            // Update position based on direction
+            auto cover = id(CH${zone_number}_cover);
+            if (cover->current_operation == COVER_OPERATION_OPENING) {
+              cover->position = 1.0;  // Fully open
+              ESP_LOGI("endstop", "CH${zone_number} fully OPEN");
+            } else if (cover->current_operation == COVER_OPERATION_CLOSING) {
+              cover->position = 0.0;  // Fully closed
+              ESP_LOGI("endstop", "CH${zone_number} fully CLOSED");
+            }
+            cover->publish_state();
+
+# ============================================
+# Calculated Sensors
+# ============================================
+sensor:
+  - platform: template
+    name: "${friendly_name} Pipe Length"
+    id: ${id_prefix}zone_${zone_number}_pipe_length
+    icon: "mdi:ruler"
+    unit_of_measurement: "m"
+    accuracy_decimals: 1
+    update_interval: 60s
+    lambda: |-
+      float area = id(${id_prefix}zone_${zone_number}_area).state;
+      float spacing = id(${id_prefix}pipe_spacing).state / 1000.0;
+      if (spacing > 0) return area / spacing;
+      return 0;
+    web_server:
+      sorting_group_id: sorting_group_zone_${zone_number}
+
+# ============================================
+# Motor Control Scripts for this Zone
+# ============================================
+script:
+  # Open valve (motor direction = open)
+  - id: motor_zone_${zone_number}_open
+    then:
+      - lambda: |-
+          if (id(motor_mutex)) {
+            ESP_LOGW("motor", "Cannot open CH${zone_number}: motor %d is running", id(current_motor));
+            return;
+          }
+          ESP_LOGI("motor", "CH${zone_number} opening (motor ${motor_number})");
+          id(zone_${zone_number}_motor_running) = true;
+      - script.execute:
+          id: motor_start
+          motor_num: ${motor_number}
+          direction: 1  # Open
+
+  # Close valve (motor direction = close)
+  - id: motor_zone_${zone_number}_close
+    then:
+      - lambda: |-
+          if (id(motor_mutex)) {
+            ESP_LOGW("motor", "Cannot close CH${zone_number}: motor %d is running", id(current_motor));
+            return;
+          }
+          ESP_LOGI("motor", "CH${zone_number} closing (motor ${motor_number})");
+          id(zone_${zone_number}_motor_running) = true;
+      - script.execute:
+          id: motor_start
+          motor_num: ${motor_number}
+          direction: 0  # Close
+
+  # Stop valve motor
+  - id: motor_zone_${zone_number}_stop
+    then:
+      - lambda: |-
+          ESP_LOGI("motor", "CH${zone_number} stopping (motor ${motor_number})");
+          id(zone_${zone_number}_motor_running) = false;
+      - script.execute:
+          id: motor_stop
+          motor_num: ${motor_number}
+
+  # Calibration script (learn valve range)
+  - id: calibrate_CH${zone_number}_cover
+    then:
+      - script.execute: led_status_calibrating  # Purple LED
+      - logger.log:
+          format: "Calibrate CH${zone_number} (${friendly_name}) - close"
+          tag: motor
+      - cover.close: CH${zone_number}_cover
+      - wait_until:
+          condition:
+            lambda: 'return !id(zone_${zone_number}_motor_running);'
+          timeout: 70s
+      - delay: 2s
+      
+      - logger.log:
+          format: "Calibrate CH${zone_number} - open"
+          tag: motor
+      - cover.open: CH${zone_number}_cover
+      - wait_until:
+          condition:
+            lambda: 'return !id(zone_${zone_number}_motor_running);'
+          timeout: 70s
+      - delay: 2s
+      
+      - logger.log:
+          format: "Calibrate CH${zone_number} - close (final)"
+          tag: motor
+      - cover.close: CH${zone_number}_cover
+      - wait_until:
+          condition:
+            lambda: 'return !id(zone_${zone_number}_motor_running);'
+          timeout: 70s
+          
+      - logger.log:
+          format: "Calibrate CH${zone_number} complete - mean current: %.1f mA"
+          tag: motor
+          args:
+            - id(motor_mean_current_${motor_number})
+      - script.execute: led_update_status  # Return to normal status

@@ -1,0 +1,151 @@
+# ============================================
+# Dynamic Hydraulic Balancing Algorithm
+# ============================================
+# Implements combined hydraulic + thermal demand balancing
+# Based on return temperature method and pipe length ratios
+#
+# NOTE: Zone globals (zone_X_state, zone_X_was_overheated, zone_X_hydraulic_factor)
+# are defined in zones/base.yaml. Settings (comfort_band, etc.) are in core/settings.yaml.
+#
+# Zone States:
+#   OVERHEATED (0): temp > setpoint + comfort_band -> close valve
+#   SATISFIED (1):  temp within ±comfort_band -> maintenance flow
+#   DEMAND (2):     temp < setpoint - comfort_band -> full heating
+
+# ============================================
+# Hydraulic-specific Globals
+# ============================================
+globals:
+  # Reference zone tracking
+  - id: ${id_prefix}reference_zone
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: ${id_prefix}reference_pipe_length
+    type: float
+    restore_value: no
+    initial_value: '100.0'
+
+# ============================================
+# Additional Configurable Parameters
+# ============================================
+number:
+  - platform: template
+    name: "Balancing Interval"
+    id: ${id_prefix}balancing_interval
+    icon: "mdi:timer-outline"
+    unit_of_measurement: "min"
+    optimistic: true
+    min_value: 1
+    max_value: 30
+    step: 1
+    restore_value: true
+    initial_value: 5
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
+    
+  - platform: template
+    name: "Balancing Step"
+    id: ${id_prefix}balancing_step
+    icon: "mdi:stairs"
+    unit_of_measurement: "%"
+    optimistic: true
+    min_value: 1
+    max_value: 10
+    step: 1
+    restore_value: true
+    initial_value: 3
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
+
+# Enable balancing at boot
+esphome:
+  on_boot:
+    priority: -100
+    then:
+      - switch.turn_on: ${id_prefix}balancing_enabled
+      - logger.log: "Hydraulic balancing enabled"
+
+# ============================================
+# Status Sensors
+# ============================================
+sensor:
+  - platform: template
+    name: "Reference Zone"
+    id: ${id_prefix}reference_zone_sensor
+    icon: "mdi:target"
+    accuracy_decimals: 0
+    update_interval: 30s
+    entity_category: diagnostic
+    lambda: |-
+      return id(${id_prefix}reference_zone);
+    web_server:
+      sorting_group_id: sorting_group_status
+
+text_sensor:
+  - platform: template
+    name: "Balancing Status"
+    id: ${id_prefix}balancing_status
+    icon: "mdi:information-outline"
+    update_interval: 30s
+    entity_category: diagnostic
+    lambda: |-
+      if (!id(${id_prefix}balancing_enabled).state) {
+        return {"Disabled"};
+      }
+      
+      float avg = id(${id_prefix}avg_valve_position).state;
+      if (avg < 30) {
+        return {"Low demand"};
+      } else if (avg > 90) {
+        return {"High demand"};
+      } else if (avg >= 50 && avg <= 80) {
+        return {"Optimal (50-80%)"};
+      }
+      return {"Active"};
+    web_server:
+      sorting_group_id: sorting_group_status
+
+# ============================================
+# Hydraulic Balancing Script
+# ============================================
+script:
+  - id: ${id_prefix}hydraulic_balancing_check
+    mode: single
+    then:
+      - lambda: |-
+          if (!id(${id_prefix}balancing_enabled).state) {
+            return;
+          }
+          
+          ESP_LOGI("hydraulic", "Running hydraulic balancing check");
+          
+          float comfort_band = id(${id_prefix}comfort_band).state;
+          float maintenance_base = id(${id_prefix}maintenance_base).state / 100.0;
+          float demand_boost = id(${id_prefix}demand_boost).state / 100.0;
+          float min_opening = id(${id_prefix}minimum_valve_opening).state / 100.0;
+          
+          // Find reference zone (longest pipe among active zones)
+          float max_pipe_length = 0;
+          int ref_zone = -1;
+          
+          // Check each configured zone's pipe length
+          for (auto *sensor : App.get_sensors()) {
+            std::string name = sensor->get_name();
+            if (name.find("Pipe Length") != std::string::npos && sensor->state > max_pipe_length) {
+              max_pipe_length = sensor->state;
+            }
+          }
+          
+          id(${id_prefix}reference_pipe_length) = max_pipe_length;
+          ESP_LOGD("hydraulic", "Reference pipe length: %.1fm", max_pipe_length);
+
+# ============================================
+# Periodic Balancing Interval
+# ============================================
+interval:
+  - interval: 5min
+    then:
+      - script.execute: ${id_prefix}hydraulic_balancing_check
