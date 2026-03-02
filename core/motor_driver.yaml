@@ -53,6 +53,11 @@ globals:
   - id: motor_current_filtered
     type: float
     initial_value: '0.0'
+  
+  # Signed filter for endstop (VdMot-style: stall = current > high OR current < -high)
+  - id: motor_current_filtered_signed
+    type: float
+    initial_value: '0.0'
     
   # Mean current accumulator for learning
   - id: motor_current_sum
@@ -309,8 +314,11 @@ binary_sensor:
 # ============================================
 # Current Measurement & Endstop Detection
 # ============================================
-# This interval runs at 10ms (100Hz)
-# INA219 provides calibrated mA readings via I2C (no ADC/ref needed)
+# Same idea as VdMot Controller (Lenti84): current-based endstop.
+# https://github.com/Lenti84/VdMot_Controller/blob/master/software_stm32/src/motor.cpp
+# - Signed current: opening = positive, closing = negative (if shunt sees both directions).
+# - Endstop = overcurrent in either direction (stall); undercurrent = no motor (open only).
+# INA219 provides calibrated mA (signed); 10ms @ 100Hz.
 interval:
   - interval: 10ms
     then:
@@ -318,18 +326,22 @@ interval:
           // Only process when motor is turning
           if (!id(motor_turning)) {
             id(motor_current_filtered) = 0;
+            id(motor_current_filtered_signed) = 0;
             id(motor_debounce_count) = 0;
             return;
           }
           
-          // Read current from INA219 (already in mA via multiply filter)
+          // Read current from INA219 (signed mA: + = one direction, - = other)
           float raw_current = id(${id_prefix}motor_current_ina219).state;
           if (isnan(raw_current)) raw_current = 0;
           id(motor_current_raw) = raw_current;
           
-          // Filter: IIR low-pass (98% old + 2% new)
+          // Magnitude filter (for mean accumulation and undercurrent)
           float filtered = id(motor_current_filtered) * 0.98 + abs(raw_current) * 0.02;
           id(motor_current_filtered) = filtered;
+          // Signed filter (for endstop: stall in either direction, VdMot-style)
+          float filtered_signed = id(motor_current_filtered_signed) * 0.98 + raw_current * 0.02;
+          id(motor_current_filtered_signed) = filtered_signed;
           
           // Debounce counter (ignore motor inrush current)
           if (id(motor_debounce_count) < 255) {
@@ -368,22 +380,26 @@ interval:
                      motor, raw_current, filtered, mean_current, threshold_high);
           }
           
-          // Overcurrent / endstop detection
-          // Only use FILTERED current (raw is too noisy)
-          // Safety limit at 250mA absolute
-          if (filtered > threshold_high || filtered > 250.0) {
-            ESP_LOGI("motor", "Endstop: filtered=%.1f mA (threshold=%.1f)", filtered, threshold_high);
+          // Overcurrent / endstop (VdMot-style: currentbound_high and currentbound_low)
+          // Stall in either direction: filtered_signed > thr OR filtered_signed < -thr
+          if (filtered_signed > threshold_high || filtered_signed < -threshold_high || abs(filtered_signed) > 250.0) {
+            ESP_LOGI("motor", "Endstop: filtered_signed=%.1f mA (threshold=±%.1f)", filtered_signed, threshold_high);
             id(motor_endstop_event) = true;
           }
           
-          // Undercurrent detection (no motor connected)
+          // Undercurrent detection (no motor connected) - only when OPENING
+          // When closing, shunt may not see current (direction-dependent wiring), so only use
+          // overcurrent (stall) or max_duration to stop; skip undercurrent to avoid false stop.
           else if (filtered < undercurrent) {
-            static int undercurrent_count = 0;
-            undercurrent_count++;
-            if (undercurrent_count > 100) {  // 1000ms of undercurrent
-              ESP_LOGW("motor", "Undercurrent: filtered=%.1f mA (Motor %d) - no motor?", filtered, motor);
-              undercurrent_count = 0;
-              id(motor_endstop_event) = true;
+            int dir = id(motor_direction);
+            if (dir == 1) {  // OPEN only
+              static int undercurrent_count = 0;
+              undercurrent_count++;
+              if (undercurrent_count > 100) {  // 1000ms of undercurrent
+                ESP_LOGW("motor", "Undercurrent: filtered=%.1f mA (Motor %d) - no motor?", filtered, motor);
+                undercurrent_count = 0;
+                id(motor_endstop_event) = true;
+              }
             }
           }
           
