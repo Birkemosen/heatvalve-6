@@ -65,10 +65,10 @@ substitutions:
   # Current sensing via INA219 on I2C bus (address 0x40)
   
   # ============================================
-  # I2C Pins
+  # I2C Pins (SDA=GPIO8, SCL=GPIO9 → INA219 pin3=SDA, pin4=SCL)
   # ============================================
-  i2c_sda_pin: GPIO9          # I2C Data
-  i2c_scl_pin: GPIO8          # I2C Clock
+  i2c_sda_pin: GPIO8          # I2C Data
+  i2c_scl_pin: GPIO9          # I2C Clock
   
   # ============================================
   # Other Pins

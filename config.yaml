@@ -65,7 +65,7 @@ substitutions:
   adc_zero_calibration: "-0.075"
   pump_mac_address: "AA:BB:CC:DD:EE:FF"
   
-  # INA219 current sensor I2C address (must be numeric: 0x40 or 0x41)
+  # INA219 current sensor I2C address (A0,A1 to GND = 0x40)
   ina219_address: 0x40
   
   # ============================================
