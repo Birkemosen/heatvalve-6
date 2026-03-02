@@ -511,14 +511,15 @@ script:
       - delay: 50ms  # Wait for relay/optocoupler settling
       
       # Set direction (IN1 and IN2 must be opposite for DRV8837)
-      # DRV8837: IN1=H/IN2=L → Forward, IN1=L/IN2=H → Reverse
+      # DRV8837: IN1=H/IN2=L = one way, IN1=L/IN2=H = other way.
+      # If motor only runs when "opening", swap: open uses IN1=L/IN2=H, close uses IN1=H/IN2=L.
       - lambda: |-
           if (id(motor_direction) == 1) {
-            id(motor_dir1).turn_on();   // IN1 = HIGH
-            id(motor_dir2).turn_off();  // IN2 = LOW  → Forward (open)
-          } else {
             id(motor_dir1).turn_off();  // IN1 = LOW
-            id(motor_dir2).turn_on();   // IN2 = HIGH → Reverse (close)
+            id(motor_dir2).turn_on();   // IN2 = HIGH  → open
+          } else {
+            id(motor_dir1).turn_on();   // IN1 = HIGH
+            id(motor_dir2).turn_off();  // IN2 = LOW   → close
           }
       - delay: 5ms
       
