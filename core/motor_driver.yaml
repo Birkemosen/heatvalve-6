@@ -499,45 +499,46 @@ script:
           
           ESP_LOGI("motor", "Starting motor %d, direction=%s", 
                    motor_num, direction ? "OPEN" : "CLOSE");
-                   
-      # Set mux based on odd/even motor
-      - lambda: |-
-          bool is_odd = (id(current_motor) % 2) == 1;
-          if (is_odd) {
-            id(motor_mux).turn_on();  // HIGH for odd motors (N1)
-          } else {
-            id(motor_mux).turn_off(); // LOW for even motors (N2)
-          }
-      - delay: 50ms  # Wait for relay/optocoupler settling
       
-      # Set direction (IN1 and IN2 opposite for DRV8837).
-      # Board: motor between Mx+ and MNODD/MNEVEN; one polarity completes path via opto to MCOM/shunt.
-      - lambda: |-
-          if (id(motor_direction) == 1) {
-            id(motor_dir1).turn_on();   // IN1=H, IN2=L → open (runs, INA219 sees current)
-            id(motor_dir2).turn_off();
-          } else {
-            id(motor_dir1).turn_off(); // IN1=L, IN2=H → close
-            id(motor_dir2).turn_on();
-          }
-      - delay: 5ms
-      
-      # Mark as turning (enables current measurement)
-      - globals.set:
-          id: motor_turning
-          value: 'true'
-      - script.execute: led_status_motor  # Cyan LED for motor running
-      
-      # Wake up the correct DRV8837 (nSLEEP → HIGH)
+      # 1) Wake DRV8837 first (nSLEEP HIGH), then set mux/direction (avoids glitches)
       - lambda: |-
           int motor = id(current_motor);
           if (motor == 1 || motor == 2) {
-            id(motor_ena0).turn_on();  // DRV8837 #1
+            id(motor_ena0).turn_on();
           } else if (motor == 3 || motor == 4) {
-            id(motor_ena1).turn_on();  // DRV8837 #2
+            id(motor_ena1).turn_on();
           } else if (motor == 5 || motor == 6) {
-            id(motor_ena2).turn_on();  // DRV8837 #3
+            id(motor_ena2).turn_on();
           }
+          ESP_LOGI("motor", "DRV enable ON for motor %d", motor);
+      - delay: 25ms  # DRV8837 wake from sleep
+                   
+      # 2) Mux: which common return (MNODD vs MNEVEN)
+      - lambda: |-
+          bool is_odd = (id(current_motor) % 2) == 1;
+          if (is_odd) {
+            id(motor_mux).turn_on();  // HIGH = odd (motor 1,3,5 → MNODD)
+          } else {
+            id(motor_mux).turn_off(); // LOW = even (motor 2,4,6 → MNEVEN)
+          }
+      - delay: 50ms  # Optocoupler settling
+      
+      # 3) Direction (IN1/IN2 opposite for H-bridge)
+      - lambda: |-
+          if (id(motor_direction) == 1) {
+            id(motor_dir1).turn_on();   // IN1=H, IN2=L → open
+            id(motor_dir2).turn_off();
+          } else {
+            id(motor_dir1).turn_off();
+            id(motor_dir2).turn_on();   // IN1=L, IN2=H → close
+          }
+      - delay: 10ms
+      
+      # 4) Start current measurement
+      - globals.set:
+          id: motor_turning
+          value: 'true'
+      - script.execute: led_status_motor
 
   # Stop specific motor and update mean current
   - id: motor_stop
