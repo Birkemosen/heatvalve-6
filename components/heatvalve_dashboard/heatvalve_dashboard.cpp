@@ -1,5 +1,6 @@
 #include "heatvalve_dashboard.h"
 #include "dashboard_html.h"
+#include "esphome/components/climate/climate_mode.h"
 #include "esphome/core/log.h"
 #include "esphome/core/application.h"
 #include <algorithm>
@@ -311,8 +312,37 @@ void HeatvalveDashboard::update_snapshot_() {
       if (std::isnan(z.target_temp)) z.target_temp = climates_[i]->target_temperature_low;
       z.climate_action = (int) climates_[i]->action;
       z.climate_mode = (int) climates_[i]->mode;
-      if (climates_[i]->preset.has_value()) {
-        strncpy(z.preset, climates_[i]->preset.value().c_str(), sizeof(z.preset) - 1);
+      if (climates_[i]->has_custom_preset()) {
+        auto sr = climates_[i]->get_custom_preset();
+        strncpy(z.preset, sr.c_str(), sizeof(z.preset) - 1);
+        z.preset[sizeof(z.preset) - 1] = '\0';
+      } else if (climates_[i]->preset.has_value()) {
+        switch (climates_[i]->preset.value()) {
+          case climate::CLIMATE_PRESET_HOME:
+            strncpy(z.preset, "HOME", sizeof(z.preset) - 1);
+            break;
+          case climate::CLIMATE_PRESET_AWAY:
+            strncpy(z.preset, "AWAY", sizeof(z.preset) - 1);
+            break;
+          case climate::CLIMATE_PRESET_BOOST:
+            strncpy(z.preset, "BOOST", sizeof(z.preset) - 1);
+            break;
+          case climate::CLIMATE_PRESET_COMFORT:
+            strncpy(z.preset, "COMFORT", sizeof(z.preset) - 1);
+            break;
+          case climate::CLIMATE_PRESET_ECO:
+            strncpy(z.preset, "ECO", sizeof(z.preset) - 1);
+            break;
+          case climate::CLIMATE_PRESET_SLEEP:
+            strncpy(z.preset, "SLEEP", sizeof(z.preset) - 1);
+            break;
+          case climate::CLIMATE_PRESET_ACTIVITY:
+            strncpy(z.preset, "ACTIVITY", sizeof(z.preset) - 1);
+            break;
+          default:
+            z.preset[0] = '\0';
+            break;
+        }
         z.preset[sizeof(z.preset) - 1] = '\0';
       } else {
         z.preset[0] = '\0';
@@ -339,13 +369,14 @@ void HeatvalveDashboard::update_snapshot_() {
   current_snapshot_.sw_balancing = get_sw(sw_balancing_);
   current_snapshot_.sw_standalone = get_sw(sw_standalone_);
 
-  // Select
+  // Select (get_options returns FixedVector - iterate by reference, elements are const char*)
   current_snapshot_.sel_pipe_type = get_sel(sel_pipe_type_);
   if (sel_pipe_type_) {
-    auto opts = sel_pipe_type_->traits.get_options();
+    const auto &opts = sel_pipe_type_->traits.get_options();
     current_snapshot_.sel_pipe_type_opts_count = std::min((int) opts.size(), 6);
     for (int i = 0; i < current_snapshot_.sel_pipe_type_opts_count; i++) {
-      strncpy(current_snapshot_.sel_pipe_type_opts[i], opts[i].c_str(), 15);
+      const char *opt = opts[i];
+      strncpy(current_snapshot_.sel_pipe_type_opts[i], opt ? opt : "", 15);
       current_snapshot_.sel_pipe_type_opts[i][15] = '\0';
     }
   }
