@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HeatValve-6 Dashboard</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--card:#1a1d27;--card2:#22263a;--border:#2a2e3f;
+  --text:#e0e0e0;--text2:#8b8fa3;--accent:#4f8cff;--accent2:#3a6fd8;
+  --heat:#ff6b35;--heat2:#ff8c5a;--cool:#4ecdc4;--idle:#6c757d;
+  --ok:#2ecc71;--warn:#f39c12;--err:#e74c3c;
+  --radius:12px;--shadow:0 2px 12px rgba(0,0,0,0.3);
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:var(--bg);color:var(--text);min-height:100vh;padding:12px}
+.header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;
+  background:var(--card);border-radius:var(--radius);margin-bottom:12px;box-shadow:var(--shadow)}
+.header h1{font-size:1.2em;font-weight:600}
+.header .status{display:flex;gap:12px;align-items:center;font-size:0.85em;color:var(--text2)}
+.header .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px}
+.dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.err{background:var(--err)}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;margin-bottom:12px}
+.card{background:var(--card);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);
+  border:1px solid var(--border)}
+.card h2{font-size:0.95em;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px}
+
+.zone{position:relative}
+.zone-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.zone-name{font-size:1.1em;font-weight:600}
+.zone-badge{font-size:0.75em;padding:2px 8px;border-radius:10px;font-weight:500}
+.badge-heating{background:rgba(255,107,53,0.2);color:var(--heat2)}
+.badge-idle{background:rgba(108,117,125,0.2);color:var(--idle)}
+.badge-off{background:rgba(108,117,125,0.15);color:var(--text2)}
+
+.zone-temps{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
+.zone-current{font-size:2em;font-weight:700}
+.zone-target{font-size:1em;color:var(--text2)}
+.zone-target span{color:var(--accent)}
+
+.zone-valve{margin-top:8px}
+.valve-bar{height:6px;background:var(--card2);border-radius:3px;overflow:hidden;margin-top:4px}
+.valve-fill{height:100%;border-radius:3px;transition:width 0.5s ease}
+.valve-label{display:flex;justify-content:space-between;font-size:0.8em;color:var(--text2)}
+
+.zone-controls{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.zone-controls button{background:var(--card2);border:1px solid var(--border);color:var(--text);
+  padding:4px 10px;border-radius:6px;cursor:pointer;font-size:0.8em;transition:all 0.2s}
+.zone-controls button:hover{background:var(--accent);border-color:var(--accent)}
+.zone-controls button.active{background:var(--accent2);border-color:var(--accent)}
+
+.setpoint-ctrl{display:flex;align-items:center;gap:4px;margin-top:8px}
+.setpoint-ctrl button{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);
+  background:var(--card2);color:var(--text);font-size:1.2em;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:all 0.2s}
+.setpoint-ctrl button:hover{background:var(--accent);border-color:var(--accent)}
+.setpoint-ctrl .sp-val{font-size:1.3em;font-weight:600;min-width:60px;text-align:center}
+
+.circuit{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.circuit-item{text-align:center}
+.circuit-item .val{font-size:1.5em;font-weight:700}
+.circuit-item .lbl{font-size:0.8em;color:var(--text2);margin-top:2px}
+
+.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.setting-item{display:flex;flex-direction:column;gap:4px}
+.setting-item label{font-size:0.8em;color:var(--text2)}
+.setting-item input,.setting-item select{background:var(--card2);border:1px solid var(--border);
+  color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.9em;width:100%}
+.setting-item input:focus,.setting-item select:focus{outline:none;border-color:var(--accent)}
+
+.switch-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;
+  border-bottom:1px solid var(--border)}
+.switch-row:last-child{border-bottom:none}
+.switch-row label{font-size:0.9em}
+.toggle{position:relative;width:44px;height:24px;cursor:pointer}
+.toggle input{opacity:0;width:0;height:0}
+.toggle .slider{position:absolute;inset:0;background:var(--card2);border-radius:12px;
+  border:1px solid var(--border);transition:all 0.3s}
+.toggle .slider:before{content:'';position:absolute;height:18px;width:18px;left:2px;bottom:2px;
+  background:var(--text2);border-radius:50%;transition:all 0.3s}
+.toggle input:checked+.slider{background:var(--accent);border-color:var(--accent)}
+.toggle input:checked+.slider:before{transform:translateX(20px);background:#fff}
+
+.logs{background:var(--card);border-radius:var(--radius);padding:16px;margin-top:12px;
+  box-shadow:var(--shadow);border:1px solid var(--border)}
+.logs h2{font-size:0.95em;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px}
+.log-area{background:var(--bg);border-radius:8px;padding:10px;font-family:'Fira Code',monospace;
+  font-size:0.8em;max-height:200px;overflow-y:auto;color:var(--text2);line-height:1.6}
+.log-entry{border-bottom:1px solid var(--border);padding:2px 0}
+.log-entry:last-child{border-bottom:none}
+.log-time{color:var(--accent)}
+.log-actions{display:flex;gap:8px;margin-top:8px}
+.log-actions button{background:var(--card2);border:1px solid var(--border);color:var(--text);
+  padding:4px 12px;border-radius:6px;cursor:pointer;font-size:0.8em;transition:all 0.2s}
+.log-actions button:hover{background:var(--accent);border-color:var(--accent)}
+
+.footer{text-align:center;padding:12px;color:var(--text2);font-size:0.75em}
+
+@media(max-width:640px){
+  .grid{grid-template-columns:1fr}
+  .settings-grid{grid-template-columns:1fr}
+  .circuit{grid-template-columns:1fr}
+  .header{flex-direction:column;gap:8px;text-align:center}
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>&#x1F525; HeatValve-6</h1>
+  <div class="status">
+    <span><span class="dot" id="conn-dot"></span><span id="conn-text">Connecting...</span></span>
+    <span id="hdr-mode"></span>
+    <span id="hdr-uptime"></span>
+  </div>
+</div>
+
+<div class="grid" id="zones-grid"></div>
+
+<div class="grid">
+  <div class="card">
+    <h2>Heating Circuit</h2>
+    <div class="circuit">
+      <div class="circuit-item"><div class="val" id="v-input">--</div><div class="lbl">Supply</div></div>
+      <div class="circuit-item"><div class="val" id="v-output">--</div><div class="lbl">Return</div></div>
+      <div class="circuit-item"><div class="val" id="v-extra">--</div><div class="lbl">Extra</div></div>
+    </div>
+    <div class="circuit" style="margin-top:12px">
+      <div class="circuit-item"><div class="val" id="v-avg">--</div><div class="lbl">Avg Valve %</div></div>
+      <div class="circuit-item"><div class="val" id="v-active">--</div><div class="lbl">Active Zones</div></div>
+      <div class="circuit-item"><div class="val" id="v-wifi">--</div><div class="lbl">WiFi dB</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>System</h2>
+    <div class="switch-row">
+      <label>Hydraulic Balancing</label>
+      <label class="toggle"><input type="checkbox" id="sw-bal" onchange="setSwitch('balancing_enabled',this.checked)"><span class="slider"></span></label>
+    </div>
+    <div class="switch-row">
+      <label>Standalone Mode</label>
+      <label class="toggle"><input type="checkbox" id="sw-standalone" onchange="setSwitch('standalone_mode',this.checked)"><span class="slider"></span></label>
+    </div>
+    <div class="switch-row">
+      <label>Status</label>
+      <span id="v-status" style="font-size:0.85em;color:var(--text2)">--</span>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:12px">
+  <h2>Settings</h2>
+  <div class="settings-grid">
+    <div class="setting-item">
+      <label>Pipe Type</label>
+      <select id="set-pipe-type" onchange="setSelect('pipe_type',this.value)"></select>
+    </div>
+    <div class="setting-item">
+      <label>Pipe Spacing (mm)</label>
+      <input type="number" id="set-pipe-spacing" onchange="setNumber('pipe_spacing',this.value)">
+    </div>
+    <div class="setting-item">
+      <label>Min Valve Opening (%)</label>
+      <input type="number" id="set-min-valve" onchange="setNumber('min_valve_opening',this.value)">
+    </div>
+    <div class="setting-item">
+      <label>Comfort Band (&deg;C)</label>
+      <input type="number" id="set-comfort" step="0.1" onchange="setNumber('comfort_band',this.value)">
+    </div>
+    <div class="setting-item">
+      <label>Maintenance Base (%)</label>
+      <input type="number" id="set-maint" onchange="setNumber('maintenance_base',this.value)">
+    </div>
+    <div class="setting-item">
+      <label>Demand Boost (%)</label>
+      <input type="number" id="set-demand" onchange="setNumber('demand_boost',this.value)">
+    </div>
+    <div class="setting-item">
+      <label>Boost Factor (%)</label>
+      <input type="number" id="set-boost" onchange="setNumber('boost_factor',this.value)">
+    </div>
+    <div class="setting-item">
+      <label>Min Movement (%)</label>
+      <input type="number" id="set-minmov" onchange="setNumber('min_movement',this.value)">
+    </div>
+  </div>
+</div>
+
+<div class="logs">
+  <h2>Activity Log</h2>
+  <div class="log-area" id="log-area"></div>
+  <div class="log-actions">
+    <button onclick="clearLogs()">Clear</button>
+    <button onclick="exportLogs()">Export</button>
+  </div>
+</div>
+
+<div class="footer">HeatValve-6 &mdash; Floor Heating Controller</div>
+
+<script>
+const POLL_MS=3000;
+const ZONE_NAMES=['Zone 1','Zone 2','Zone 3','Zone 4','Zone 5','Zone 6'];
+let state=null, logs=[], pollTimer=null, lastOk=0;
+
+function fmt(v,d){return v==null?'--':Number(v).toFixed(d!=null?d:1)}
+function fmtT(v){return v==null?'--':Number(v).toFixed(1)+'°'}
+function fmtP(v){return v==null?'--':(Number(v)*100).toFixed(0)+'%'}
+
+function valveColor(p){
+  if(p==null)return'var(--idle)';
+  let pct=p*100;
+  if(pct<10)return'var(--cool)';
+  if(pct<50)return'var(--accent)';
+  if(pct<80)return'var(--warn)';
+  return'var(--heat)';
+}
+
+function buildZones(){
+  let g=document.getElementById('zones-grid');
+  g.innerHTML='';
+  for(let i=0;i<6;i++){
+    let z=i+1;
+    g.innerHTML+=`
+    <div class="card zone" id="zone-${z}">
+      <div class="zone-header">
+        <span class="zone-name" id="zn-${z}">${ZONE_NAMES[i]}</span>
+        <span class="zone-badge" id="zb-${z}">--</span>
+      </div>
+      <div class="zone-temps">
+        <span class="zone-current" id="zt-${z}">--</span>
+        <span class="zone-target">&#x2192; <span id="zsp-${z}">--</span></span>
+      </div>
+      <div class="setpoint-ctrl">
+        <button onclick="adjSp(${z},-0.5)">&#x2212;</button>
+        <span class="sp-val" id="zspv-${z}">--</span>
+        <button onclick="adjSp(${z},0.5)">+</button>
+      </div>
+      <div class="zone-valve">
+        <div class="valve-label"><span>Valve</span><span id="zvl-${z}">--</span></div>
+        <div class="valve-bar"><div class="valve-fill" id="zvf-${z}" style="width:0"></div></div>
+      </div>
+      <div class="zone-controls">
+        <button onclick="setPreset(${z},'HOME')" id="zp-${z}-HOME">Home</button>
+        <button onclick="setPreset(${z},'AWAY')" id="zp-${z}-AWAY">Away</button>
+        <button onclick="setPreset(${z},'BOOST')" id="zp-${z}-BOOST">Boost</button>
+        <button onclick="setMode(${z},'off')" id="zm-${z}-off">Off</button>
+      </div>
+    </div>`;
+  }
+}
+
+function updateUI(d){
+  state=d;
+  // Connection status
+  let dot=document.getElementById('conn-dot');
+  let txt=document.getElementById('conn-text');
+  dot.className='dot ok';txt.textContent='Connected';
+  document.getElementById('hdr-mode').textContent=d.controller_mode||'';
+  document.getElementById('hdr-uptime').textContent=d.uptime||'';
+
+  // Zones
+  if(d.zones){
+    for(let i=0;i<d.zones.length;i++){
+      let z=i+1,zd=d.zones[i];
+      let temp=zd['z'+z+'_temp'];
+      let sp=zd['z'+z+'_setpoint'];
+      let valve=zd['z'+z+'_valve'];
+      let action=zd['z'+z+'_action'];
+      let mode=zd['z'+z+'_mode'];
+      let preset=zd['z'+z+'_preset'];
+
+      document.getElementById('zt-'+z).textContent=fmtT(temp);
+      document.getElementById('zsp-'+z).textContent=fmtT(sp);
+      document.getElementById('zspv-'+z).textContent=sp!=null?Number(sp).toFixed(1)+'°':'--';
+
+      let pct=valve!=null?(valve*100):0;
+      document.getElementById('zvl-'+z).textContent=fmtP(valve);
+      let fill=document.getElementById('zvf-'+z);
+      fill.style.width=pct+'%';
+      fill.style.background=valveColor(valve);
+
+      let badge=document.getElementById('zb-'+z);
+      if(mode==='off'){badge.textContent='OFF';badge.className='zone-badge badge-off';}
+      else if(action==='heating'){badge.textContent='HEATING';badge.className='zone-badge badge-heating';}
+      else{badge.textContent='IDLE';badge.className='zone-badge badge-idle';}
+
+      // Preset buttons
+      ['HOME','AWAY','BOOST'].forEach(p=>{
+        let btn=document.getElementById('zp-'+z+'-'+p);
+        if(btn)btn.className=preset===p?'active':'';
+      });
+      let offBtn=document.getElementById('zm-'+z+'-off');
+      if(offBtn)offBtn.className=mode==='off'?'active':'';
+    }
+  }
+
+  // Circuit
+  document.getElementById('v-input').textContent=fmtT(d.input_temp);
+  document.getElementById('v-output').textContent=fmtT(d.output_temp);
+  document.getElementById('v-extra').textContent=fmtT(d.extra_temp);
+  document.getElementById('v-avg').textContent=fmt(d.avg_valve_position,1)+'%';
+  document.getElementById('v-active').textContent=fmt(d.active_zones,0);
+  document.getElementById('v-wifi').textContent=fmt(d.wifi_signal,0);
+
+  // Switches
+  document.getElementById('sw-bal').checked=!!d.balancing_enabled;
+  document.getElementById('sw-standalone').checked=!!d.standalone_mode;
+  document.getElementById('v-status').textContent=d.system_status||'--';
+
+  // Settings
+  updateNumInput('set-min-valve',d.min_valve_opening);
+  updateNumInput('set-comfort',d.comfort_band);
+  updateNumInput('set-maint',d.maintenance_base);
+  updateNumInput('set-demand',d.demand_boost);
+  updateNumInput('set-boost',d.boost_factor);
+  updateNumInput('set-minmov',d.min_movement);
+  updateNumInput('set-pipe-spacing',d.pipe_spacing);
+
+  // Pipe type select
+  if(d.pipe_type&&d.pipe_type.opts){
+    let sel=document.getElementById('set-pipe-type');
+    if(sel.options.length!==d.pipe_type.opts.length){
+      sel.innerHTML='';
+      d.pipe_type.opts.forEach((o,i)=>{
+        let opt=document.createElement('option');
+        opt.value=o;opt.textContent=o;
+        sel.appendChild(opt);
+      });
+    }
+    if(d.pipe_type.idx>=0&&d.pipe_type.idx<d.pipe_type.opts.length){
+      sel.value=d.pipe_type.opts[d.pipe_type.idx];
+    }
+  }
+}
+
+function updateNumInput(id,nd){
+  let el=document.getElementById(id);
+  if(!el||!nd)return;
+  if(document.activeElement!==el){
+    el.value=nd.val!=null?nd.val:'';
+  }
+  if(nd.min!=null)el.min=nd.min;
+  if(nd.max!=null)el.max=nd.max;
+  if(nd.step!=null)el.step=nd.step;
+}
+
+function adjSp(z,delta){
+  if(!state||!state.zones||!state.zones[z-1])return;
+  let zd=state.zones[z-1];
+  let sp=zd['z'+z+'_setpoint'];
+  if(sp==null)return;
+  let nv=Math.round((sp+delta)*10)/10;
+  postSet('z'+z+'_setpoint',nv);
+}
+
+function setPreset(z,preset){
+  postSet('z'+z+'_preset',preset,true);
+}
+
+function setMode(z,mode){
+  postSet('z'+z+'_mode',mode,true);
+}
+
+function setSwitch(key,val){
+  postSet(key,val?1:0);
+}
+
+function setSelect(key,val){
+  postSet(key,val,true);
+}
+
+function setNumber(key,val){
+  postSet(key,parseFloat(val));
+}
+
+function postSet(key,value,isStr){
+  let body;
+  if(isStr)body=JSON.stringify({key:key,value:String(value)});
+  else body=JSON.stringify({key:key,value:Number(value)});
+  fetch('/dashboard/set',{method:'POST',headers:{'Content-Type':'application/json'},body:body})
+    .then(r=>r.json())
+    .then(r=>{if(r.ok)addLog('Set '+key+' = '+value);else addLog('Error: '+JSON.stringify(r));})
+    .catch(e=>addLog('Error: '+e.message));
+  setTimeout(poll,500);
+}
+
+function addLog(msg){
+  let now=new Date();
+  let ts=now.toLocaleTimeString();
+  logs.push({time:ts,msg:msg});
+  if(logs.length>200)logs.shift();
+  renderLogs();
+}
+
+function renderLogs(){
+  let el=document.getElementById('log-area');
+  el.innerHTML=logs.map(l=>`<div class="log-entry"><span class="log-time">${l.time}</span> ${l.msg}</div>`).join('');
+  el.scrollTop=el.scrollHeight;
+}
+
+function clearLogs(){logs=[];renderLogs();}
+
+function exportLogs(){
+  let text=logs.map(l=>l.time+' '+l.msg).join('\n');
+  let blob=new Blob([text],{type:'text/plain'});
+  let a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='heatvalve-logs-'+new Date().toISOString().slice(0,10)+'.txt';
+  a.click();
+}
+
+function poll(){
+  fetch('/dashboard/state')
+    .then(r=>{if(!r.ok)throw new Error(r.status);return r.json();})
+    .then(d=>{lastOk=Date.now();updateUI(d);})
+    .catch(e=>{
+      let dot=document.getElementById('conn-dot');
+      let txt=document.getElementById('conn-text');
+      dot.className='dot err';txt.textContent='Disconnected';
+    });
+}
+
+buildZones();
+poll();
+pollTimer=setInterval(poll,POLL_MS);
+addLog('Dashboard loaded');
+</script>
+</body>
+</html>

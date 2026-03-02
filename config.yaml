@@ -25,6 +25,11 @@ external_components:
     refresh: 30s
     components:
       - adc
+  - source:
+      type: local
+      path: heatvalve-6/components
+    components:
+      - heatvalve_dashboard
 
 # ============================================
 # General Configuration
@@ -33,7 +38,7 @@ substitutions:
   name: heatvalve-6
   friendly_name: "HeatValve-6"
   id_prefix: "heating_"
-  revision: "3.0.0"
+  revision: "1.0.0"
    
   # Multi-controller configuration
   controller_id: "1"  # Change to "2" for second controller
@@ -119,6 +124,70 @@ web_server:
       name: "Debug"
       sorting_weight: 90
 
+# ============================================
+# Dashboard (standalone web UI at /dashboard)
+# ============================================
+heatvalve_dashboard:
+  # Zone climates (thermostats)
+  climate_z1_id: wc_thermostat
+  climate_z2_id: storage_thermostat
+  climate_z3_id: living_thermostat
+  climate_z4_id: dining_thermostat
+  climate_z5_id: kitchen_thermostat
+  climate_z6_id: office_thermostat
+  # Zone covers (valves)
+  cover_z1_id: CH1_cover
+  cover_z2_id: CH2_cover
+  cover_z3_id: CH3_cover
+  cover_z4_id: CH4_cover
+  cover_z5_id: CH5_cover
+  cover_z6_id: CH6_cover
+  # Room temperature sensors
+  temp_z1_id: corridor_temp
+  temp_z2_id: storage_temp
+  temp_z3_id: living_temp
+  temp_z4_id: living_temp
+  temp_z5_id: living_temp
+  temp_z6_id: office_temp
+  # Heating circuit sensors
+  input_temp_id: heating_dallas_input_temp
+  output_temp_id: heating_dallas_output_temp
+  extra_temp_id: heating_dallas_extra_temp
+  # Status sensors
+  avg_valve_position_id: heating_avg_valve_position
+  active_zones_id: heating_active_zones_count
+  wifi_signal_id: heating_wifi_signal_db
+  # Text sensors
+  controller_mode_id: heating_controller_mode
+  system_status_id: heating_system_status
+  uptime_id: heating_uptime_human
+  # Switches
+  sw_balancing_id: heating_balancing_enabled
+  sw_standalone_id: heating_standalone_mode
+  # Select
+  sel_pipe_type_id: heating_pipe_type
+  # Settings numbers
+  num_min_valve_opening_id: heating_minimum_valve_opening
+  num_comfort_band_id: heating_comfort_band
+  num_maintenance_base_id: heating_maintenance_base
+  num_demand_boost_id: heating_demand_boost
+  num_boost_factor_id: heating_boost_factor
+  num_min_movement_id: heating_min_movement
+  num_pipe_spacing_id: heating_pipe_spacing
+  # Zone area/max opening numbers
+  num_zone_1_area_id: heating_zone_1_area
+  num_zone_2_area_id: heating_zone_2_area
+  num_zone_3_area_id: heating_zone_3_area
+  num_zone_4_area_id: heating_zone_4_area
+  num_zone_5_area_id: heating_zone_5_area
+  num_zone_6_area_id: heating_zone_6_area
+  num_zone_1_max_opening_id: heating_zone_1_max_opening
+  num_zone_2_max_opening_id: heating_zone_2_max_opening
+  num_zone_3_max_opening_id: heating_zone_3_max_opening
+  num_zone_4_max_opening_id: heating_zone_4_max_opening
+  num_zone_5_max_opening_id: heating_zone_5_max_opening
+  num_zone_6_max_opening_id: heating_zone_6_max_opening
+
 api:
   reboot_timeout: 30min
 
@@ -170,9 +239,6 @@ script:
       - delay: 300s
       - script.execute: calibrate_CH6_cover
       - delay: 300s
-      - script.execute: calibrate_CH7_cover
-      - delay: 300s
-      - script.execute: calibrate_CH8_cover
 
 # ============================================
 # Packages
@@ -347,25 +413,6 @@ packages:
       check_interval: "16min"
       tanh_steepness: "0.70"
 
-  # Zone 7-8 disabled (6-motor DRV8837 configuration)
-  # Add 4th DRV8837 to re-enable motor 7-8
-  # zone_7: !include
-  #   file: heatvalve-6/zones/tanh.yaml
-  #   vars:
-  #     zone_number: "7"
-  #     motor_number: "7"
-  #     id: bedroom
-  #     friendly_name: "Bedroom"
-  #     temperature_sensor: bedroom_temp
-
-  # zone_8: !include
-  #   file: heatvalve-6/zones/tanh.yaml
-  #   vars:
-  #     zone_number: "8"
-  #     motor_number: "8"
-  #     id: bathroom
-  #     friendly_name: "Bathroom"
-  #     temperature_sensor: bathroom_temp
 
 # ============================================
 # TEMPERATURE SENSORS
