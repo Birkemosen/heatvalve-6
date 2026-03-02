@@ -400,14 +400,7 @@ button:
     name: "Test Motor 1 Open"
     icon: mdi:arrow-up
     on_press:
-      - script.execute:
-          id: motor_start
-          motor_num: 1
-          direction: 1
-      - delay: 10s
-      - script.execute:
-          id: motor_stop
-          motor_num: 1
+      - cover.open: CH1_cover
     entity_category: diagnostic
     web_server:
       sorting_group_id: sorting_group_debug
@@ -416,14 +409,7 @@ button:
     name: "Test Motor 1 Close"
     icon: mdi:arrow-down
     on_press:
-      - script.execute:
-          id: motor_start
-          motor_num: 1
-          direction: 0
-      - delay: 10s
-      - script.execute:
-          id: motor_stop
-          motor_num: 1
+      - cover.close: CH1_cover
     entity_category: diagnostic
     web_server:
       sorting_group_id: sorting_group_debug
