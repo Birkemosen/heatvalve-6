@@ -1,0 +1,227 @@
+# ============================================
+# Forecast learning + 24h forecast (selvlærende)
+# ============================================
+# - Prognose-horisont: brug min udetemp og max vind over de næste N timer (N = forecast_horizon_hours).
+#   Horisonten bør matche rummenes reaktionstid (fx max af zN_response_h eller lært tau) – typisk 6–12 h.
+# - Selvlæring: estimer per-zone respons tid (tau); brug lært tau i preheat når tillid > 0.3.
+#
+# Kræver: forecast.yaml eller forecast_no_ble.yaml inkluderet først.
+# MQTT: Publiser N timers data (kommasepareret), N = forecast_horizon_hours:
+#   weather/forecast/outdoor_24h   → "10.2,9.8,9.5,..."  (N værdier)
+#   weather/forecast/wind_speed_24h → "2.1,3.0,4.0,..."
+#   weather/forecast/wind_dir_24h   → "180,185,190,..."
+# Tilføj i mqtt on_message: kald id(heating_forecast_24h_outdoor).publish_state(x) osv.
+
+substitutions:
+  forecast_learn_interval_min: "5"
+  forecast_tau_learn_alpha: "0.15"
+  forecast_tau_confidence_inc: "0.03"
+  forecast_tau_min_h: "3.0"
+  forecast_tau_max_h: "12.0"
+  # Horisont: antal timer frem vi bruger i worst-case (bør ≈ længste rum-reaktionstid, 3–12 h)
+  forecast_horizon_hours: "12"
+  # Samme som i forecast.yaml (vindretning per zone)
+  z1_exposure_deg: "0"
+  z2_exposure_deg: "180"
+  z3_exposure_deg: "270"
+  z4_exposure_deg: "90"
+  z5_exposure_deg: "-1"
+  z6_exposure_deg: "-1"
+  z7_exposure_deg: "-1"
+  z8_exposure_deg: "-1"
+
+# ============================================
+# 24h forecast input (text_sensors, sættes via MQTT)
+# ============================================
+text_sensor:
+  - platform: template
+    id: ${id_prefix}forecast_24h_outdoor
+    name: "Forecast 24h outdoor (raw)"
+  - platform: template
+    id: ${id_prefix}forecast_24h_wind_speed
+    name: "Forecast 24h wind speed (raw)"
+  - platform: template
+    id: ${id_prefix}forecast_24h_wind_dir
+    name: "Forecast 24h wind dir (raw)"
+
+# ============================================
+# Per-zone læring (sample-globals i forecast.yaml; kun _prev her)
+# ============================================
+globals:
+  - id: ${id_prefix}zone_1_learn_T_prev
+    type: float
+    restore_value: no
+    initial_value: '20.0'
+  - id: ${id_prefix}zone_1_learn_ts_prev
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_2_learn_T_prev
+    type: float
+    restore_value: no
+    initial_value: '20.0'
+  - id: ${id_prefix}zone_2_learn_ts_prev
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_3_learn_T_prev
+    type: float
+    restore_value: no
+    initial_value: '20.0'
+  - id: ${id_prefix}zone_3_learn_ts_prev
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_4_learn_T_prev
+    type: float
+    restore_value: no
+    initial_value: '20.0'
+  - id: ${id_prefix}zone_4_learn_ts_prev
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_5_learn_T_prev
+    type: float
+    restore_value: no
+    initial_value: '20.0'
+  - id: ${id_prefix}zone_5_learn_ts_prev
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_6_learn_T_prev
+    type: float
+    restore_value: no
+    initial_value: '20.0'
+  - id: ${id_prefix}zone_6_learn_ts_prev
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_7_learn_T_prev
+    type: float
+    restore_value: no
+    initial_value: '20.0'
+  - id: ${id_prefix}zone_7_learn_ts_prev
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_8_learn_T_prev
+    type: float
+    restore_value: no
+    initial_value: '20.0'
+  - id: ${id_prefix}zone_8_learn_ts_prev
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+
+# ============================================
+# Parse 24h forecast + tau learning (every 5 min)
+# ============================================
+interval:
+  - interval: ${forecast_learn_interval_min}min
+    then:
+      - lambda: |-
+          float now_s = millis() / 1000.0f;
+          std::string so = id(${id_prefix}forecast_24h_outdoor).state;
+          std::string sw = id(${id_prefix}forecast_24h_wind_speed).state;
+          std::string sd = id(${id_prefix}forecast_24h_wind_dir).state;
+          int horizon = ${forecast_horizon_hours};
+          if (horizon > 24) horizon = 24;
+          if (so.size() > 2) {
+            float min_o = 1e9f;
+            size_t pos = 0;
+            for (int i = 0; i < horizon && pos < so.size(); i++) {
+              size_t next = so.find(',', pos);
+              if (next == std::string::npos) next = so.size();
+              float v = atof(so.substr(pos, next - pos).c_str());
+              if (v < min_o) min_o = v;
+              pos = next + 1;
+            }
+            if (min_o < 1e8f) id(${id_prefix}forecast_min_outdoor_24h) = min_o;
+          }
+          if (sw.size() > 2 && sd.size() > 2) {
+            float ws[24], wd[24];
+            int nw = 0, nd = 0;
+            size_t pos = 0;
+            for (int i = 0; i < horizon && pos < sw.size(); i++) {
+              size_t next = sw.find(',', pos);
+              if (next == std::string::npos) next = sw.size();
+              ws[nw++] = atof(sw.substr(pos, next - pos).c_str());
+              pos = next + 1;
+            }
+            pos = 0;
+            for (int i = 0; i < horizon && pos < sd.size(); i++) {
+              size_t next = sd.find(',', pos);
+              if (next == std::string::npos) next = sd.size();
+              wd[nd++] = atof(sd.substr(pos, next - pos).c_str());
+              pos = next + 1;
+            }
+            float max_w = 0.0f;
+            for (int i = 0; i < nw; i++) { if (ws[i] > max_w) max_w = ws[i]; }
+            id(${id_prefix}forecast_max_wind_24h) = max_w;
+            auto weff = [&wd, &ws, &nw](float exp_deg) {
+              float m = 0.0f;
+              for (int i = 0; i < nw; i++) {
+                if (exp_deg < 0) { m = (ws[i] > m) ? ws[i] : m; continue; }
+                float d = wd[i] - (exp_deg + 180.0f);
+                while (d > 180.0f) d -= 360.0f;
+                while (d < -180.0f) d += 360.0f;
+                float e = 0.5f * (1.0f + cosf(d * 0.01745329f));
+                if (e < 0) e = 0; else if (e > 1) e = 1;
+                float hit = ws[i] * e;
+                if (hit > m) m = hit;
+              }
+              return m;
+            };
+            id(${id_prefix}forecast_max_wind_hit_1) = weff(${z1_exposure_deg});
+            id(${id_prefix}forecast_max_wind_hit_2) = weff(${z2_exposure_deg});
+            id(${id_prefix}forecast_max_wind_hit_3) = weff(${z3_exposure_deg});
+            id(${id_prefix}forecast_max_wind_hit_4) = weff(${z4_exposure_deg});
+            id(${id_prefix}forecast_max_wind_hit_5) = weff(${z5_exposure_deg});
+            id(${id_prefix}forecast_max_wind_hit_6) = weff(${z6_exposure_deg});
+            id(${id_prefix}forecast_max_wind_hit_7) = weff(${z7_exposure_deg});
+            id(${id_prefix}forecast_max_wind_hit_8) = weff(${z8_exposure_deg});
+          }
+          float alpha = ${forecast_tau_learn_alpha};
+          float conf_inc = ${forecast_tau_confidence_inc};
+          float tau_min = ${forecast_tau_min_h};
+          float tau_max = ${forecast_tau_max_h};
+          for (int z = 1; z <= 8; z++) {
+            float ts = 0, t_prev = 0, ts_prev = 0, T = 0, target = 0, valve = 0;
+            if (z==1) { ts = id(${id_prefix}zone_1_learn_ts); t_prev = id(${id_prefix}zone_1_learn_T_prev); ts_prev = id(${id_prefix}zone_1_learn_ts_prev); T = id(${id_prefix}zone_1_learn_T); target = id(${id_prefix}zone_1_learn_target); valve = id(${id_prefix}zone_1_learn_valve); }
+            else if (z==2) { ts = id(${id_prefix}zone_2_learn_ts); t_prev = id(${id_prefix}zone_2_learn_T_prev); ts_prev = id(${id_prefix}zone_2_learn_ts_prev); T = id(${id_prefix}zone_2_learn_T); target = id(${id_prefix}zone_2_learn_target); valve = id(${id_prefix}zone_2_learn_valve); }
+            else if (z==3) { ts = id(${id_prefix}zone_3_learn_ts); t_prev = id(${id_prefix}zone_3_learn_T_prev); ts_prev = id(${id_prefix}zone_3_learn_ts_prev); T = id(${id_prefix}zone_3_learn_T); target = id(${id_prefix}zone_3_learn_target); valve = id(${id_prefix}zone_3_learn_valve); }
+            else if (z==4) { ts = id(${id_prefix}zone_4_learn_ts); t_prev = id(${id_prefix}zone_4_learn_T_prev); ts_prev = id(${id_prefix}zone_4_learn_ts_prev); T = id(${id_prefix}zone_4_learn_T); target = id(${id_prefix}zone_4_learn_target); valve = id(${id_prefix}zone_4_learn_valve); }
+            else if (z==5) { ts = id(${id_prefix}zone_5_learn_ts); t_prev = id(${id_prefix}zone_5_learn_T_prev); ts_prev = id(${id_prefix}zone_5_learn_ts_prev); T = id(${id_prefix}zone_5_learn_T); target = id(${id_prefix}zone_5_learn_target); valve = id(${id_prefix}zone_5_learn_valve); }
+            else if (z==6) { ts = id(${id_prefix}zone_6_learn_ts); t_prev = id(${id_prefix}zone_6_learn_T_prev); ts_prev = id(${id_prefix}zone_6_learn_ts_prev); T = id(${id_prefix}zone_6_learn_T); target = id(${id_prefix}zone_6_learn_target); valve = id(${id_prefix}zone_6_learn_valve); }
+            else if (z==7) { ts = id(${id_prefix}zone_7_learn_ts); t_prev = id(${id_prefix}zone_7_learn_T_prev); ts_prev = id(${id_prefix}zone_7_learn_ts_prev); T = id(${id_prefix}zone_7_learn_T); target = id(${id_prefix}zone_7_learn_target); valve = id(${id_prefix}zone_7_learn_valve); }
+            else { ts = id(${id_prefix}zone_8_learn_ts); t_prev = id(${id_prefix}zone_8_learn_T_prev); ts_prev = id(${id_prefix}zone_8_learn_ts_prev); T = id(${id_prefix}zone_8_learn_T); target = id(${id_prefix}zone_8_learn_target); valve = id(${id_prefix}zone_8_learn_valve); }
+            float dt = ts - ts_prev;
+            if (dt >= 600.0f && valve >= 0.1f && (target - T) >= 0.2f && (target - t_prev) >= 0.2f) {
+              float ratio = (target - T) / (target - t_prev);
+              if (ratio > 0.01f && ratio < 1.0f) {
+                float tau_raw = -(dt / 3600.0f) / logf(ratio);
+                if (tau_raw < tau_min) tau_raw = tau_min; else if (tau_raw > tau_max) tau_raw = tau_max;
+                float tau_old = (z==1)?id(${id_prefix}zone_1_tau_learned):(z==2)?id(${id_prefix}zone_2_tau_learned):(z==3)?id(${id_prefix}zone_3_tau_learned):(z==4)?id(${id_prefix}zone_4_tau_learned):(z==5)?id(${id_prefix}zone_5_tau_learned):(z==6)?id(${id_prefix}zone_6_tau_learned):(z==7)?id(${id_prefix}zone_7_tau_learned):id(${id_prefix}zone_8_tau_learned);
+                float conf = (z==1)?id(${id_prefix}zone_1_tau_confidence):(z==2)?id(${id_prefix}zone_2_tau_confidence):(z==3)?id(${id_prefix}zone_3_tau_confidence):(z==4)?id(${id_prefix}zone_4_tau_confidence):(z==5)?id(${id_prefix}zone_5_tau_confidence):(z==6)?id(${id_prefix}zone_6_tau_confidence):(z==7)?id(${id_prefix}zone_7_tau_confidence):id(${id_prefix}zone_8_tau_confidence);
+                float tau_new = (1.0f - alpha) * tau_old + alpha * tau_raw;
+                if (tau_new < tau_min) tau_new = tau_min; else if (tau_new > tau_max) tau_new = tau_max;
+                conf += conf_inc; if (conf > 1.0f) conf = 1.0f;
+                if (z==1) { id(${id_prefix}zone_1_tau_learned) = tau_new; id(${id_prefix}zone_1_tau_confidence) = conf; }
+                else if (z==2) { id(${id_prefix}zone_2_tau_learned) = tau_new; id(${id_prefix}zone_2_tau_confidence) = conf; }
+                else if (z==3) { id(${id_prefix}zone_3_tau_learned) = tau_new; id(${id_prefix}zone_3_tau_confidence) = conf; }
+                else if (z==4) { id(${id_prefix}zone_4_tau_learned) = tau_new; id(${id_prefix}zone_4_tau_confidence) = conf; }
+                else if (z==5) { id(${id_prefix}zone_5_tau_learned) = tau_new; id(${id_prefix}zone_5_tau_confidence) = conf; }
+                else if (z==6) { id(${id_prefix}zone_6_tau_learned) = tau_new; id(${id_prefix}zone_6_tau_confidence) = conf; }
+                else if (z==7) { id(${id_prefix}zone_7_tau_learned) = tau_new; id(${id_prefix}zone_7_tau_confidence) = conf; }
+                else { id(${id_prefix}zone_8_tau_learned) = tau_new; id(${id_prefix}zone_8_tau_confidence) = conf; }
+              }
+            }
+            if (z==1) { id(${id_prefix}zone_1_learn_T_prev) = T; id(${id_prefix}zone_1_learn_ts_prev) = ts; }
+            else if (z==2) { id(${id_prefix}zone_2_learn_T_prev) = T; id(${id_prefix}zone_2_learn_ts_prev) = ts; }
+            else if (z==3) { id(${id_prefix}zone_3_learn_T_prev) = T; id(${id_prefix}zone_3_learn_ts_prev) = ts; }
+            else if (z==4) { id(${id_prefix}zone_4_learn_T_prev) = T; id(${id_prefix}zone_4_learn_ts_prev) = ts; }
+            else if (z==5) { id(${id_prefix}zone_5_learn_T_prev) = T; id(${id_prefix}zone_5_learn_ts_prev) = ts; }
+            else if (z==6) { id(${id_prefix}zone_6_learn_T_prev) = T; id(${id_prefix}zone_6_learn_ts_prev) = ts; }
+            else if (z==7) { id(${id_prefix}zone_7_learn_T_prev) = T; id(${id_prefix}zone_7_learn_ts_prev) = ts; }
+            else { id(${id_prefix}zone_8_learn_T_prev) = T; id(${id_prefix}zone_8_learn_ts_prev) = ts; }
+          }

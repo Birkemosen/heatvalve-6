@@ -1,0 +1,446 @@
+# ============================================
+# Forecast / MPC-style correction (standalone)
+# ============================================
+# Adjusts effective heating demand using outdoor temp, wind (with direction),
+# per-zone illuminance, and per-zone thermal model (response time + pre-heat).
+#
+# Per-zone model:
+#   - Wind exposure (deg): direction the room's cold wall faces (0=N, 90=E, 180=S, 270=W).
+#     Wind FROM the opposite direction hits that wall → extra loss + pre-heat.
+#   - Response time (h): 3–12 h typical. Slow rooms need earlier pre-heat to hold temp later.
+#
+# Pre-heat: when wind will hit a zone, target is raised slightly so the room can
+# "charge" and hold temperature when the loss arrives (response_time scales this).
+#
+# Override per-zone: z1_response_h, z1_exposure_deg, ... z8_* via include vars.
+# Requires bthome_shelly_blu for illuminance. For outdoor+wind only use forecast_no_ble.yaml.
+
+substitutions:
+  forecast_t_ref: "20.0"
+  forecast_k_outdoor: "0.04"
+  forecast_k_wind: "0.03"
+  forecast_k_preheat: "0.08"   # Pre-heat offset scale (°C per m/s per (response_h/3))
+  forecast_k_solar: "0.6"
+  forecast_illuminance_sat_lx: "500"
+  forecast_correction_min: "-2.0"
+  forecast_correction_max: "2.5"
+  # Per-zone: response_time_hours (3–12), wind_exposure_deg (0–360, -1 = no direction)
+  z1_response_h: "6"
+  z1_exposure_deg: "0"
+  z2_response_h: "6"
+  z2_exposure_deg: "180"
+  z3_response_h: "6"
+  z3_exposure_deg: "270"
+  z4_response_h: "6"
+  z4_exposure_deg: "90"
+  z5_response_h: "6"
+  z5_exposure_deg: "-1"
+  z6_response_h: "6"
+  z6_exposure_deg: "-1"
+  z7_response_h: "6"
+  z7_exposure_deg: "-1"
+  z8_response_h: "6"
+  z8_exposure_deg: "-1"
+
+# ============================================
+# Globals: weather inputs and per-zone correction
+# ============================================
+globals:
+  - id: ${id_prefix}forecast_outdoor_temp
+    type: float
+    restore_value: no
+    initial_value: '10.0'
+  - id: ${id_prefix}forecast_wind_speed
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}forecast_wind_direction
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}forecast_enabled
+    type: bool
+    restore_value: true
+    initial_value: 'true'
+  - id: ${id_prefix}zone_1_forecast_correction
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_2_forecast_correction
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_3_forecast_correction
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_4_forecast_correction
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_5_forecast_correction
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_6_forecast_correction
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_7_forecast_correction
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_8_forecast_correction
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  # 24h worst-case (opdateres af forecast_learn når inkluderet)
+  - id: ${id_prefix}forecast_min_outdoor_24h
+    type: float
+    restore_value: no
+    initial_value: '-999.0'
+  - id: ${id_prefix}forecast_max_wind_24h
+    type: float
+    restore_value: no
+    initial_value: '-999.0'
+  - id: ${id_prefix}forecast_max_wind_hit_1
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}forecast_max_wind_hit_2
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}forecast_max_wind_hit_3
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}forecast_max_wind_hit_4
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}forecast_max_wind_hit_5
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}forecast_max_wind_hit_6
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}forecast_max_wind_hit_7
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}forecast_max_wind_hit_8
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  # Per-zone lært tau (opdateres af forecast_learn)
+  - id: ${id_prefix}zone_1_tau_learned
+    type: float
+    restore_value: true
+    initial_value: '6.0'
+  - id: ${id_prefix}zone_1_tau_confidence
+    type: float
+    restore_value: true
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_2_tau_learned
+    type: float
+    restore_value: true
+    initial_value: '6.0'
+  - id: ${id_prefix}zone_2_tau_confidence
+    type: float
+    restore_value: true
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_3_tau_learned
+    type: float
+    restore_value: true
+    initial_value: '6.0'
+  - id: ${id_prefix}zone_3_tau_confidence
+    type: float
+    restore_value: true
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_4_tau_learned
+    type: float
+    restore_value: true
+    initial_value: '6.0'
+  - id: ${id_prefix}zone_4_tau_confidence
+    type: float
+    restore_value: true
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_5_tau_learned
+    type: float
+    restore_value: true
+    initial_value: '6.0'
+  - id: ${id_prefix}zone_5_tau_confidence
+    type: float
+    restore_value: true
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_6_tau_learned
+    type: float
+    restore_value: true
+    initial_value: '6.0'
+  - id: ${id_prefix}zone_6_tau_confidence
+    type: float
+    restore_value: true
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_7_tau_learned
+    type: float
+    restore_value: true
+    initial_value: '6.0'
+  - id: ${id_prefix}zone_7_tau_confidence
+    type: float
+    restore_value: true
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_8_tau_learned
+    type: float
+    restore_value: true
+    initial_value: '6.0'
+  - id: ${id_prefix}zone_8_tau_confidence
+    type: float
+    restore_value: true
+    initial_value: '0.0'
+  # Per-zone sample til læring (skrives af tanh_forecast; læses af forecast_learn)
+  - id: ${id_prefix}zone_1_learn_T
+    type: float
+    restore_value: no
+    initial_value: '20.0'
+  - id: ${id_prefix}zone_1_learn_valve
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_1_learn_target
+    type: float
+    restore_value: no
+    initial_value: '21.0'
+  - id: ${id_prefix}zone_1_learn_ts
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_2_learn_T
+    type: float
+    restore_value: no
+    initial_value: '20.0'
+  - id: ${id_prefix}zone_2_learn_valve
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_2_learn_target
+    type: float
+    restore_value: no
+    initial_value: '21.0'
+  - id: ${id_prefix}zone_2_learn_ts
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_3_learn_T
+    type: float
+    restore_value: no
+    initial_value: '20.0'
+  - id: ${id_prefix}zone_3_learn_valve
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_3_learn_target
+    type: float
+    restore_value: no
+    initial_value: '21.0'
+  - id: ${id_prefix}zone_3_learn_ts
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_4_learn_T
+    type: float
+    restore_value: no
+    initial_value: '20.0'
+  - id: ${id_prefix}zone_4_learn_valve
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_4_learn_target
+    type: float
+    restore_value: no
+    initial_value: '21.0'
+  - id: ${id_prefix}zone_4_learn_ts
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_5_learn_T
+    type: float
+    restore_value: no
+    initial_value: '20.0'
+  - id: ${id_prefix}zone_5_learn_valve
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_5_learn_target
+    type: float
+    restore_value: no
+    initial_value: '21.0'
+  - id: ${id_prefix}zone_5_learn_ts
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_6_learn_T
+    type: float
+    restore_value: no
+    initial_value: '20.0'
+  - id: ${id_prefix}zone_6_learn_valve
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_6_learn_target
+    type: float
+    restore_value: no
+    initial_value: '21.0'
+  - id: ${id_prefix}zone_6_learn_ts
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_7_learn_T
+    type: float
+    restore_value: no
+    initial_value: '20.0'
+  - id: ${id_prefix}zone_7_learn_valve
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_7_learn_target
+    type: float
+    restore_value: no
+    initial_value: '21.0'
+  - id: ${id_prefix}zone_7_learn_ts
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_8_learn_T
+    type: float
+    restore_value: no
+    initial_value: '20.0'
+  - id: ${id_prefix}zone_8_learn_valve
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ${id_prefix}zone_8_learn_target
+    type: float
+    restore_value: no
+    initial_value: '21.0'
+  - id: ${id_prefix}zone_8_learn_ts
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+
+# ============================================
+# Forecast enabled switch
+# ============================================
+switch:
+  - platform: template
+    name: "Forecast (weather + solar)"
+    id: ${id_prefix}forecast_enabled_switch
+    icon: "mdi:weather-partly-cloudy"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    turn_on_action:
+      - lambda: id(${id_prefix}forecast_enabled) = true;
+    turn_off_action:
+      - lambda: id(${id_prefix}forecast_enabled) = false;
+    lambda: |-
+      return id(${id_prefix}forecast_enabled);
+    web_server:
+      sorting_group_id: sorting_group_settings
+
+# ============================================
+# Compute per-zone forecast correction every 5 min
+# ============================================
+# correction = outdoor_term + wind_term_zone + preheat_zone - solar_zone
+# wind_term_zone = k_wind * wind_speed * wind_effectiveness(exposure, wind_direction)
+# preheat_zone = k_preheat * wind_effectiveness * wind_speed * (response_h/3)  [pre-heat for slow rooms]
+interval:
+  - interval: 5min
+    then:
+      - lambda: |-
+          if (!id(${id_prefix}forecast_enabled)) {
+            id(${id_prefix}zone_1_forecast_correction) = 0.0f;
+            id(${id_prefix}zone_2_forecast_correction) = 0.0f;
+            id(${id_prefix}zone_3_forecast_correction) = 0.0f;
+            id(${id_prefix}zone_4_forecast_correction) = 0.0f;
+            id(${id_prefix}zone_5_forecast_correction) = 0.0f;
+            id(${id_prefix}zone_6_forecast_correction) = 0.0f;
+            id(${id_prefix}zone_7_forecast_correction) = 0.0f;
+            id(${id_prefix}zone_8_forecast_correction) = 0.0f;
+            return;
+          }
+          float t_out = id(${id_prefix}forecast_min_outdoor_24h) > -999.0f
+            ? id(${id_prefix}forecast_min_outdoor_24h)
+            : id(${id_prefix}forecast_outdoor_temp);
+          float wind = id(${id_prefix}forecast_max_wind_24h) > -999.0f
+            ? id(${id_prefix}forecast_max_wind_24h)
+            : id(${id_prefix}forecast_wind_speed);
+          if (wind < 0) wind = 0;
+          float wind_dir = id(${id_prefix}forecast_wind_direction);
+          float t_ref = ${forecast_t_ref};
+          float k_out = ${forecast_k_outdoor};
+          float k_wind = ${forecast_k_wind};
+          float k_preheat = ${forecast_k_preheat};
+          float k_solar = ${forecast_k_solar};
+          float sat_lx = ${forecast_illuminance_sat_lx};
+          float c_min = ${forecast_correction_min};
+          float c_max = ${forecast_correction_max};
+          float outdoor_term = k_out * (t_ref - t_out);
+          float solar_norm_1 = 0.0f, solar_norm_2 = 0.0f, solar_norm_3 = 0.0f, solar_norm_4 = 0.0f;
+          float lx1 = id(ble_1_illuminance_val); if (lx1 == lx1 && sat_lx > 0) solar_norm_1 = (lx1 > sat_lx) ? 1.0f : (lx1 / sat_lx);
+          float lx2 = id(ble_2_illuminance_val); if (lx2 == lx2 && sat_lx > 0) solar_norm_2 = (lx2 > sat_lx) ? 1.0f : (lx2 / sat_lx);
+          float lx3 = id(ble_3_illuminance_val); if (lx3 == lx3 && sat_lx > 0) solar_norm_3 = (lx3 > sat_lx) ? 1.0f : (lx3 / sat_lx);
+          float lx4 = id(ble_4_illuminance_val); if (lx4 == lx4 && sat_lx > 0) solar_norm_4 = (lx4 > sat_lx) ? 1.0f : (lx4 / sat_lx);
+          float e1=1.0f,e2=1.0f,e3=1.0f,e4=1.0f,e5=1.0f,e6=1.0f,e7=1.0f,e8=1.0f,d;
+          if (${z1_exposure_deg} >= 0) { d = wind_dir - (${z1_exposure_deg} + 180.0f); while (d > 180.0f) d -= 360.0f; while (d < -180.0f) d += 360.0f; e1 = 0.5f * (1.0f + cosf(d * 0.01745329f)); if (e1 < 0) e1 = 0; else if (e1 > 1) e1 = 1; }
+          if (${z2_exposure_deg} >= 0) { d = wind_dir - (${z2_exposure_deg} + 180.0f); while (d > 180.0f) d -= 360.0f; while (d < -180.0f) d += 360.0f; e2 = 0.5f * (1.0f + cosf(d * 0.01745329f)); if (e2 < 0) e2 = 0; else if (e2 > 1) e2 = 1; }
+          if (${z3_exposure_deg} >= 0) { d = wind_dir - (${z3_exposure_deg} + 180.0f); while (d > 180.0f) d -= 360.0f; while (d < -180.0f) d += 360.0f; e3 = 0.5f * (1.0f + cosf(d * 0.01745329f)); if (e3 < 0) e3 = 0; else if (e3 > 1) e3 = 1; }
+          if (${z4_exposure_deg} >= 0) { d = wind_dir - (${z4_exposure_deg} + 180.0f); while (d > 180.0f) d -= 360.0f; while (d < -180.0f) d += 360.0f; e4 = 0.5f * (1.0f + cosf(d * 0.01745329f)); if (e4 < 0) e4 = 0; else if (e4 > 1) e4 = 1; }
+          if (${z5_exposure_deg} >= 0) { d = wind_dir - (${z5_exposure_deg} + 180.0f); while (d > 180.0f) d -= 360.0f; while (d < -180.0f) d += 360.0f; e5 = 0.5f * (1.0f + cosf(d * 0.01745329f)); if (e5 < 0) e5 = 0; else if (e5 > 1) e5 = 1; }
+          if (${z6_exposure_deg} >= 0) { d = wind_dir - (${z6_exposure_deg} + 180.0f); while (d > 180.0f) d -= 360.0f; while (d < -180.0f) d += 360.0f; e6 = 0.5f * (1.0f + cosf(d * 0.01745329f)); if (e6 < 0) e6 = 0; else if (e6 > 1) e6 = 1; }
+          if (${z7_exposure_deg} >= 0) { d = wind_dir - (${z7_exposure_deg} + 180.0f); while (d > 180.0f) d -= 360.0f; while (d < -180.0f) d += 360.0f; e7 = 0.5f * (1.0f + cosf(d * 0.01745329f)); if (e7 < 0) e7 = 0; else if (e7 > 1) e7 = 1; }
+          if (${z8_exposure_deg} >= 0) { d = wind_dir - (${z8_exposure_deg} + 180.0f); while (d > 180.0f) d -= 360.0f; while (d < -180.0f) d += 360.0f; e8 = 0.5f * (1.0f + cosf(d * 0.01745329f)); if (e8 < 0) e8 = 0; else if (e8 > 1) e8 = 1; }
+          float use_24h = id(${id_prefix}forecast_max_wind_24h) > -999.0f ? 1.0f : 0.0f;
+          float we1 = use_24h ? id(${id_prefix}forecast_max_wind_hit_1) : (wind * e1);
+          float we2 = use_24h ? id(${id_prefix}forecast_max_wind_hit_2) : (wind * e2);
+          float we3 = use_24h ? id(${id_prefix}forecast_max_wind_hit_3) : (wind * e3);
+          float we4 = use_24h ? id(${id_prefix}forecast_max_wind_hit_4) : (wind * e4);
+          float we5 = use_24h ? id(${id_prefix}forecast_max_wind_hit_5) : (wind * e5);
+          float we6 = use_24h ? id(${id_prefix}forecast_max_wind_hit_6) : (wind * e6);
+          float we7 = use_24h ? id(${id_prefix}forecast_max_wind_hit_7) : (wind * e7);
+          float we8 = use_24h ? id(${id_prefix}forecast_max_wind_hit_8) : (wind * e8);
+          float rh1 = id(${id_prefix}zone_1_tau_confidence) > 0.3f ? id(${id_prefix}zone_1_tau_learned) : (float)(${z1_response_h});
+          float rh2 = id(${id_prefix}zone_2_tau_confidence) > 0.3f ? id(${id_prefix}zone_2_tau_learned) : (float)(${z2_response_h});
+          float rh3 = id(${id_prefix}zone_3_tau_confidence) > 0.3f ? id(${id_prefix}zone_3_tau_learned) : (float)(${z3_response_h});
+          float rh4 = id(${id_prefix}zone_4_tau_confidence) > 0.3f ? id(${id_prefix}zone_4_tau_learned) : (float)(${z4_response_h});
+          float rh5 = id(${id_prefix}zone_5_tau_confidence) > 0.3f ? id(${id_prefix}zone_5_tau_learned) : (float)(${z5_response_h});
+          float rh6 = id(${id_prefix}zone_6_tau_confidence) > 0.3f ? id(${id_prefix}zone_6_tau_learned) : (float)(${z6_response_h});
+          float rh7 = id(${id_prefix}zone_7_tau_confidence) > 0.3f ? id(${id_prefix}zone_7_tau_learned) : (float)(${z7_response_h});
+          float rh8 = id(${id_prefix}zone_8_tau_confidence) > 0.3f ? id(${id_prefix}zone_8_tau_learned) : (float)(${z8_response_h});
+          float ps1 = (rh1/3.0f) > 2.0f ? 2.0f : (rh1/3.0f);
+          float ps2 = (rh2/3.0f) > 2.0f ? 2.0f : (rh2/3.0f);
+          float ps3 = (rh3/3.0f) > 2.0f ? 2.0f : (rh3/3.0f);
+          float ps4 = (rh4/3.0f) > 2.0f ? 2.0f : (rh4/3.0f);
+          float ps5 = (rh5/3.0f) > 2.0f ? 2.0f : (rh5/3.0f);
+          float ps6 = (rh6/3.0f) > 2.0f ? 2.0f : (rh6/3.0f);
+          float ps7 = (rh7/3.0f) > 2.0f ? 2.0f : (rh7/3.0f);
+          float ps8 = (rh8/3.0f) > 2.0f ? 2.0f : (rh8/3.0f);
+          float w1 = k_wind * we1, ph1 = k_preheat * we1 * ps1;
+          float w2 = k_wind * we2, ph2 = k_preheat * we2 * ps2;
+          float w3 = k_wind * we3, ph3 = k_preheat * we3 * ps3;
+          float w4 = k_wind * we4, ph4 = k_preheat * we4 * ps4;
+          float w5 = k_wind * we5, ph5 = k_preheat * we5 * ps5;
+          float w6 = k_wind * we6, ph6 = k_preheat * we6 * ps6;
+          float w7 = k_wind * we7, ph7 = k_preheat * we7 * ps7;
+          float w8 = k_wind * we8, ph8 = k_preheat * we8 * ps8;
+          float raw;
+          raw = outdoor_term + w1 + ph1 - k_solar * solar_norm_1; id(${id_prefix}zone_1_forecast_correction) = (raw < c_min) ? c_min : ((raw > c_max) ? c_max : raw);
+          raw = outdoor_term + w2 + ph2 - k_solar * solar_norm_2; id(${id_prefix}zone_2_forecast_correction) = (raw < c_min) ? c_min : ((raw > c_max) ? c_max : raw);
+          raw = outdoor_term + w3 + ph3 - k_solar * solar_norm_3; id(${id_prefix}zone_3_forecast_correction) = (raw < c_min) ? c_min : ((raw > c_max) ? c_max : raw);
+          raw = outdoor_term + w4 + ph4 - k_solar * solar_norm_4; id(${id_prefix}zone_4_forecast_correction) = (raw < c_min) ? c_min : ((raw > c_max) ? c_max : raw);
+          raw = outdoor_term + w5 + ph5; id(${id_prefix}zone_5_forecast_correction) = (raw < c_min) ? c_min : ((raw > c_max) ? c_max : raw);
+          raw = outdoor_term + w6 + ph6; id(${id_prefix}zone_6_forecast_correction) = (raw < c_min) ? c_min : ((raw > c_max) ? c_max : raw);
+          raw = outdoor_term + w7 + ph7; id(${id_prefix}zone_7_forecast_correction) = (raw < c_min) ? c_min : ((raw > c_max) ? c_max : raw);
+          raw = outdoor_term + w8 + ph8; id(${id_prefix}zone_8_forecast_correction) = (raw < c_min) ? c_min : ((raw > c_max) ? c_max : raw);

@@ -1,0 +1,33 @@
+# ============================================
+# MQTT reporting for BLE (Shelly BLU H&T) sensors
+# ============================================
+# Include this only when you have MQTT enabled (e.g. mqtt_ecodan) and
+# bthome_shelly_blu. Publishes BLE sensor values so HA can store them.
+#
+# Include after bthome_shelly_blu and your MQTT package:
+#   bthome_shelly_blu_mqtt: !include heatvalve-6/optional/bthome_shelly_blu_mqtt.yaml
+#
+# Topics: floor_heating/controller_<id>/ble/<sensor_id>/temperature|humidity|battery
+
+substitutions:
+  ble_mqtt_report_interval: "60s"
+
+interval:
+  - interval: ${ble_mqtt_report_interval}
+    then:
+      - lambda: |-
+          if (!id(mqtt_client).is_connected()) return;
+          char buf[24];
+          float t; float h; int b;
+          t = id(ble_1_temp_val); if (t == t) { sprintf(buf, "%.2f", t); id(mqtt_client).publish("floor_heating/controller_${controller_id}/ble/${ble_1_temp_id}/temperature", buf); }
+          h = id(ble_1_humidity_val); if (h == h) { sprintf(buf, "%.1f", h); id(mqtt_client).publish("floor_heating/controller_${controller_id}/ble/${ble_1_temp_id}/humidity", buf); }
+          b = id(ble_1_battery_val); if (b >= 0) id(mqtt_client).publish("floor_heating/controller_${controller_id}/ble/${ble_1_temp_id}/battery", to_string(b));
+          t = id(ble_2_temp_val); if (t == t) { sprintf(buf, "%.2f", t); id(mqtt_client).publish("floor_heating/controller_${controller_id}/ble/${ble_2_temp_id}/temperature", buf); }
+          h = id(ble_2_humidity_val); if (h == h) { sprintf(buf, "%.1f", h); id(mqtt_client).publish("floor_heating/controller_${controller_id}/ble/${ble_2_temp_id}/humidity", buf); }
+          b = id(ble_2_battery_val); if (b >= 0) id(mqtt_client).publish("floor_heating/controller_${controller_id}/ble/${ble_2_temp_id}/battery", to_string(b));
+          t = id(ble_3_temp_val); if (t == t) { sprintf(buf, "%.2f", t); id(mqtt_client).publish("floor_heating/controller_${controller_id}/ble/${ble_3_temp_id}/temperature", buf); }
+          h = id(ble_3_humidity_val); if (h == h) { sprintf(buf, "%.1f", h); id(mqtt_client).publish("floor_heating/controller_${controller_id}/ble/${ble_3_temp_id}/humidity", buf); }
+          b = id(ble_3_battery_val); if (b >= 0) id(mqtt_client).publish("floor_heating/controller_${controller_id}/ble/${ble_3_temp_id}/battery", to_string(b));
+          t = id(ble_4_temp_val); if (t == t) { sprintf(buf, "%.2f", t); id(mqtt_client).publish("floor_heating/controller_${controller_id}/ble/${ble_4_temp_id}/temperature", buf); }
+          h = id(ble_4_humidity_val); if (h == h) { sprintf(buf, "%.1f", h); id(mqtt_client).publish("floor_heating/controller_${controller_id}/ble/${ble_4_temp_id}/humidity", buf); }
+          b = id(ble_4_battery_val); if (b >= 0) id(mqtt_client).publish("floor_heating/controller_${controller_id}/ble/${ble_4_temp_id}/battery", to_string(b));

@@ -1,0 +1,128 @@
+# ============================================
+# Tanh Control with Forecast (MPC-style) correction
+# ============================================
+# Same as tanh but adds effective demand from optional/forecast.yaml:
+#   effective_diff_temp = diff_temp + zone_forecast_correction
+# so outdoor temp, wind, and per-zone illuminance (Shelly BLU H&T) adjust valve.
+#
+# Requires: optional/forecast.yaml (or forecast_no_ble.yaml) included in config.
+#
+# Required vars: same as control/tanh.yaml
+
+# ============================================
+# Climate Thermostat
+# ============================================
+climate:
+  - platform: thermostat
+    id: ${id}_thermostat
+    name: ${friendly_name}
+    sensor: ${temperature_sensor}
+    default_preset: ${default_preset}
+    on_boot_restore_from: memory
+    startup_delay: true
+    preset:
+      - name: HOME
+        default_target_temperature_low: ${preset_home_temp}
+        mode: HEAT
+      - name: AWAY
+        default_target_temperature_low: ${preset_away_temp}
+        mode: HEAT
+      - name: BOOST
+        default_target_temperature_low: ${preset_boost_temp}
+        mode: HEAT
+    min_heating_off_time: 300s
+    min_heating_run_time: 300s
+    min_idle_time: 30s
+    heat_action:
+      - lambda: 'return;'
+    idle_action:
+      - lambda: 'return;'
+    visual:
+      min_temperature: 10 °C
+      max_temperature: 30 °C
+      temperature_step: 0.1 °C
+    web_server:
+      sorting_group_id: sorting_group_zone_${zone_number}
+
+# ============================================
+# Tanh + Forecast Check Script
+# ============================================
+script:
+  - id: TH${zone_number}_check
+    then:
+      - lambda: |-
+          if (id(${id}_thermostat).mode == CLIMATE_MODE_OFF) {
+              if (id(CH${zone_number}_cover).position > 0) {
+                  auto call = id(CH${zone_number}_cover).make_call();
+                  call.set_position(0);
+                  call.perform();
+                  ESP_LOGD("tanh_forecast", "CH${zone_number} OFF, closing valve");
+              }
+              id(${id_prefix}zone_${zone_number}_state) = 0;
+              return;
+          }
+          if (id(motor_mutex)) {
+              ESP_LOGD("tanh_forecast", "CH${zone_number} skipped - motor busy");
+              return;
+          }
+          float current_temp = id(${id}_thermostat).current_temperature;
+          float target_temp = id(${id}_thermostat).target_temperature_low;
+          float diff_temp = target_temp - current_temp;
+          float forecast_corr = id(${id_prefix}zone_${zone_number}_forecast_correction);
+          float effective_diff = diff_temp + forecast_corr;
+          float comfort_band = id(${id_prefix}comfort_band).state;
+          float min_opening = id(${id_prefix}minimum_valve_opening).state / 100.0;
+          float boost_factor = id(${id_prefix}boost_factor).state / 100.0;
+          bool balancing_enabled = id(${id_prefix}balancing_enabled).state;
+          bool was_overheated = id(${id_prefix}zone_${zone_number}_was_overheated);
+          int new_state;
+          if (effective_diff < -comfort_band) {
+              new_state = 0;
+              id(${id_prefix}zone_${zone_number}_was_overheated) = true;
+          } else if (was_overheated && effective_diff < 0) {
+              new_state = 0;
+          } else if (effective_diff <= comfort_band) {
+              new_state = 1;
+              id(${id_prefix}zone_${zone_number}_was_overheated) = false;
+          } else {
+              new_state = 2;
+              id(${id_prefix}zone_${zone_number}_was_overheated) = false;
+          }
+          id(${id_prefix}zone_${zone_number}_state) = new_state;
+          float base_position = tanh(${tanh_steepness} * effective_diff);
+          if (base_position < 0) base_position = 0;
+          float target_position = 0;
+          if (new_state == 0) {
+              target_position = 0;
+          } else if (balancing_enabled && id(${id_prefix}zone_${zone_number}_hydraulic_factor) > 0) {
+              float hydraulic_factor = id(${id_prefix}zone_${zone_number}_hydraulic_factor);
+              if (new_state == 1) {
+                  target_position = hydraulic_factor;
+              } else {
+                  target_position = base_position * boost_factor;
+                  if (hydraulic_factor > target_position) target_position = hydraulic_factor;
+              }
+          } else {
+              target_position = base_position * boost_factor;
+          }
+          if (new_state != 0 && target_position < min_opening) {
+              target_position = min_opening;
+          }
+          if (target_position > 1) target_position = 1;
+          if (target_position < 0) target_position = 0;
+          id(${id_prefix}zone_${zone_number}_learn_T) = current_temp;
+          id(${id_prefix}zone_${zone_number}_learn_valve) = target_position;
+          id(${id_prefix}zone_${zone_number}_learn_target) = target_temp;
+          id(${id_prefix}zone_${zone_number}_learn_ts) = millis() / 1000.0f;
+          if (abs(id(CH${zone_number}_cover).position - target_position) > id(${id_prefix}min_movement).state/100) {
+              auto call = id(CH${zone_number}_cover).make_call();
+              call.set_position(target_position);
+              call.perform();
+              ESP_LOGD("tanh_forecast", "CH${zone_number} %.0f%% (state=%d, diff=%.2f, fc=%.2f)", 
+                       target_position * 100, new_state, effective_diff, forecast_corr);
+          }
+
+interval:
+  - interval: ${check_interval}
+    then:
+      - script.execute: TH${zone_number}_check

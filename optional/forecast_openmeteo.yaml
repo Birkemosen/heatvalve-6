@@ -1,0 +1,77 @@
+# ============================================
+# Open-Meteo vejr direkte på controlleren (standalone)
+# ============================================
+# Henter aktuel vejr + N-timers prognose fra Open-Meteo (gratis, ingen API-nøgle).
+# N = forecast_horizon_hours – bør matche rummenes reaktionstid (typisk 6–12 h).
+#
+# Kræver: optional/forecast.yaml eller forecast_no_ble.yaml (globals).
+# For 24h: inkluder også optional/forecast_learn.yaml (text_sensor-ids).
+#
+# Override: openmeteo_latitude, openmeteo_longitude, openmeteo_interval_min, forecast_horizon_hours
+
+substitutions:
+  openmeteo_latitude: "55.68"
+  openmeteo_longitude: "12.57"
+  openmeteo_interval_min: "10"
+  forecast_horizon_hours: "12"
+
+json:
+
+http_request:
+  id: openmeteo_request
+  useragent: "HeatValve-6/1.0"
+  timeout: 10s
+
+interval:
+  - interval: ${openmeteo_interval_min}min
+    then:
+      - http_request.get:
+          url: !lambda |-
+            return ("https://api.open-meteo.com/v1/forecast?latitude=" +
+                    std::string("${openmeteo_latitude}") + "&longitude=" +
+                    std::string("${openmeteo_longitude}") +
+                    "&current=temperature_2m,wind_speed_10m,wind_direction_10m"
+                    "&hourly=temperature_2m,wind_speed_10m,wind_direction_10m").c_str();
+          capture_response: true
+          on_response:
+            then:
+              - if:
+                  condition:
+                    lambda: "return response->status_code == 200;"
+                  then:
+                    - lambda: |-
+                        json::parse_json(body, [](JsonObject root) -> bool {
+                    JsonObject cur = root["current"];
+                    if (!cur.isNull()) {
+                      float t = cur["temperature_2m"].as<float>();
+                      float ws_kmh = cur["wind_speed_10m"].as<float>();
+                      float wd = cur["wind_direction_10m"].as<float>();
+                      id(${id_prefix}forecast_outdoor_temp) = t;
+                      id(${id_prefix}forecast_wind_speed) = ws_kmh / 3.6f;
+                      id(${id_prefix}forecast_wind_direction) = wd;
+                      ESP_LOGD("openmeteo", "%.1f C, %.1f m/s, %.0f deg", t, ws_kmh/3.6f, wd);
+                    }
+                    JsonObject hourly = root["hourly"];
+                    if (!hourly.isNull()) {
+                      int horizon = ${forecast_horizon_hours};
+                      if (horizon > 24) horizon = 24;
+                      JsonArray arr_t = hourly["temperature_2m"].as<JsonArray>();
+                      JsonArray arr_ws = hourly["wind_speed_10m"].as<JsonArray>();
+                      JsonArray arr_wd = hourly["wind_direction_10m"].as<JsonArray>();
+                      char buf[24];
+                      std::string so, sw, sd;
+                      for (size_t i = 0; i < (size_t)horizon && i < arr_t.size(); i++) {
+                        if (i > 0) { so += ","; sw += ","; sd += ","; }
+                        snprintf(buf, sizeof(buf), "%.1f", arr_t[i].as<float>()); so += buf;
+                        snprintf(buf, sizeof(buf), "%.1f", arr_ws[i].as<float>() / 3.6f); sw += buf;
+                        snprintf(buf, sizeof(buf), "%.0f", arr_wd[i].as<float>()); sd += buf;
+                      }
+                      if (so.size() > 0) id(${id_prefix}forecast_24h_outdoor).publish_state(so);
+                      if (sw.size() > 0) id(${id_prefix}forecast_24h_wind_speed).publish_state(sw);
+                      if (sd.size() > 0) id(${id_prefix}forecast_24h_wind_dir).publish_state(sd);
+                    }
+                    return true;
+                        });
+          on_error:
+            then:
+              - logger.log: "Open-Meteo request failed"

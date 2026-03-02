@@ -211,6 +211,31 @@ packages:
   # mqtt_ecodan: !include heatvalve-6/optional/mqtt_ecodan.yaml
 
   # ============================================
+  # Optional: BTHome BLE (Shelly BLU H&T) – standalone temps + MQTT reporting
+  # ============================================
+  # bthome_shelly_blu: !include
+  #   file: heatvalve-6/optional/bthome_shelly_blu.yaml
+  #   vars:
+  #     ble_1_mac: "AA:BB:CC:DD:EE:01"
+  #     ble_1_temp_id: "living_temp"
+  #     ble_1_name: "Living Room"
+  #     ble_2_mac: "AA:BB:CC:DD:EE:02"
+  #     ble_2_temp_id: "corridor_temp"
+  #     ble_2_name: "Corridor"
+  #     # ble_3_mac, ble_4_mac, ble_3_temp_id, ble_4_temp_id as needed
+  # bthome_shelly_blu_mqtt: !include heatvalve-6/optional/bthome_shelly_blu_mqtt.yaml  # only if MQTT enabled
+
+  # Optional: Forecast (outdoor + wind + illuminance) – use with zones/tanh_forecast.yaml
+  # forecast: !include heatvalve-6/optional/forecast.yaml           # needs bthome_shelly_blu for illuminance
+  # forecast_no_ble: !include heatvalve-6/optional/forecast_no_ble.yaml  # outdoor + wind only
+  # Optional: 24h vejrudsigt + selvlæring (inkluder efter forecast/forecast_no_ble)
+  # forecast_learn: !include heatvalve-6/optional/forecast_learn.yaml
+  # Standalone vejr fra Open-Meteo (sæt openmeteo_latitude/longitude i substitutions):
+  # forecast_openmeteo_current: !include heatvalve-6/optional/forecast_openmeteo_current.yaml  # kun aktuel vejr
+  # forecast_openmeteo: !include heatvalve-6/optional/forecast_openmeteo.yaml  # aktuel + 24h (kræver forecast_learn)
+  # Eller feed via MQTT: on_message til forecast_outdoor_temp, forecast_wind_speed, forecast_wind_direction; see README.
+
+  # ============================================
   # ZONES
   # ============================================
   # Control profile options (use same for all zones):
@@ -434,6 +459,14 @@ sensor:
   #   temperature:
   #     name: "Living Room Temperature"
   #     id: living_temp
+
+  # ============================================
+  # Option 4b: BTHome BLE (Shelly BLU H&T) – standalone + MQTT reporting
+  # ============================================
+  # Add the bthome_shelly_blu package in the packages: section (see top of file).
+  # Set BLE MACs and sensor IDs (e.g. living_temp, corridor_temp) to match zones.
+  # Comment out Option 1 above when using BLE. For MQTT reporting to HA, also
+  # include bthome_shelly_blu_mqtt and an MQTT package (e.g. mqtt_ecodan).
 
   # ============================================
   # Option 5: I2C sensors (SHT3x, BME280)

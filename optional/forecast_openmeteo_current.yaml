@@ -1,0 +1,52 @@
+# ============================================
+# Open-Meteo: kun aktuel vejr (standalone, uden forecast_learn)
+# ============================================
+# Henter kun aktuel udetemp, vindhastighed og vindretning.
+# Kræver kun: optional/forecast.yaml eller forecast_no_ble.yaml.
+# For 24h + selvlæring brug i stedet forecast_openmeteo.yaml + forecast_learn.
+
+substitutions:
+  openmeteo_latitude: "55.68"
+  openmeteo_longitude: "12.57"
+  openmeteo_interval_min: "10"
+
+json:
+
+http_request:
+  id: openmeteo_request
+  useragent: "HeatValve-6/1.0"
+  timeout: 10s
+
+interval:
+  - interval: ${openmeteo_interval_min}min
+    then:
+      - http_request.get:
+          url: !lambda |-
+            return ("https://api.open-meteo.com/v1/forecast?latitude=" +
+                    std::string("${openmeteo_latitude}") + "&longitude=" +
+                    std::string("${openmeteo_longitude}") +
+                    "&current=temperature_2m,wind_speed_10m,wind_direction_10m").c_str();
+          capture_response: true
+          on_response:
+            then:
+              - if:
+                  condition:
+                    lambda: "return response->status_code == 200;"
+                  then:
+                    - lambda: |-
+                        json::parse_json(body, [](JsonObject root) -> bool {
+                          JsonObject cur = root["current"];
+                          if (!cur.isNull()) {
+                            float t = cur["temperature_2m"].as<float>();
+                            float ws_kmh = cur["wind_speed_10m"].as<float>();
+                            float wd = cur["wind_direction_10m"].as<float>();
+                            id(${id_prefix}forecast_outdoor_temp) = t;
+                            id(${id_prefix}forecast_wind_speed) = ws_kmh / 3.6f;
+                            id(${id_prefix}forecast_wind_direction) = wd;
+                            ESP_LOGD("openmeteo", "%.1f C, %.1f m/s, %.0f deg", t, ws_kmh/3.6f, wd);
+                          }
+                          return true;
+                        });
+          on_error:
+            then:
+              - logger.log: "Open-Meteo request failed"
