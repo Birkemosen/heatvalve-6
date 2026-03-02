@@ -388,12 +388,16 @@ interval:
           }
           
           // Undercurrent detection (no motor connected) - only when OPENING
-          // When closing, shunt may not see current (direction-dependent wiring), so only use
-          // overcurrent (stall) or max_duration to stop; skip undercurrent to avoid false stop.
+          // When closing, shunt often reads ~0 mA (direction-dependent wiring); never treat
+          // that as endstop. Stop close only on overcurrent (stall) or max_duration.
           else if (filtered < undercurrent) {
+            static int undercurrent_count = 0;
             int dir = id(motor_direction);
-            if (dir == 1) {  // OPEN only
-              static int undercurrent_count = 0;
+            if (dir != 1) {
+              // Closing (or unknown): ignore undercurrent, reset count for next open
+              undercurrent_count = 0;
+            } else {
+              // Opening: treat sustained undercurrent as "no motor"
               undercurrent_count++;
               if (undercurrent_count > 100) {  // 1000ms of undercurrent
                 ESP_LOGW("motor", "Undercurrent: filtered=%.1f mA (Motor %d) - no motor?", filtered, motor);
