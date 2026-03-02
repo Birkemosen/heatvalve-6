@@ -204,11 +204,12 @@ switch:
 # ============================================
 # INA219 Current Sensing (I2C, 100mΩ shunt on MCOM)
 # ============================================
+# If you see "ina219: Communication failed", try ina219_address: 0x41 in config substitutions (no quotes)
 sensor:
   # INA219 high-side current sense amplifier
   # Measures motor current through 100mΩ shunt resistor on MCOM rail
   - platform: ina219
-    address: 0x40
+    address: ${ina219_address}
     shunt_resistance: 0.1 ohm
     max_current: 1.0A
     update_interval: 100ms
