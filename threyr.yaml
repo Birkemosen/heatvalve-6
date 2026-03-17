@@ -1,0 +1,70 @@
+# ============================================
+# Threyr Advanced Control Integration
+# ============================================
+# This file integrates the Threyr advanced control system
+# with HeatValve-6. Requires a valid Threyr license key.
+#
+# Threyr provides:
+#   - Hydraulic balancing (physics-based)
+#   - Weather-aware control (solar, wind, temperature)
+#   - Energy price optimization
+#   - Self-learning thermal model
+#   - Predictive zone temperature management
+#   - Comfort-level preheating
+#
+# SETUP:
+#   1. Add your license key to secrets.yaml:
+#        threyr_license_key: "LIC-XXXX-XXXX-XXXX"
+#
+#   2. For production (config.yaml), add to external_components:
+#        - source:
+#            type: git
+#            url: https://github.com/birkemosen/threyr.git
+#            ref: main
+#          components:
+#            - threyr
+#
+#   3. For local dev (config_dev.yaml), add to external_components:
+#        - source:
+#            type: local
+#            path: ../threyr/components
+#          components:
+#            - threyr
+#
+#   4. Uncomment the threyr package in your config:
+#        threyr: !include threyr.yaml  (or heatvalve-6/threyr.yaml)
+
+# ============================================
+# Threyr Component Configuration
+# ============================================
+threyr:
+  license_key: !secret threyr_license_key
+
+  # Zone climates (must match zone config)
+  climate_z1_id: wc_thermostat
+  climate_z2_id: storage_thermostat
+  climate_z3_id: living_thermostat
+  climate_z4_id: dining_thermostat
+  climate_z5_id: kitchen_thermostat
+  climate_z6_id: office_thermostat
+
+  # Zone covers (valves)
+  cover_z1_id: CH1_cover
+  cover_z2_id: CH2_cover
+  cover_z3_id: CH3_cover
+  cover_z4_id: CH4_cover
+  cover_z5_id: CH5_cover
+  cover_z6_id: CH6_cover
+
+  # Heating circuit sensors
+  input_temp_id: heating_dallas_input_temp
+  output_temp_id: heating_dallas_output_temp
+
+  # Shared settings references
+  avg_valve_position_id: heating_avg_valve_position
+  comfort_band_id: heating_comfort_band
+  min_valve_opening_id: heating_minimum_valve_opening
+  maintenance_base_id: heating_maintenance_base
+  demand_boost_id: heating_demand_boost
+  boost_factor_id: heating_boost_factor
+  pipe_spacing_id: heating_pipe_spacing

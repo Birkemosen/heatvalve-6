@@ -1,15 +1,16 @@
 # HeatValve-6 (CURRENTLY UNTESTED)
 
-ESPHome firmware for HeatValve-6 floor heating valve controller using ESP32-S3 Super Mini with 3x DRV8837 motor drivers.
+ESPHome firmware for HeatValve-6 floor heating valve controller using ESP32-S3 Super Mini with 6x DRV8215 I2C motor drivers.
 
 ## Features
 
-- **Hardware**: ESP32-S3 Super Mini + 3x DRV8837 motor drivers
+- **Hardware**: ESP32-S3 Super Mini + 6x DRV8215 I2C motor drivers
 - **6 motor channels** with current-based endstop detection
 - **Modular architecture**: Separate files for zones, control profiles, and modes
 - **4 control profiles**: Tanh (recommended), Linear, PID, Remote
-- **2 operating modes**: Standard or Hydraulic Balancing
 - **Multiple temperature sources**: Home Assistant, Dallas/OneWire, DHT, BLE
+- **Standalone dashboard**: Built-in web UI at `/dashboard`
+- **Optional**: [Threyr Advanced Control](#threyr-advanced-control) — physics-aware, self-learning
 
 ## Hardware
 
@@ -17,35 +18,30 @@ ESPHome firmware for HeatValve-6 floor heating valve controller using ESP32-S3 S
 
 | GPIO | Function | Description |
 |------|----------|-------------|
-| GPIO1 | *Spare* | Available for expansion |
-| GPIO2 | Mux | HIGH=N1 (odd motors), LOW=N2 (even motors) |
-| GPIO3 | nSLEEP 1 | DRV8837 #2: Motors 3 & 4 (strapping pin) |
-| GPIO4 | nSLEEP 2 | DRV8837 #3: Motors 5 & 6 |
-| GPIO5 | DIR2 | IN2 on all DRV8837 (direction) |
-| GPIO6 | DIR1 | IN1 on all DRV8837 (direction) |
-| GPIO7 | Tacho | Revolution counting (LMV358 conditioned) |
-| GPIO8 | I2C SCL | I2C Clock (INA219, expansion) |
-| GPIO9 | I2C SDA | I2C Data (INA219, expansion) |
+| GPIO1 | IPROPI ADC | Shared motor current sensing |
+| GPIO2 | nSLEEP | Shared nSLEEP for all 6x DRV8215 |
+| GPIO3-6 | *Spare* | Available for expansion (freed from DRV8837 mux) |
+| GPIO7 | nFAULT | Wired-OR fault from all DRV8215 |
+| GPIO8 | I2C SDA | I2C Data (DRV8215 x6, expansion) |
+| GPIO9 | I2C SCL | I2C Clock (DRV8215 x6, expansion) |
 | GPIO10 | 1-Wire | Dallas temperature sensors |
-| GPIO11 | nSLEEP 0 | DRV8837 #1: Motors 1 & 2 |
-| GPIO12 | *Spare* | Available for expansion |
-| GPIO13 | *Spare* | Available for expansion |
+| GPIO11-13 | *Spare* | Available for expansion |
 | GPIO43 | UART TX | UART0 Transmit |
 | GPIO44 | UART RX | UART0 Receive |
 | GPIO48 | Status LED | WS2812 RGB |
 
-### Motor Mapping
+### Motor Mapping (DRV8215 I2C)
 
-| Motor | DRV8837 | nSLEEP Pin | Mux State | Output |
-|-------|---------|------------|-----------|--------|
-| 1 | #1 | GPIO11 | HIGH (N1) | M1+ / MNODD |
-| 2 | #1 | GPIO11 | LOW (N2) | M2+ / MNEVEN |
-| 3 | #2 | GPIO3 | HIGH (N1) | M3+ / MNODD |
-| 4 | #2 | GPIO3 | LOW (N2) | M4+ / MNEVEN |
-| 5 | #3 | GPIO4 | HIGH (N1) | M5+ / MNODD |
-| 6 | #3 | GPIO4 | LOW (N2) | M6+ / MNEVEN |
+| Motor | I2C Address | A1 | A0 |
+|-------|------------|-----|-----|
+| 1 | 0x30 | GND | GND |
+| 2 | 0x31 | GND | Hi-Z |
+| 3 | 0x32 | GND | VCC |
+| 4 | 0x33 | Hi-Z | GND |
+| 5 | 0x34 | Hi-Z | Hi-Z |
+| 6 | 0x35 | Hi-Z | VCC |
 
-**Note**: Only ONE motor can run at a time due to the multiplexed design.
+**Note**: Only ONE motor can run at a time (shared IPROPI current sensing).
 
 ### Status LED Color Codes (WS2812)
 
@@ -68,7 +64,7 @@ ESPHome firmware for HeatValve-6 floor heating valve controller using ESP32-S3 S
 heatvalve-6/
 ├── boards/          # ESP32-S3 Super Mini only
 ├── core/            # Core infrastructure
-│   ├── motor_driver.yaml  # DRV8837 motor control
+│   ├── motor_driver.yaml  # DRV8215 I2C motor control
 │   ├── settings.yaml
 │   └── ...
 ├── zones/           # Zone templates (base + control combined)
@@ -77,14 +73,31 @@ heatvalve-6/
 │   ├── pid.yaml     # PID control
 │   └── remote.yaml  # External/Home Assistant control
 ├── control/         # Control profiles (used internally)
-├── modes/           # Operating modes
+├── modes/           # Operating modes (legacy, see Threyr)
 │   └── hydraulic.yaml
 ├── sensors/         # Sensor templates
 ├── optional/        # Pump control, MQTT integration
+├── components/      # Custom ESPHome components
+│   └── heatvalve_dashboard/  # Standalone web UI
+├── threyr.yaml      # Threyr integration config
 └── docs/            # Documentation
 ```
 
-## Quick Start
+## Lokalt udviklingsmiljø (test uden commit/pull)
+
+Byg og upload direkte fra repo-roden:
+
+```bash
+cd heatvalve-6
+make run            # Basic control
+make run-threyr     # With Threyr (requires ../threyr/ repo)
+```
+
+Device-navn er `heatvalve-6-dev` så OTA ikke overskriver produktions-enhed. Se [docs/LOCAL_DEV.md](docs/LOCAL_DEV.md).
+
+---
+
+## Quick Start (produktion / Home Assistant)
 
 1. **Clone** the repository:
    ```bash
@@ -138,12 +151,58 @@ zone_1: !include
 
 ### Hydraulic Balancing
 
-Enable for pipe-length based flow balancing:
+Basic hydraulic balancing is available via the legacy `modes/hydraulic.yaml` package.
+For advanced physics-based balancing, see [Threyr Advanced Control](#threyr-advanced-control).
 
 ```yaml
+# Legacy (basic):
 packages:
   hydraulic: !include heatvalve-6/modes/hydraulic.yaml
+
+# Advanced (Threyr):
+packages:
+  threyr: !include heatvalve-6/threyr.yaml
 ```
+
+## Threyr Advanced Control
+
+Threyr is an optional closed-source advanced heating control system that extends HeatValve-6 with:
+
+- **Hydraulic balancing** — Physics-based flow distribution using pipe ratios
+- **Weather-aware control** — Solar influx, wind, outdoor temperature
+- **Energy price optimization** — Schedule heating around energy costs
+- **Self-learning thermal model** — Adapts to your building's characteristics
+- **Predictive zone management** — Per-zone temperature forecasting
+- **Comfort preheating** — Maintains comfort by preheating ahead of schedule
+
+**License required.** When no license is active, the system runs basic control only.
+
+### Quick Setup (Threyr)
+
+1. Clone the Threyr repo (requires access):
+   ```bash
+   git clone https://github.com/birkemosen/threyr.git
+   ```
+
+2. Add license key to `secrets.yaml`:
+   ```yaml
+   threyr_license_key: "LIC-XXXX-XXXX-XXXX"
+   ```
+
+3. Use `config_dev_threyr.yaml` or add to your config:
+   ```yaml
+   external_components:
+     - source:
+         type: git
+         url: https://github.com/birkemosen/threyr.git
+         ref: main
+       components:
+         - threyr
+   packages:
+     threyr: !include heatvalve-6/threyr.yaml
+   ```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full architecture details.
 
 ## First Time Upload
 
@@ -154,6 +213,8 @@ packages:
 
 ## Documentation
 
+- [Architecture](docs/ARCHITECTURE.md) – system design and Threyr integration
+- [Lokalt udviklingsmiljø](docs/LOCAL_DEV.md) – test uden commit/pull
 - [Quick Start Guide](docs/QUICK_START.md)
 - [Hydraulic Balancing](docs/HYDRAULIC_BALANCING.md)
 
