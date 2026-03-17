@@ -1,0 +1,170 @@
+# Minimal DRV8837 hardware test (no zones/endstop/current logic)
+# Purpose: verify that GPIO, mux and nSLEEP lines actually drive motors.
+#
+# All switches are VISIBLE in web UI so you can toggle them manually.
+# Use the cycle button for automated test, or toggle switches by hand.
+
+switch:
+  - platform: gpio
+    name: "DRV DIR1 (GPIO${motor_dir1_pin})"
+    id: drv_dir1
+    pin:
+      number: ${motor_dir1_pin}
+    restore_mode: ALWAYS_OFF
+
+  - platform: gpio
+    name: "DRV DIR2 (GPIO${motor_dir2_pin})"
+    id: drv_dir2
+    pin:
+      number: ${motor_dir2_pin}
+    restore_mode: ALWAYS_OFF
+
+  - platform: gpio
+    name: "DRV MUX (GPIO${motor_mux_pin})"
+    id: drv_mux
+    pin:
+      number: ${motor_mux_pin}
+    restore_mode: ALWAYS_OFF
+
+  - platform: gpio
+    name: "DRV ENA0 M1/2 (GPIO${motor_ena0_pin})"
+    id: drv_ena0
+    pin:
+      number: ${motor_ena0_pin}
+    restore_mode: ALWAYS_OFF
+
+  - platform: gpio
+    name: "DRV ENA1 M3/4 (GPIO${motor_ena1_pin})"
+    id: drv_ena1
+    pin:
+      number: ${motor_ena1_pin}
+    restore_mode: ALWAYS_OFF
+
+  - platform: gpio
+    name: "DRV ENA2 M5/6 (GPIO${motor_ena2_pin})"
+    id: drv_ena2
+    pin:
+      number: ${motor_ena2_pin}
+    restore_mode: ALWAYS_OFF
+
+globals:
+  - id: drv_selected_motor
+    type: int
+    initial_value: '1'
+
+number:
+  - platform: template
+    name: "DRV Motor Port (1-6)"
+    id: drv_motor_port
+    min_value: 1
+    max_value: 6
+    step: 1
+    optimistic: true
+    restore_value: true
+    initial_value: 1
+    icon: mdi:numeric
+    on_value:
+      then:
+        - lambda: |-
+            id(drv_selected_motor) = (int) roundf(x);
+            if (id(drv_selected_motor) < 1) id(drv_selected_motor) = 1;
+            if (id(drv_selected_motor) > 6) id(drv_selected_motor) = 6;
+            ESP_LOGI("drvtest", "Selected motor port: %d", id(drv_selected_motor));
+
+sensor:
+  - platform: template
+    name: "GPIO States"
+    id: drv_gpio_states
+    update_interval: 1s
+    lambda: |-
+      ESP_LOGI("drvtest", "GPIO: DIR1(${motor_dir1_pin})=%d DIR2(${motor_dir2_pin})=%d MUX(${motor_mux_pin})=%d ENA0(${motor_ena0_pin})=%d ENA1(${motor_ena1_pin})=%d ENA2(${motor_ena2_pin})=%d",
+        id(drv_dir1).state, id(drv_dir2).state, id(drv_mux).state,
+        id(drv_ena0).state, id(drv_ena1).state, id(drv_ena2).state);
+      return 0;
+
+script:
+  - id: drv_stop_all
+    then:
+      - switch.turn_off: drv_ena0
+      - switch.turn_off: drv_ena1
+      - switch.turn_off: drv_ena2
+      - switch.turn_off: drv_dir1
+      - switch.turn_off: drv_dir2
+      - switch.turn_off: drv_mux
+      - logger.log: "DRV TEST: all outputs OFF"
+
+  - id: drv_selected_cycle_10s
+    then:
+      - script.execute: drv_stop_all
+      - delay: 100ms
+      - lambda: |-
+          int m = id(drv_selected_motor);
+          bool odd = (m % 2) == 1;
+          ESP_LOGI("drvtest", "=== CYCLE START: Motor %d ===", m);
+          ESP_LOGI("drvtest", "Motor %d: odd=%d, DRV#%d, MUX=%s",
+            m, odd, (m <= 2) ? 1 : (m <= 4) ? 2 : 3, odd ? "HIGH" : "LOW");
+
+      # Step 1: MUX
+      - lambda: |-
+          int m = id(drv_selected_motor);
+          bool odd = (m % 2) == 1;
+          if (odd) id(drv_mux).turn_on();
+          else id(drv_mux).turn_off();
+      - delay: 100ms
+
+      # Step 2: Direction A
+      - switch.turn_on: drv_dir1
+      - switch.turn_off: drv_dir2
+      - delay: 50ms
+
+      # Step 3: Enable
+      - lambda: |-
+          int m = id(drv_selected_motor);
+          if (m <= 2) { id(drv_ena0).turn_on(); ESP_LOGI("drvtest", "ENA0 ON"); }
+          else if (m <= 4) { id(drv_ena1).turn_on(); ESP_LOGI("drvtest", "ENA1 ON"); }
+          else { id(drv_ena2).turn_on(); ESP_LOGI("drvtest", "ENA2 ON"); }
+          ESP_LOGI("drvtest", "DIR A running: DIR1=H DIR2=L MUX=%d ENA=ON", id(drv_mux).state);
+      - delay: 10s
+
+      # Stop
+      - lambda: ESP_LOGI("drvtest", "--- STOP 10s ---");
+      - switch.turn_off: drv_ena0
+      - switch.turn_off: drv_ena1
+      - switch.turn_off: drv_ena2
+      - switch.turn_off: drv_dir1
+      - switch.turn_off: drv_dir2
+      - delay: 10s
+
+      # Step 4: Direction B
+      - lambda: |-
+          int m = id(drv_selected_motor);
+          bool odd = (m % 2) == 1;
+          if (odd) id(drv_mux).turn_on();
+          else id(drv_mux).turn_off();
+      - delay: 100ms
+      - switch.turn_off: drv_dir1
+      - switch.turn_on: drv_dir2
+      - delay: 50ms
+      - lambda: |-
+          int m = id(drv_selected_motor);
+          if (m <= 2) { id(drv_ena0).turn_on(); ESP_LOGI("drvtest", "ENA0 ON"); }
+          else if (m <= 4) { id(drv_ena1).turn_on(); ESP_LOGI("drvtest", "ENA1 ON"); }
+          else { id(drv_ena2).turn_on(); ESP_LOGI("drvtest", "ENA2 ON"); }
+          ESP_LOGI("drvtest", "DIR B running: DIR1=L DIR2=H MUX=%d ENA=ON", id(drv_mux).state);
+      - delay: 10s
+
+      - script.execute: drv_stop_all
+      - lambda: ESP_LOGI("drvtest", "=== CYCLE DONE ===");
+
+button:
+  - platform: template
+    name: "DRV STOP ALL"
+    icon: mdi:stop
+    on_press:
+      - script.execute: drv_stop_all
+
+  - platform: template
+    name: "DRV Selected cycle 10/10/10"
+    icon: mdi:play
+    on_press:
+      - script.execute: drv_selected_cycle_10s
