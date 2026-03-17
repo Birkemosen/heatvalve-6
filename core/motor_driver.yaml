@@ -342,18 +342,13 @@ script:
           value: 'false'
       - lambda: |-
           // Coast all motors via I2C: write I2C_EN_IN1=0 to CONFIG4 (0x0D)
+          auto *bus = id(i2c_bus);
           for (int i = 0; i < 6; i++) {
             uint8_t addr = id(drv_addresses)[i];
-            // Read CONFIG4, clear I2C_EN_IN1 and I2C_PH_IN2 bits
-            uint8_t reg = 0x0D;
-            uint8_t data;
-            auto bus = App.get_i2c_bus(0);
-            if (bus) {
-              // Write CONFIG4 with I2C_EN_IN1=0, I2C_PH_IN2=0 (coast mode)
-              // Preserve PMODE and I2C_BC bits: PMODE=1, I2C_BC=1 → 0b00001100 = 0x0C
-              uint8_t write_data[2] = {reg, 0x0C};
-              bus->write(addr, write_data, 2);
-            }
+            // Write CONFIG4 with I2C_EN_IN1=0, I2C_PH_IN2=0 (coast mode)
+            // Preserve PMODE and I2C_BC bits: PMODE=1, I2C_BC=1 → 0b00001100 = 0x0C
+            uint8_t write_data[2] = {0x0D, 0x0C};
+            bus->write(addr, write_data, 2);
           }
       - globals.set:
           id: motor_mutex
@@ -377,11 +372,7 @@ script:
       - delay: 1ms  # tWAKE ~410µs
       - lambda: |-
           ESP_LOGI("drv8215", "Initializing 6x DRV8215...");
-          auto bus = App.get_i2c_bus(0);
-          if (!bus) {
-            ESP_LOGE("drv8215", "I2C bus not available!");
-            return;
-          }
+          auto *bus = id(i2c_bus);
 
           for (int i = 0; i < 6; i++) {
             uint8_t addr = id(drv_addresses)[i];
@@ -392,7 +383,7 @@ script:
             // Set I2C_BC=1, PMODE=1, I2C_EN_IN1=0, I2C_PH_IN2=0 → coast initially
             write_buf[0] = 0x0D;
             write_buf[1] = 0x0C;  // PMODE=1, I2C_BC=1, EN=0, PH=0
-            if (!bus->write(addr, write_buf, 2)) {
+            if (bus->write(addr, write_buf, 2) != i2c::ERROR_OK) {
               ESP_LOGW("drv8215", "Motor %d (0x%02X): CONFIG4 write failed", i+1, addr);
               continue;
             }
@@ -451,8 +442,7 @@ script:
           if (motor < 1 || motor > 6) return;
           uint8_t addr = id(drv_addresses)[motor - 1];
 
-          auto bus = App.get_i2c_bus(0);
-          if (!bus) return;
+          auto *bus = id(i2c_bus);
 
           // Clear any existing fault
           uint8_t write_buf[2] = {0x09, 0x60};  // CLR_FLT=1, EN_STALL=1
@@ -520,8 +510,7 @@ script:
           int motor = motor_num;
           if (motor < 1 || motor > 6) return;
           uint8_t addr = id(drv_addresses)[motor - 1];
-          auto bus = App.get_i2c_bus(0);
-          if (!bus) return;
+          auto *bus = id(i2c_bus);
 
           // CONFIG4: PMODE=1, I2C_BC=1, I2C_EN_IN1=0, I2C_PH_IN2=0 → coast
           uint8_t write_buf[2] = {0x0D, 0x0C};

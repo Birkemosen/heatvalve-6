@@ -305,6 +305,7 @@ interval:
 # I2C Bus (DRV8215 motor drivers + expansion)
 # ============================================
 i2c:
+  id: i2c_bus
   sda: ${i2c_sda_pin}
   scl: ${i2c_scl_pin}
   scan: true
