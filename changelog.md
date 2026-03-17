@@ -18,7 +18,7 @@
 Complete redesign of HeatValve-6 floor heating valve controller.
 
 ### Hardware
-- ESP32-S3 Super Mini with 3x DRV8837 H-bridge motor drivers
+- ESP32-S3 Super Mini with legacy H-bridge motor driver stage
 - 6 valve channels via GAQY212GSX optocoupler multiplexing (odd/even)
 - MUX inverter: SN74LVC1G04DBVR (U10)
 - INA219 high-side current sense (I2C, 0x40, 100mΩ shunt on MCOM)

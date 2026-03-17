@@ -6,7 +6,7 @@ ESPHome firmware for HeatValve-6 floor heating valve controller using ESP32-S3 S
 
 - **Hardware**: ESP32-S3 Super Mini + 6x DRV8215 I2C motor drivers
 - **6 motor channels** with current-based endstop detection
-- **Modular architecture**: Separate files for zones, control profiles, and modes
+- **Modular architecture**: Separate files for zones, control profiles, and optional integrations
 - **4 control profiles**: Tanh (recommended), Linear, PID, Remote
 - **Multiple temperature sources**: Home Assistant, Dallas/OneWire, DHT, BLE
 - **Standalone dashboard**: Built-in web UI at `/dashboard`
@@ -20,7 +20,7 @@ ESPHome firmware for HeatValve-6 floor heating valve controller using ESP32-S3 S
 |------|----------|-------------|
 | GPIO1 | IPROPI ADC | Shared motor current sensing |
 | GPIO2 | nSLEEP | Shared nSLEEP for all 6x DRV8215 |
-| GPIO3-6 | *Spare* | Available for expansion (freed from DRV8837 mux) |
+| GPIO3-6 | *Spare* | Available for expansion |
 | GPIO7 | nFAULT | Wired-OR fault from all DRV8215 |
 | GPIO8 | I2C SDA | I2C Data (DRV8215 x6, expansion) |
 | GPIO9 | I2C SCL | I2C Clock (DRV8215 x6, expansion) |
@@ -73,8 +73,6 @@ heatvalve-6/
 │   ├── pid.yaml     # PID control
 │   └── remote.yaml  # External/Home Assistant control
 ├── control/         # Control profiles (used internally)
-├── modes/           # Operating modes (legacy, see Threyr)
-│   └── hydraulic.yaml
 ├── sensors/         # Sensor templates
 ├── optional/        # Pump control, MQTT integration
 ├── components/      # Custom ESPHome components
@@ -113,7 +111,7 @@ Device-navn er `heatvalve-6-dev` så OTA ikke overskriver produktions-enhed. Se 
 
 3. **Create your config** (copy and modify `config.yaml`):
    - Set zone names and temperature sensors
-   - Set Dallas sensor addresses for supply/return
+   - Use the DS18x20 selector entities to map supply/return sensors
    - Adjust motor mapping (`motor_number`) for each zone
 
 4. **Compile & Upload**:
@@ -151,18 +149,14 @@ zone_1: !include
 
 ### Hydraulic Balancing
 
-Basic hydraulic balancing is available via the legacy `modes/hydraulic.yaml` package.
-For advanced physics-based balancing, see [Threyr Advanced Control](#threyr-advanced-control).
+Hydraulic balancing is implemented in Threyr.
 
 ```yaml
-# Legacy (basic):
 packages:
-  hydraulic: !include heatvalve-6/modes/hydraulic.yaml
-
-# Advanced (Threyr):
-packages:
-  threyr: !include heatvalve-6/threyr.yaml
+   threyr: !include heatvalve-6/threyr.yaml
 ```
+
+Detailed algorithm documentation: [threyr/docs/hydraulic_balancing.md](https://github.com/birkemosen/threyr/blob/main/docs/hydraulic_balancing.md)
 
 ## Threyr Advanced Control
 
@@ -215,8 +209,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full architecture details.
 
 - [Architecture](docs/ARCHITECTURE.md) – system design and Threyr integration
 - [Lokalt udviklingsmiljø](docs/LOCAL_DEV.md) – test uden commit/pull
-- [Quick Start Guide](docs/QUICK_START.md)
-- [Hydraulic Balancing](docs/HYDRAULIC_BALANCING.md)
+- [Quick Start Guide](docs/quick_start.md)
+- [Hydraulic Balancing (Threyr)](https://github.com/birkemosen/threyr/blob/main/docs/hydraulic_balancing.md)
 
 ## Inspiration & Credits
 

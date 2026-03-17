@@ -26,28 +26,27 @@ packages:
 
 1. Flash the firmware to your ESP32
 2. Open the web interface or serial console
-3. Press "Test onewire bus" button
+3. Press "Scan 1-Wire Bus" button
 4. Note the addresses of all DS18B20 sensors
 5. Label which sensor is at which zone return
 
 ---
 
-## Step 3: Configure Sensor Addresses
+## Step 3: Configure DS18x20 Role Mapping
 
-In `config.yaml`, fill in the Dallas addresses:
+No address editing is required. DS18x20 sensors are auto-discovered by index.
 
-```yaml
-substitutions:
-  # Supply and manifold return (existing)
-  dallasaddress_input: "0xb300000084aa6128"
-  dallasaddress_output: "0xeb0000008492ad28"
-  
-  # Per-zone return sensors (new)
-  dallasaddress_zone_1_return: "0x1234567890abcdef"
-  dallasaddress_zone_2_return: "0xfedcba0987654321"
-  # ... continue for all zones
-  # Use "0x0000000000000000" for unused zones
-```
+In the web UI, set the selector entities:
+
+- `DS18x20 Select Input Sensor`
+- `DS18x20 Select Output Sensor`
+- `DS18x20 Select Extra Sensor`
+
+Example mapping:
+
+- Input → `DS18x20 - 0`
+- Output → `DS18x20 - 1`
+- Extra → `DS18x20 - 2`
 
 ---
 
@@ -185,6 +184,6 @@ substitutions:
 
 ## Next Steps
 
-- Read the full [HYDRAULIC_BALANCING.md](HYDRAULIC_BALANCING.md) documentation
+- Read the full [Threyr hydraulic balancing documentation](https://github.com/birkemosen/threyr/blob/main/docs/hydraulic_balancing.md)
 - Monitor system for several days before major adjustments
 - Consider adding per-zone pipe spacing if zones have different layouts

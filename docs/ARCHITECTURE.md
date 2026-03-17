@@ -64,8 +64,6 @@ heatvalve-6/                    (public, open-source)
 │   ├── linear.yaml             Zone = base + linear control
 │   ├── pid.yaml                Zone = base + PID control
 │   └── remote.yaml             Zone = base + remote control
-├── modes/                      Operating modes (legacy)
-│   └── hydraulic.yaml          Basic hydraulic balancing (replaced by Threyr)
 ├── optional/                   Optional integrations
 │   ├── pump_control.yaml       ESP-NOW pump relay control
 │   └── mqtt_ecodan.yaml        Multi-controller MQTT bridge

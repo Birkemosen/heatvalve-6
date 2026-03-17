@@ -470,7 +470,7 @@ Each motor has its own dedicated H-bridge. Full bidirectional drive via OUT1/OUT
 The following components from Rev.1 are **no longer present**:
 
 ### Motor Driver Section
-- 3x DRV8837DSGR + 9x decoupling caps
+- 3x legacy H-bridge driver ICs + 9x decoupling caps
 - 2x GAQY212GSX optocouplers
 - 1x SN74LVC1G04 inverter + decoupling cap
 - 2x 330Ω optocoupler drive resistors

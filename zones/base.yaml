@@ -1,8 +1,8 @@
 # ============================================
-# Zone Base Infrastructure (DRV8837)
+# Zone Base Infrastructure (DRV8215)
 # ============================================
 # Common components for all control profiles.
-# Uses DRV8837 motor driver with current-based endstop detection.
+# Uses DRV8215 motor driver with current-based endstop detection.
 #
 # Required vars:
 #   zone_number: "1"             # 1-6
