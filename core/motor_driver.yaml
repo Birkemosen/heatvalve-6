@@ -12,13 +12,13 @@
 #
 # IMPORTANT: Only ONE motor should run at a time (shared IPROPI).
 #
-# Motor mapping (I2C 7-bit addresses):
-#   Motor 1: DRV8215 @ 0x30 (A1=GND, A0=GND)
-#   Motor 2: DRV8215 @ 0x31 (A1=GND, A0=Hi-Z)
-#   Motor 3: DRV8215 @ 0x32 (A1=GND, A0=VCC)
-#   Motor 4: DRV8215 @ 0x33 (A1=Hi-Z, A0=GND)
-#   Motor 5: DRV8215 @ 0x34 (A1=Hi-Z, A0=Hi-Z)
-#   Motor 6: DRV8215 @ 0x35 (A1=Hi-Z, A0=VCC)
+# Motor mapping (I2C 7-bit addresses, formula: 0x30 + A1×3 + A0, GND=0/Hi-Z=1/VCC=2):
+#   Motor 1: DRV8215 @ 0x30 (A1=GND,  A0=GND)
+#   Motor 2: DRV8215 @ 0x31 (A1=GND,  A0=Hi-Z)
+#   Motor 3: DRV8215 @ 0x32 (A1=GND,  A0=VCC)
+#   Motor 4: DRV8215 @ 0x35 (A1=Hi-Z, A0=VCC)
+#   Motor 5: DRV8215 @ 0x33 (A1=Hi-Z, A0=GND)
+#   Motor 6: DRV8215 @ 0x34 (A1=Hi-Z, A0=Hi-Z)
 #
 # DRV8215 Register Map (key registers):
 #   0x00: FAULT_STATUS (R)  - FAULT, STALL, OCP, OVP, TSD, NPOR
@@ -96,10 +96,28 @@ globals:
     type: bool
     initial_value: 'false'
 
-  # DRV8215 I2C addresses (7-bit)
-  - id: drv_addresses
-    type: uint8_t[6]
-    initial_value: '{0x30, 0x31, 0x32, 0x33, 0x34, 0x35}'
+# ============================================
+# DRV8215 Component Instances (one per motor)
+# ============================================
+drv8215:
+  - id: motor_drv_1
+    address: ${drv8215_addr_motor1}
+    motor_num: 1
+  - id: motor_drv_2
+    address: ${drv8215_addr_motor2}
+    motor_num: 2
+  - id: motor_drv_3
+    address: ${drv8215_addr_motor3}
+    motor_num: 3
+  - id: motor_drv_4
+    address: ${drv8215_addr_motor4}
+    motor_num: 4
+  - id: motor_drv_5
+    address: ${drv8215_addr_motor5}
+    motor_num: 5
+  - id: motor_drv_6
+    address: ${drv8215_addr_motor6}
+    motor_num: 6
 
 # ============================================
 # nSLEEP Control (shared, wakes all DRV8215)
@@ -341,15 +359,12 @@ script:
           id: motor_turning
           value: 'false'
       - lambda: |-
-          // Coast all motors via I2C: write I2C_EN_IN1=0 to CONFIG4 (0x0D)
-          auto *bus = id(i2c_bus);
-          for (int i = 0; i < 6; i++) {
-            uint8_t addr = id(drv_addresses)[i];
-            // Write CONFIG4 with I2C_EN_IN1=0, I2C_PH_IN2=0 (coast mode)
-            // Preserve PMODE and I2C_BC bits: PMODE=1, I2C_BC=1 → 0b00001100 = 0x0C
-            uint8_t write_data[2] = {0x0D, 0x0C};
-            bus->write(addr, write_data, 2);
-          }
+          id(motor_drv_1)->motor_coast();
+          id(motor_drv_2)->motor_coast();
+          id(motor_drv_3)->motor_coast();
+          id(motor_drv_4)->motor_coast();
+          id(motor_drv_5)->motor_coast();
+          id(motor_drv_6)->motor_coast();
       - globals.set:
           id: motor_mutex
           value: 'false'
@@ -372,40 +387,12 @@ script:
       - delay: 1ms  # tWAKE ~410µs
       - lambda: |-
           ESP_LOGI("drv8215", "Initializing 6x DRV8215...");
-          auto *bus = id(i2c_bus);
-
-          for (int i = 0; i < 6; i++) {
-            uint8_t addr = id(drv_addresses)[i];
-            uint8_t write_buf[2];
-
-            // CONFIG4 (0x0D): PMODE=1 (PH/EN mode), I2C_BC=1 (I2C bridge control)
-            // Bits: [7:4]=0, PMODE=bit3?, I2C_BC=bit2?, I2C_EN=bit1, I2C_PH=bit0
-            // Set I2C_BC=1, PMODE=1, I2C_EN_IN1=0, I2C_PH_IN2=0 → coast initially
-            write_buf[0] = 0x0D;
-            write_buf[1] = 0x0C;  // PMODE=1, I2C_BC=1, EN=0, PH=0
-            if (bus->write(addr, write_buf, 2) != i2c::ERROR_OK) {
-              ESP_LOGW("drv8215", "Motor %d (0x%02X): CONFIG4 write failed", i+1, addr);
-              continue;
-            }
-
-            // CONFIG3 (0x0C): IMODE=00 (no current regulation), SMODE=1 (report stall),
-            // INT_VREF=1 (internal 500mV), OCP_MODE=1 (auto-retry), TSD_MODE=1 (auto-retry)
-            write_buf[0] = 0x0C;
-            write_buf[1] = 0x33;  // IMODE=00, SMODE=1, INT_VREF=1, TBLANK=0, TDEG=0, OCP=1, TSD=1
-            bus->write(addr, write_buf, 2);
-
-            // CONFIG0 (0x09): EN_STALL=1 (enable hardware stall detection)
-            write_buf[0] = 0x09;
-            write_buf[1] = 0x20;  // EN_STALL=1, other bits default
-            bus->write(addr, write_buf, 2);
-
-            // RC_CTRL0 (0x11): CS_GAIN_SEL=110b (5320 µA/A, 10-60mA range)
-            write_buf[0] = 0x11;
-            write_buf[1] = 0x06;  // CS_GAIN_SEL = 110b
-            bus->write(addr, write_buf, 2);
-
-            ESP_LOGI("drv8215", "Motor %d (0x%02X): initialized OK", i+1, addr);
-          }
+          id(motor_drv_1)->init();
+          id(motor_drv_2)->init();
+          id(motor_drv_3)->init();
+          id(motor_drv_4)->init();
+          id(motor_drv_5)->init();
+          id(motor_drv_6)->init();
           ESP_LOGI("drv8215", "All 6 DRV8215 initialized");
 
   # Start motor with specified number and direction
@@ -436,33 +423,30 @@ script:
       - switch.turn_on: motor_nsleep
       - delay: 1ms
 
-      # Set direction and enable via I2C
+      # Set direction and enable via drv8215 component
       - lambda: |-
           int motor = id(current_motor);
           if (motor < 1 || motor > 6) return;
-          uint8_t addr = id(drv_addresses)[motor - 1];
 
-          auto *bus = id(i2c_bus);
-
-          // Clear any existing fault
-          uint8_t write_buf[2] = {0x09, 0x60};  // CLR_FLT=1, EN_STALL=1
-          bus->write(addr, write_buf, 2);
-          write_buf[1] = 0x20;  // CLR_FLT back to 0
-          bus->write(addr, write_buf, 2);
-
-          // CONFIG4 (0x0D): I2C_BC=1, PMODE=1, I2C_EN_IN1=1, I2C_PH_IN2=direction
-          // direction=1 (open): PH=1 → forward (OUT1=H, OUT2=L)
-          // direction=0 (close): PH=0 → reverse (OUT1=L, OUT2=H)
-          uint8_t config4 = 0x0C | 0x02;  // PMODE=1, I2C_BC=1, I2C_EN_IN1=1
-          if (id(motor_direction) == 1) {
-            config4 |= 0x01;  // I2C_PH_IN2=1 (forward/open)
+          esphome::drv8215::Drv8215* drv = nullptr;
+          switch (motor) {
+            case 1: drv = id(motor_drv_1); break;
+            case 2: drv = id(motor_drv_2); break;
+            case 3: drv = id(motor_drv_3); break;
+            case 4: drv = id(motor_drv_4); break;
+            case 5: drv = id(motor_drv_5); break;
+            case 6: drv = id(motor_drv_6); break;
           }
-          write_buf[0] = 0x0D;
-          write_buf[1] = config4;
-          bus->write(addr, write_buf, 2);
+          if (!drv) return;
 
-          ESP_LOGI("drv8215", "Motor %d @ 0x%02X: enabled, CONFIG4=0x%02X",
-                   motor, addr, config4);
+          drv->clear_fault();
+          if (id(motor_direction) == 1) {
+            drv->motor_forward();
+          } else {
+            drv->motor_reverse();
+          }
+          ESP_LOGI("drv8215", "Motor %d: enabled, direction=%s",
+                   motor, id(motor_direction) ? "FORWARD/OPEN" : "REVERSE/CLOSE");
 
       - globals.set:
           id: motor_turning
@@ -505,16 +489,20 @@ script:
           id: motor_turning
           value: 'false'
 
-      # Coast motor via I2C: I2C_EN_IN1=0
+      # Coast motor via drv8215 component
       - lambda: |-
           int motor = motor_num;
           if (motor < 1 || motor > 6) return;
-          uint8_t addr = id(drv_addresses)[motor - 1];
-          auto *bus = id(i2c_bus);
-
-          // CONFIG4: PMODE=1, I2C_BC=1, I2C_EN_IN1=0, I2C_PH_IN2=0 → coast
-          uint8_t write_buf[2] = {0x0D, 0x0C};
-          bus->write(addr, write_buf, 2);
+          esphome::drv8215::Drv8215* drv = nullptr;
+          switch (motor) {
+            case 1: drv = id(motor_drv_1); break;
+            case 2: drv = id(motor_drv_2); break;
+            case 3: drv = id(motor_drv_3); break;
+            case 4: drv = id(motor_drv_4); break;
+            case 5: drv = id(motor_drv_5); break;
+            case 6: drv = id(motor_drv_6); break;
+          }
+          if (drv) drv->motor_coast();
 
       - globals.set:
           id: motor_mutex

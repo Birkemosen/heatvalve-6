@@ -5,12 +5,12 @@
 # Motor control: I2C-based with integrated stall detection and IPROPI current sensing
 #
 # DRV8215 I2C addresses (7-bit):
-#   Motor 1: 0x30 (A1=GND, A0=GND)
-#   Motor 2: 0x31 (A1=GND, A0=Hi-Z)
-#   Motor 3: 0x32 (A1=GND, A0=VCC)
-#   Motor 4: 0x33 (A1=Hi-Z, A0=GND)
-#   Motor 5: 0x34 (A1=Hi-Z, A0=Hi-Z)
-#   Motor 6: 0x35 (A1=Hi-Z, A0=VCC)
+#   Motor 1: 0x30 (A1=GND,   A0=GND)   → 0x30 + 0*3 + 0 = 0x30
+#   Motor 2: 0x31 (A1=GND,   A0=Hi-Z)  → 0x30 + 0*3 + 1 = 0x31
+#   Motor 3: 0x32 (A1=GND,   A0=VCC)   → 0x30 + 0*3 + 2 = 0x32
+#   Motor 4: 0x35 (A1=Hi-Z,  A0=VCC)   → 0x30 + 1*3 + 2 = 0x35
+#   Motor 5: 0x33 (A1=Hi-Z,  A0=GND)   → 0x30 + 1*3 + 0 = 0x33
+#   Motor 6: 0x34 (A1=Hi-Z,  A0=Hi-Z)  → 0x30 + 1*3 + 1 = 0x34
 #
 # Shared GPIO:
 #   nSLEEP_ALL (GPIO2) → all 6 DRV8215 nSLEEP pins
@@ -51,12 +51,15 @@ substitutions:
   # DRV8215 Motor Driver Configuration
   # ============================================
   # I2C addresses (7-bit, derived from A0/A1 tri-level pins)
-  drv8215_addr_motor1: "0x30"
-  drv8215_addr_motor2: "0x31"
-  drv8215_addr_motor3: "0x32"
-  drv8215_addr_motor4: "0x33"
-  drv8215_addr_motor5: "0x34"
-  drv8215_addr_motor6: "0x35"
+  drv8215_addr_motor1: "0x30"  # A1=GND,  A0=GND
+  drv8215_addr_motor2: "0x31"  # A1=GND,  A0=Hi-Z
+  drv8215_addr_motor3: "0x32"  # A1=GND,  A0=VCC
+  drv8215_addr_motor4: "0x35"  # A1=Hi-Z, A0=VCC
+  drv8215_addr_motor5: "0x33"  # A1=Hi-Z, A0=GND
+  drv8215_addr_motor6: "0x34"  # A1=Hi-Z, A0=Hi-Z
+
+  # OLED display I2C address (SSD1306 1.54" 128x64)
+  oled_address: "0x3C"
 
   # Shared control GPIO
   motor_nsleep_pin: GPIO2       # Shared nSLEEP (active HIGH, wakes all DRV8215)

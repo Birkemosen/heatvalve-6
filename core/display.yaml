@@ -1,0 +1,47 @@
+# ============================================
+# HeatValve-6 : OLED Display (1.54" SSD1306 128x64 I2C)
+# ============================================
+# Shared I2C bus with DRV8215 motors (SDA=GPIO8, SCL=GPIO9).
+# Default address: 0x3C (OLED_SA0 → GND).
+# Override in board substitutions: oled_address: "0x3D" if SA0 → VCC.
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 10
+  - file: "gfonts://Roboto"
+    id: font_medium
+    size: 14
+  - file: "gfonts://Roboto+Mono"
+    id: font_mono
+    size: 11
+
+display:
+  - platform: ssd1306_i2c
+    id: oled_display
+    model: "SSD1306 128x64"
+    address: ${oled_address}
+    update_interval: 2s
+    lambda: |-
+      // Line 1: active motor / system status
+      if (id(motor_turning)) {
+        it.printf(0, 0, id(font_small), "Motor %d %s",
+          id(current_motor),
+          id(motor_direction) == 1 ? "OPEN >>" : "<< CLOSE");
+      } else {
+        it.print(0, 0, id(font_small), "HeatValve-6");
+      }
+
+      // Line 2: current (mA) when running
+      if (id(motor_turning)) {
+        it.printf(0, 14, id(font_small), "I: %.0f mA", id(motor_current_filtered));
+      }
+
+      // Line 3: nFAULT indicator
+      if (id(motor_endstop_event)) {
+        it.print(0, 28, id(font_small), "!! ENDSTOP/FAULT");
+      }
+
+      // Bottom line: uptime / IP placeholder
+      it.printf(0, 52, id(font_small), "nSLEEP: %s",
+        id(motor_nsleep).state ? "ON" : "OFF");

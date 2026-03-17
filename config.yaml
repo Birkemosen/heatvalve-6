@@ -4,11 +4,17 @@
 # Complete 6-zone example for ESP32-S3 Super Mini
 # with 6x DRV8215 I2C motor drivers.
 #
-# SETUP: Clone this repo to heatvalve-6/ subfolder:
-#   /config/
-#   ├── config.yaml        (copy this file here)
-#   ├── secrets.yaml
-#   └── heatvalve-6/     (this repo)
+# SETUP: Run this config from the repo root:
+# heatvalve-6/
+# |- config.yaml
+# |- secrets.yaml
+# |- boards/
+# |- core/
+# |- optional/
+# |- zones/
+# |- components/
+#
+# If you move this file outside the repo, update the relative include paths below.
 #
 # HARDWARE:
 #   - ESP32-S3 Super Mini
@@ -22,9 +28,10 @@
 external_components:
   - source:
       type: local
-      path: heatvalve-6/components
+      path: components
     components:
       - heatvalve_dashboard
+      - drv8215
 
 # ============================================
 # General Configuration
@@ -52,15 +59,11 @@ substitutions:
   # Set to "0s" to disable periodic maintenance
   valve_maintenance_interval: "7d"  # 7 days
   
-  # Dallas temperature sensors (run 1-wire scan to get addresses)
-  # Sensor 1: 0x2A00000034ED7428
-  # Sensor 2: 0x5400000036B9A528
-  # Sensor 3: 0x120000003497E728
-  # TODO: Identify which sensor is input (supply) and which is output (return)
-  #       Hold each sensor to identify by temperature change in web UI
-  dallasaddress_input: "0x2A00000034ED7428"
-  dallasaddress_output: "0x5400000036B9A528"
-  dallasaddress_extra: "0x120000003497E728"
+  # DS18x20 sensors are auto-discovered on the 1-Wire bus.
+  # Use the UI selects in the Settings group to map:
+  #   - DS18x20 Select Input Sensor
+  #   - DS18x20 Select Output Sensor
+  #   - DS18x20 Select Extra Sensor
   
   adc_zero_calibration: "-0.075"
   pump_mac_address: "AA:BB:CC:DD:EE:FF"
@@ -74,10 +77,10 @@ substitutions:
   # NOTE: ESPHome does not support substitutions in !include paths.
   # To change control profile, manually replace the path in all zone includes below.
   # Options:
-  #   heatvalve-6/zones/tanh.yaml   (default)
-  #   heatvalve-6/zones/linear.yaml
-  #   heatvalve-6/zones/pid.yaml
-  #   heatvalve-6/zones/remote.yaml
+  #   zones/tanh.yaml   (default)
+  #   zones/linear.yaml
+  #   zones/pid.yaml
+  #   zones/remote.yaml
 
 # ============================================
 # Web Server
@@ -193,7 +196,7 @@ api:
 # ============================================
 # WiFi Configuration
 # ============================================
-# Configure directly here or use: wifi: !include heatvalve-6/core/wifi.yaml
+# Configure directly here or use: wifi: !include core/wifi.yaml
 wifi:
   networks:
     - ssid: !secret wifi_ssid
@@ -244,34 +247,34 @@ script:
 # ============================================
 packages:
   # Board (ESP32-S3 Super Mini only)
-  board: !include heatvalve-6/boards/esp32-s3.yaml
+  board: !include boards/esp32-s3.yaml
   
   # Core infrastructure
-  core_settings: !include heatvalve-6/core/settings.yaml
-  logger: !include heatvalve-6/core/logger.yaml
-  motor_driver: !include heatvalve-6/core/motor_driver.yaml  # DRV8215 I2C motor control
-  time: !include heatvalve-6/core/time.yaml
-  switch_others: !include heatvalve-6/core/switch_others.yaml
-  sensor_others: !include heatvalve-6/core/sensor_others.yaml
-  onewire: !include heatvalve-6/core/onewire.yaml
+  core_settings: !include core/settings.yaml
+  logger: !include core/logger.yaml
+  motor_driver: !include core/motor_driver.yaml  # DRV8215 I2C motor control
+  time: !include core/time.yaml
 
   # ============================================
-  # Hydraulic Balancing (legacy - replaced by Threyr advanced control)
-  # Uncomment to use basic hydraulic balancing without Threyr
+  # Optional: OLED 1.54" display (SSD1306 128x64, I2C)
+  # Comment out if display is not fitted.
   # ============================================
-  # hydraulic: !include heatvalve-6/modes/hydraulic.yaml
+  display: !include core/display.yaml
+  switch_others: !include core/switch_others.yaml
+  sensor_others: !include core/sensor_others.yaml
+  onewire: !include core/onewire.yaml
 
   # ============================================
   # Threyr Advanced Control (closed-source, requires license)
   # See: https://github.com/birkemosen/heatvalve-6#threyr-advanced-control
   # ============================================
-  # threyr: !include heatvalve-6/threyr.yaml
+  # threyr: !include threyr.yaml
 
   # ============================================
   # Optional: Pump control via ESP-NOW
   # ============================================
   pump_control: !include
-    file: heatvalve-6/optional/pump_control.yaml
+    file: optional/pump_control.yaml
     vars:
       pump_mac_address: ${pump_mac_address}
       circulation_check_interval: "24h"
@@ -280,16 +283,16 @@ packages:
   # ============================================
   # Optional: MQTT Ecodan integration
   # ============================================
-  # mqtt_ecodan: !include heatvalve-6/optional/mqtt_ecodan.yaml
+  # mqtt_ecodan: !include optional/mqtt_ecodan.yaml
 
   # ============================================
   # ZONES
   # ============================================
   # Control profile options (use same for all zones):
-  #   heatvalve-6/zones/tanh.yaml   - Smooth tanh curve control
-  #   heatvalve-6/zones/linear.yaml - Linear proportional control
-  #   heatvalve-6/zones/pid.yaml    - PID control with auto-tune
-  #   heatvalve-6/zones/remote.yaml - External/Home Assistant control
+  #   zones/tanh.yaml   - Smooth tanh curve control
+  #   zones/linear.yaml - Linear proportional control
+  #   zones/pid.yaml    - PID control with auto-tune
+  #   zones/remote.yaml - External/Home Assistant control
   #
   # Motor mapping (DRV8215 I2C):
   #   motor_number: 1-6 (maps to physical motor outputs)
@@ -301,10 +304,10 @@ packages:
   #     Motor 6: DRV8215 @ 0x35
   
   zone_1: !include
-    file: heatvalve-6/zones/tanh.yaml
-    # file: heatvalve-6/zones/linear.yaml
-    # file: heatvalve-6/zones/pid.yaml
-    # file: heatvalve-6/zones/remote.yaml
+    file: zones/tanh.yaml
+    # file: zones/linear.yaml
+    # file: zones/pid.yaml
+    # file: zones/remote.yaml
     vars:
       zone_number: "1"
       motor_number: "1"
@@ -321,10 +324,10 @@ packages:
       tanh_steepness: "0.70"
 
   zone_2: !include
-    file: heatvalve-6/zones/tanh.yaml
-    # file: heatvalve-6/zones/linear.yaml
-    # file: heatvalve-6/zones/pid.yaml
-    # file: heatvalve-6/zones/remote.yaml
+    file: zones/tanh.yaml
+    # file: zones/linear.yaml
+    # file: zones/pid.yaml
+    # file: zones/remote.yaml
     vars:
       zone_number: "2"
       motor_number: "2"
@@ -341,10 +344,10 @@ packages:
       tanh_steepness: "0.70"
 
   zone_3: !include
-    file: heatvalve-6/zones/tanh.yaml
-    # file: heatvalve-6/zones/linear.yaml
-    # file: heatvalve-6/zones/pid.yaml
-    # file: heatvalve-6/zones/remote.yaml
+    file: zones/tanh.yaml
+    # file: zones/linear.yaml
+    # file: zones/pid.yaml
+    # file: zones/remote.yaml
     vars:
       zone_number: "3"
       motor_number: "3"
@@ -361,10 +364,10 @@ packages:
       tanh_steepness: "0.70"
 
   zone_4: !include
-    file: heatvalve-6/zones/tanh.yaml
-    # file: heatvalve-6/zones/linear.yaml
-    # file: heatvalve-6/zones/pid.yaml
-    # file: heatvalve-6/zones/remote.yaml
+    file: zones/tanh.yaml
+    # file: zones/linear.yaml
+    # file: zones/pid.yaml
+    # file: zones/remote.yaml
     vars:
       zone_number: "4"
       motor_number: "4"
@@ -381,10 +384,10 @@ packages:
       tanh_steepness: "0.70"
 
   zone_5: !include
-    file: heatvalve-6/zones/tanh.yaml
-    # file: heatvalve-6/zones/linear.yaml
-    # file: heatvalve-6/zones/pid.yaml
-    # file: heatvalve-6/zones/remote.yaml
+    file: zones/tanh.yaml
+    # file: zones/linear.yaml
+    # file: zones/pid.yaml
+    # file: zones/remote.yaml
     vars:
       zone_number: "5"
       motor_number: "5"
@@ -401,10 +404,10 @@ packages:
       tanh_steepness: "0.70"
 
   zone_6: !include
-    file: heatvalve-6/zones/tanh.yaml
-    # file: heatvalve-6/zones/linear.yaml
-    # file: heatvalve-6/zones/pid.yaml
-    # file: heatvalve-6/zones/remote.yaml
+    file: zones/tanh.yaml
+    # file: zones/linear.yaml
+    # file: zones/pid.yaml
+    # file: zones/remote.yaml
     vars:
       zone_number: "6"
       motor_number: "6"
@@ -465,7 +468,7 @@ sensor:
   # Option 2: Dallas/OneWire DS18B20 sensors
   # ============================================
   # - platform: dallas_temp
-  #   address: 0x1234567890abcdef
+  #   index: 0
   #   name: "Living Room Temperature"
   #   id: living_temp
 

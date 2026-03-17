@@ -26,6 +26,7 @@ external_components:
       path: components
     components:
       - heatvalve_dashboard
+      - drv8215
   - source:
       type: local
       path: ../threyr/components
@@ -58,15 +59,11 @@ substitutions:
   # Set to "0s" to disable periodic maintenance
   valve_maintenance_interval: "7d"  # 7 days
   
-  # Dallas temperature sensors (run 1-wire scan to get addresses)
-  # Sensor 1: 0x2A00000034ED7428
-  # Sensor 2: 0x5400000036B9A528
-  # Sensor 3: 0x120000003497E728
-  # TODO: Identify which sensor is input (supply) and which is output (return)
-  #       Hold each sensor to identify by temperature change in web UI
-  dallasaddress_input: "0x2A00000034ED7428"
-  dallasaddress_output: "0x5400000036B9A528"
-  dallasaddress_extra: "0x120000003497E728"
+  # DS18x20 sensors are auto-discovered on the 1-Wire bus.
+  # Use the UI selects in the Settings group to map:
+  #   - DS18x20 Select Input Sensor
+  #   - DS18x20 Select Output Sensor
+  #   - DS18x20 Select Extra Sensor
   
   adc_zero_calibration: "-0.075"
   pump_mac_address: "AA:BB:CC:DD:EE:FF"
@@ -261,7 +258,12 @@ packages:
   logger: !include core/logger.yaml
   motor_driver: !include core/motor_driver.yaml  # DRV8215 I2C motor control
   time: !include core/time.yaml
-  switch_others: !include core/switch_others.yaml
+
+  # ============================================
+  # Optional: OLED 1.54" display (SSD1306 128x64, I2C)
+  # Comment out if display is not fitted.
+  # ============================================
+  display: !include core/display.yaml
   sensor_others: !include core/sensor_others.yaml
   onewire: !include core/onewire.yaml
 
@@ -468,7 +470,7 @@ sensor:
   # Option 2: Dallas/OneWire DS18B20 sensors
   # ============================================
   # - platform: dallas_temp
-  #   address: 0x1234567890abcdef
+  #   index: 0
   #   name: "Living Room Temperature"
   #   id: living_temp
 
