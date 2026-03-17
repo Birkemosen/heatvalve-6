@@ -1,25 +1,31 @@
 # ============================================
-# HeatValve-6 : DRV8837 Motor Driver (3x Single H-Bridge)
+# HeatValve-6 Rev.2 : DRV8215 Motor Driver (6x I2C H-Bridge)
 # ============================================
-# Multiplexed motor control for 6 motors using 3x DRV8837
-# with GAQY212GSX optocouplers for negative rail switching.
+# I2C-controlled motor driver for 6 motors using 6x DRV8215.
+# Each motor has its own dedicated H-bridge with integrated:
+#   - IPROPI current sensing (3 gain settings)
+#   - Hardware stall detection
+#   - Speed/voltage regulation
 #
 # Current sensing inspired by VdMot Controller (Lenti84):
 # https://github.com/Lenti84/VdMot_Controller
 #
-# IMPORTANT: Only ONE motor can run at a time due to the
-# multiplexed design (odd vs even motors share negative rails).
+# IMPORTANT: Only ONE motor should run at a time (shared IPROPI).
 #
-# DRV8837 pinout: IN1, IN2 (direction), nSLEEP (enable), OUT1, OUT2
-# DRV8837 has NO separate standby pin - nSLEEP IS the enable.
+# Motor mapping (I2C 7-bit addresses):
+#   Motor 1: DRV8215 @ 0x30 (A1=GND, A0=GND)
+#   Motor 2: DRV8215 @ 0x31 (A1=GND, A0=Hi-Z)
+#   Motor 3: DRV8215 @ 0x32 (A1=GND, A0=VCC)
+#   Motor 4: DRV8215 @ 0x33 (A1=Hi-Z, A0=GND)
+#   Motor 5: DRV8215 @ 0x34 (A1=Hi-Z, A0=Hi-Z)
+#   Motor 6: DRV8215 @ 0x35 (A1=Hi-Z, A0=VCC)
 #
-# Motor mapping:
-#   Motor 1: DRV8837#1 (nSLEEP=GPIO11), Mux=HIGH (odd)
-#   Motor 2: DRV8837#1 (nSLEEP=GPIO11), Mux=LOW  (even)
-#   Motor 3: DRV8837#2 (nSLEEP=GPIO3),  Mux=HIGH (odd)
-#   Motor 4: DRV8837#2 (nSLEEP=GPIO3),  Mux=LOW  (even)
-#   Motor 5: DRV8837#3 (nSLEEP=GPIO4),  Mux=HIGH (odd)
-#   Motor 6: DRV8837#3 (nSLEEP=GPIO4),  Mux=LOW  (even)
+# DRV8215 Register Map (key registers):
+#   0x00: FAULT_STATUS (R)  - FAULT, STALL, OCP, OVP, TSD, NPOR
+#   0x09: CONFIG0 (RW)      - EN_STALL, CLR_FLT, DUTY_CTRL
+#   0x0C: CONFIG3 (RW)      - IMODE, SMODE, INT_VREF, TBLANK, TDEG
+#   0x0D: CONFIG4 (RW)      - PMODE, I2C_BC, I2C_EN_IN1, I2C_PH_IN2
+#   0x11: RC_CTRL0 (RW)     - CS_GAIN_SEL[2:0]
 
 # ============================================
 # Motor Control Globals
@@ -28,215 +34,142 @@ globals:
   - id: motor_mutex
     type: bool
     initial_value: 'false'
-    
+
   - id: current_motor
     type: int
     initial_value: '0'
-    
+
   - id: motor_direction
     type: int
     initial_value: '0'  # 0=close, 1=open
-    
+
   - id: motor_turning
     type: bool
     initial_value: 'false'
-    
+
   - id: motor_debounce_count
     type: int
     initial_value: '0'
-    
-  # Current measurement (filtered)
+
   - id: motor_current_raw
     type: float
     initial_value: '0.0'
-    
+
   - id: motor_current_filtered
     type: float
     initial_value: '0.0'
-  
-  # Signed filter for endstop (VdMot-style: stall = current > high OR current < -high)
-  - id: motor_current_filtered_signed
-    type: float
-    initial_value: '0.0'
-    
-  # Mean current accumulator for learning
+
   - id: motor_current_sum
     type: float
     initial_value: '0.0'
-    
+
   - id: motor_current_count
     type: int
     initial_value: '0'
-    
-  # Mean current for endstop detection (per motor, in mA)
-  # Initial value ~80mA typical for BEMF valve motors
-  # These are learned during operation and saved to flash
+
   - id: motor_mean_current_1
     type: float
     restore_value: true
-    initial_value: '80.0'
+    initial_value: '40.0'
   - id: motor_mean_current_2
     type: float
     restore_value: true
-    initial_value: '80.0'
+    initial_value: '40.0'
   - id: motor_mean_current_3
     type: float
     restore_value: true
-    initial_value: '80.0'
+    initial_value: '40.0'
   - id: motor_mean_current_4
     type: float
     restore_value: true
-    initial_value: '80.0'
+    initial_value: '40.0'
   - id: motor_mean_current_5
     type: float
     restore_value: true
-    initial_value: '80.0'
+    initial_value: '40.0'
   - id: motor_mean_current_6
     type: float
     restore_value: true
-    initial_value: '80.0'
-    
-  # Endstop event flag
+    initial_value: '40.0'
+
   - id: motor_endstop_event
     type: bool
     initial_value: 'false'
 
-# ============================================
-# Control Parameters
-# ============================================
-number:
-  - platform: template
-    name: "Current Factor Low"
-    id: ${id_prefix}current_factor_low
-    icon: "mdi:current-ac"
-    optimistic: true
-    min_value: 1.0
-    max_value: 4.0
-    step: 0.1
-    restore_value: true
-    initial_value: 1.7
-    entity_category: config
-    web_server:
-      sorting_group_id: sorting_group_settings
-      
-  - platform: template
-    name: "Current Factor High"
-    id: ${id_prefix}current_factor_high
-    icon: "mdi:current-ac"
-    optimistic: true
-    min_value: 1.0
-    max_value: 4.0
-    step: 0.1
-    restore_value: true
-    initial_value: 1.7
-    entity_category: config
-    web_server:
-      sorting_group_id: sorting_group_settings
-      
-  - platform: template
-    name: "Undercurrent Threshold"
-    id: ${id_prefix}undercurrent_threshold
-    icon: "mdi:current-ac"
-    unit_of_measurement: "mA"
-    optimistic: true
-    min_value: 1
-    max_value: 20
-    step: 1
-    restore_value: true
-    initial_value: 2
-    entity_category: config
-    web_server:
-      sorting_group_id: sorting_group_settings
-
+  # DRV8215 I2C addresses (7-bit)
+  - id: drv_addresses
+    type: uint8_t[6]
+    initial_value: '{0x30, 0x31, 0x32, 0x33, 0x34, 0x35}'
 
 # ============================================
-# GPIO Control Switches
+# nSLEEP Control (shared, wakes all DRV8215)
 # ============================================
 switch:
-  # Direction control (IN1 on all DRV8837 - direct)
   - platform: gpio
-    name: "Motor Direction 1"
-    id: motor_dir1
+    name: "Motor nSLEEP"
+    id: motor_nsleep
     pin:
-      number: ${motor_dir1_pin}
+      number: ${motor_nsleep_pin}
     internal: true
-    restore_mode: ALWAYS_OFF
-
-  # Direction control (IN2 on all DRV8837 - inverted by software)
-  - platform: gpio
-    name: "Motor Direction 2"
-    id: motor_dir2
-    pin:
-      number: ${motor_dir2_pin}
-    internal: true
-    restore_mode: ALWAYS_OFF
-    
-  # Mux control (HIGH = N1/odd motors, LOW = N2/even motors)
-  - platform: gpio
-    name: "Motor Mux"
-    id: motor_mux
-    pin:
-      number: ${motor_mux_pin}
-    internal: true
-    restore_mode: ALWAYS_OFF
-    
-  # nSLEEP / Enable pins (one per DRV8837, active HIGH)
-  # DRV8837: nSLEEP=LOW → sleep mode (disabled), nSLEEP=HIGH → active
-  - platform: gpio
-    name: "Enable Motor 1-2"
-    id: motor_ena0
-    pin:
-      number: ${motor_ena0_pin}
-    internal: true
-    restore_mode: ALWAYS_OFF  # Sleep at boot (motors disabled)
-    
-  - platform: gpio
-    name: "Enable Motor 3-4"
-    id: motor_ena1
-    pin:
-      number: ${motor_ena1_pin}
-    internal: true
-    restore_mode: ALWAYS_OFF
-    
-  - platform: gpio
-    name: "Enable Motor 5-6"
-    id: motor_ena2
-    pin:
-      number: ${motor_ena2_pin}
-    internal: true
-    restore_mode: ALWAYS_OFF
+    restore_mode: ALWAYS_OFF  # All DRV8215 in sleep at boot
 
 # ============================================
-# INA219 Current Sensing (I2C, 100mΩ shunt on MCOM)
+# nFAULT Input (wired-OR from all DRV8215)
 # ============================================
-# If you see "ina219: Communication failed", try ina219_address: 0x41 in config substitutions (no quotes)
+binary_sensor:
+  - platform: gpio
+    name: "Motor nFAULT"
+    id: motor_nfault
+    pin:
+      number: ${motor_nfault_pin}
+      mode: INPUT
+      inverted: true  # nFAULT is active LOW
+    internal: true
+    filters:
+      - delayed_on: 1ms
+    on_press:
+      then:
+        - lambda: |-
+            if (id(motor_turning)) {
+              ESP_LOGW("drv8215", "nFAULT asserted during motor %d operation!", id(current_motor));
+              id(motor_endstop_event) = true;
+            }
+
+  - platform: template
+    name: "Motor Endstop"
+    id: motor_endstop_sensor
+    icon: "mdi:stop-circle"
+    entity_category: diagnostic
+    lambda: |-
+      return id(motor_endstop_event);
+    web_server:
+      sorting_group_id: sorting_group_debug
+
+  - platform: template
+    name: "Motor Turning"
+    id: motor_turning_sensor
+    icon: "mdi:rotate-3d-variant"
+    entity_category: diagnostic
+    lambda: |-
+      return id(motor_turning);
+    web_server:
+      sorting_group_id: sorting_group_debug
+
+# ============================================
+# IPROPI ADC Current Sensing
+# ============================================
 sensor:
-  # INA219 high-side current sense amplifier
-  # Measures motor current through 100mΩ shunt resistor on MCOM rail
-  - platform: ina219
-    address: ${ina219_address}
-    shunt_resistance: 0.1 ohm
-    max_current: 1.0A
-    update_interval: 100ms
-    current:
-      name: "Motor Current INA219"
-      id: ${id_prefix}motor_current_ina219
-      accuracy_decimals: 1
-      unit_of_measurement: "mA"
-      icon: "mdi:current-ac"
-      entity_category: diagnostic
-      filters:
-        - multiply: 1000  # A → mA
-      web_server:
-        sorting_group_id: sorting_group_debug
-    shunt_voltage:
-      name: "Motor Shunt Voltage"
-      id: ${id_prefix}motor_shunt_voltage
-      accuracy_decimals: 4
-      entity_category: diagnostic
-      internal: true
+  - platform: adc
+    name: "Motor IPROPI Voltage"
+    id: ${id_prefix}motor_ipropi_voltage
+    pin: ${motor_ipropi_pin}
+    attenuation: 11db
+    update_interval: 50ms
+    accuracy_decimals: 3
+    unit_of_measurement: "V"
+    entity_category: diagnostic
+    internal: true
 
-  # Filtered current in mA (for display and endstop detection)
   - platform: template
     name: "Motor Current"
     id: ${id_prefix}motor_current_ma
@@ -249,8 +182,7 @@ sensor:
       return id(motor_current_filtered);
     web_server:
       sorting_group_id: sorting_group_debug
-      
-  # Mean current of currently running motor (for display)
+
   - platform: template
     name: "Motor Mean Current"
     id: ${id_prefix}motor_mean_current
@@ -275,87 +207,66 @@ sensor:
       sorting_group_id: sorting_group_debug
 
 # ============================================
-# Tacho Input (for revolution counting)
+# Control Parameters
 # ============================================
-binary_sensor:
-  - platform: gpio
-    name: "Motor Tacho"
-    id: motor_tacho
-    pin:
-      number: ${tacho_pin}
-      mode: INPUT
-      inverted: true  # LMV358 Schmitt trigger output is active-high
-    internal: true
-    filters:
-      - delayed_on: 1ms
-      
-  # Global endstop sensor (triggered by overcurrent)
+number:
   - platform: template
-    name: "Motor Endstop"
-    id: motor_endstop_sensor
-    icon: "mdi:stop-circle"
-    entity_category: diagnostic
-    lambda: |-
-      return id(motor_endstop_event);
+    name: "Current Factor High"
+    id: ${id_prefix}current_factor_high
+    icon: "mdi:current-ac"
+    optimistic: true
+    min_value: 1.0
+    max_value: 4.0
+    step: 0.1
+    restore_value: true
+    initial_value: 1.7
+    entity_category: config
     web_server:
-      sorting_group_id: sorting_group_debug
-      
-  # Motor turning indicator
-  - platform: template
-    name: "Motor Turning"
-    id: motor_turning_sensor
-    icon: "mdi:rotate-3d-variant"
-    entity_category: diagnostic
-    lambda: |-
-      return id(motor_turning);
-    web_server:
-      sorting_group_id: sorting_group_debug
+      sorting_group_id: sorting_group_settings
+
+# ============================================
+# DRV8215 I2C Helper Functions
+# ============================================
+# IPROPI → mA conversion for CS_GAIN_SEL=110b (5320 µA/A), RIPROPI=5.1kΩ:
+#   V_IPROPI = I_motor × 5320e-6 × 5100 = I_motor × 27.132e-3
+#   I_motor (mA) = V_IPROPI / 0.027132 = V_IPROPI × 36.86
 
 # ============================================
 # Current Measurement & Endstop Detection
 # ============================================
-# Same idea as VdMot Controller (Lenti84): current-based endstop.
-# https://github.com/Lenti84/VdMot_Controller/blob/master/software_stm32/src/motor.cpp
-# - Signed current: opening = positive, closing = negative (if shunt sees both directions).
-# - Endstop = overcurrent in either direction (stall); undercurrent = no motor (open only).
-# INA219 provides calibrated mA (signed); 10ms @ 100Hz.
 interval:
   - interval: 10ms
     then:
       - lambda: |-
-          // Only process when motor is turning
           if (!id(motor_turning)) {
             id(motor_current_filtered) = 0;
-            id(motor_current_filtered_signed) = 0;
             id(motor_debounce_count) = 0;
             return;
           }
-          
-          // Read current from INA219 (signed mA: + = one direction, - = other)
-          float raw_current = id(${id_prefix}motor_current_ina219).state;
-          if (isnan(raw_current)) raw_current = 0;
+
+          // Read IPROPI voltage and convert to mA
+          // CS_GAIN_SEL=110b (5320 µA/A), RIPROPI=5.1kΩ
+          // I_motor(mA) = V_IPROPI / 0.027132
+          float v_ipropi = id(${id_prefix}motor_ipropi_voltage).state;
+          if (isnan(v_ipropi)) v_ipropi = 0;
+          float raw_current = v_ipropi / 0.027132f;
           id(motor_current_raw) = raw_current;
-          
-          // Magnitude filter (for mean accumulation and undercurrent)
-          float filtered = id(motor_current_filtered) * 0.98 + abs(raw_current) * 0.02;
+
+          float filtered = id(motor_current_filtered) * 0.95 + raw_current * 0.05;
           id(motor_current_filtered) = filtered;
-          // Signed filter (for endstop: stall in either direction, VdMot-style)
-          float filtered_signed = id(motor_current_filtered_signed) * 0.98 + raw_current * 0.02;
-          id(motor_current_filtered_signed) = filtered_signed;
-          
-          // Debounce counter (ignore motor inrush current)
+
           if (id(motor_debounce_count) < 255) {
             id(motor_debounce_count)++;
           }
-          
-          // Only check after debounce period (~250ms at 10ms interval)
-          if (id(motor_debounce_count) < 25) {
+
+          // Skip endstop check during inrush (~500ms at 10ms interval)
+          if (id(motor_debounce_count) < 50) {
             return;
           }
-          
+
           // Get mean current for this motor
           int motor = id(current_motor);
-          float mean_current = 80.0;  // default for BEMF valve motors
+          float mean_current = 40.0;
           switch(motor) {
             case 1: mean_current = id(motor_mean_current_1); break;
             case 2: mean_current = id(motor_mean_current_2); break;
@@ -364,57 +275,33 @@ interval:
             case 5: mean_current = id(motor_mean_current_5); break;
             case 6: mean_current = id(motor_mean_current_6); break;
           }
-          
-          // Calculate thresholds
+
           float factor_high = id(${id_prefix}current_factor_high).state;
-          float factor_low = id(${id_prefix}current_factor_low).state;
           float threshold_high = mean_current * factor_high;
-          float undercurrent = id(${id_prefix}undercurrent_threshold).state;
-          
-          // Debug: log every 50 cycles (~500ms) during motor operation
+
+          // Debug log every ~500ms
           static int debug_cycle = 0;
           debug_cycle++;
           if (debug_cycle >= 50) {
             debug_cycle = 0;
-            ESP_LOGI("motor", "Motor %d: raw=%.1fmA filtered=%.1fmA mean=%.1fmA thr=%.1fmA",
-                     motor, raw_current, filtered, mean_current, threshold_high);
+            ESP_LOGI("drv8215", "Motor %d: V=%.3fV I=%.1fmA filt=%.1fmA mean=%.1fmA thr=%.1fmA",
+                     motor, v_ipropi, raw_current, filtered, mean_current, threshold_high);
           }
-          
-          // Overcurrent / endstop (VdMot-style: currentbound_high and currentbound_low)
-          // Stall in either direction: filtered_signed > thr OR filtered_signed < -thr
-          if (filtered_signed > threshold_high || filtered_signed < -threshold_high || abs(filtered_signed) > 250.0) {
-            ESP_LOGI("motor", "Endstop: filtered_signed=%.1f mA (threshold=±%.1f)", filtered_signed, threshold_high);
+
+          // Overcurrent / stall detection (backup to DRV8215 hardware stall)
+          if (filtered > threshold_high || filtered > 150.0) {
+            ESP_LOGI("drv8215", "Endstop (overcurrent): filtered=%.1f mA (threshold=%.1f)", filtered, threshold_high);
             id(motor_endstop_event) = true;
           }
-          
-          // Undercurrent detection (no motor connected) - only when OPENING
-          // When closing, shunt often reads ~0 mA (direction-dependent wiring); never treat
-          // that as endstop. Stop close only on overcurrent (stall) or max_duration.
-          else if (filtered < undercurrent) {
-            static int undercurrent_count = 0;
-            int dir = id(motor_direction);
-            if (dir != 1) {
-              // Closing (or unknown): ignore undercurrent, reset count for next open
-              undercurrent_count = 0;
-            } else {
-              // Opening: treat sustained undercurrent as "no motor"
-              undercurrent_count++;
-              if (undercurrent_count > 100) {  // 1000ms of undercurrent
-                ESP_LOGW("motor", "Undercurrent: filtered=%.1f mA (Motor %d) - no motor?", filtered, motor);
-                undercurrent_count = 0;
-                id(motor_endstop_event) = true;
-              }
-            }
-          }
-          
-          // Normal operation: accumulate for mean current calculation
-          else {
+
+          // Normal operation: accumulate for mean current
+          else if (filtered > 5.0) {
             id(motor_current_sum) += filtered;
             id(motor_current_count)++;
           }
 
 # ============================================
-# Test Buttons (for debugging)
+# Test Buttons
 # ============================================
 button:
   - platform: template
@@ -448,17 +335,26 @@ button:
 # Motor Control Scripts
 # ============================================
 script:
-  # Stop all motors immediately
   - id: motor_stop_all
     then:
-      - switch.turn_off: motor_ena0
-      - switch.turn_off: motor_ena1
-      - switch.turn_off: motor_ena2
-      - switch.turn_off: motor_dir1
-      - switch.turn_off: motor_dir2
       - globals.set:
           id: motor_turning
           value: 'false'
+      - lambda: |-
+          // Coast all motors via I2C: write I2C_EN_IN1=0 to CONFIG4 (0x0D)
+          for (int i = 0; i < 6; i++) {
+            uint8_t addr = id(drv_addresses)[i];
+            // Read CONFIG4, clear I2C_EN_IN1 and I2C_PH_IN2 bits
+            uint8_t reg = 0x0D;
+            uint8_t data;
+            auto bus = App.get_i2c_bus(0);
+            if (bus) {
+              // Write CONFIG4 with I2C_EN_IN1=0, I2C_PH_IN2=0 (coast mode)
+              // Preserve PMODE and I2C_BC bits: PMODE=1, I2C_BC=1 → 0b00001100 = 0x0C
+              uint8_t write_data[2] = {reg, 0x0C};
+              bus->write(addr, write_data, 2);
+            }
+          }
       - globals.set:
           id: motor_mutex
           value: 'false'
@@ -468,11 +364,58 @@ script:
       - globals.set:
           id: motor_endstop_event
           value: 'false'
-      - script.execute: led_update_status  # Update LED
+      - script.execute: led_update_status
       - logger.log:
-          format: "All motors stopped"
+          format: "All motors stopped (coast)"
           level: INFO
-          tag: motor
+          tag: drv8215
+
+  # Initialize all DRV8215 chips after boot
+  - id: drv8215_init
+    then:
+      - switch.turn_on: motor_nsleep
+      - delay: 1ms  # tWAKE ~410µs
+      - lambda: |-
+          ESP_LOGI("drv8215", "Initializing 6x DRV8215...");
+          auto bus = App.get_i2c_bus(0);
+          if (!bus) {
+            ESP_LOGE("drv8215", "I2C bus not available!");
+            return;
+          }
+
+          for (int i = 0; i < 6; i++) {
+            uint8_t addr = id(drv_addresses)[i];
+            uint8_t write_buf[2];
+
+            // CONFIG4 (0x0D): PMODE=1 (PH/EN mode), I2C_BC=1 (I2C bridge control)
+            // Bits: [7:4]=0, PMODE=bit3?, I2C_BC=bit2?, I2C_EN=bit1, I2C_PH=bit0
+            // Set I2C_BC=1, PMODE=1, I2C_EN_IN1=0, I2C_PH_IN2=0 → coast initially
+            write_buf[0] = 0x0D;
+            write_buf[1] = 0x0C;  // PMODE=1, I2C_BC=1, EN=0, PH=0
+            if (!bus->write(addr, write_buf, 2)) {
+              ESP_LOGW("drv8215", "Motor %d (0x%02X): CONFIG4 write failed", i+1, addr);
+              continue;
+            }
+
+            // CONFIG3 (0x0C): IMODE=00 (no current regulation), SMODE=1 (report stall),
+            // INT_VREF=1 (internal 500mV), OCP_MODE=1 (auto-retry), TSD_MODE=1 (auto-retry)
+            write_buf[0] = 0x0C;
+            write_buf[1] = 0x33;  // IMODE=00, SMODE=1, INT_VREF=1, TBLANK=0, TDEG=0, OCP=1, TSD=1
+            bus->write(addr, write_buf, 2);
+
+            // CONFIG0 (0x09): EN_STALL=1 (enable hardware stall detection)
+            write_buf[0] = 0x09;
+            write_buf[1] = 0x20;  // EN_STALL=1, other bits default
+            bus->write(addr, write_buf, 2);
+
+            // RC_CTRL0 (0x11): CS_GAIN_SEL=110b (5320 µA/A, 10-60mA range)
+            write_buf[0] = 0x11;
+            write_buf[1] = 0x06;  // CS_GAIN_SEL = 110b
+            bus->write(addr, write_buf, 2);
+
+            ESP_LOGI("drv8215", "Motor %d (0x%02X): initialized OK", i+1, addr);
+          }
+          ESP_LOGI("drv8215", "All 6 DRV8215 initialized");
 
   # Start motor with specified number and direction
   - id: motor_start
@@ -481,14 +424,12 @@ script:
       direction: int
     then:
       - lambda: |-
-          // Check if another motor is running
           if (id(motor_mutex)) {
-            ESP_LOGW("motor", "Motor %d already running, cannot start motor %d", 
+            ESP_LOGW("drv8215", "Motor %d already running, cannot start motor %d",
                      id(current_motor), motor_num);
             return;
           }
-          
-          // Set mutex and state
+
           id(motor_mutex) = true;
           id(current_motor) = motor_num;
           id(motor_direction) = direction;
@@ -496,45 +437,43 @@ script:
           id(motor_debounce_count) = 0;
           id(motor_current_sum) = 0;
           id(motor_current_count) = 0;
-          
-          ESP_LOGI("motor", "Starting motor %d, direction=%s", 
+
+          ESP_LOGI("drv8215", "Starting motor %d, direction=%s",
                    motor_num, direction ? "OPEN" : "CLOSE");
-      
-      # 1) Wake DRV8837 first (nSLEEP HIGH), then set mux/direction (avoids glitches)
+
+      # Ensure nSLEEP is HIGH (all chips awake)
+      - switch.turn_on: motor_nsleep
+      - delay: 1ms
+
+      # Set direction and enable via I2C
       - lambda: |-
           int motor = id(current_motor);
-          if (motor == 1 || motor == 2) {
-            id(motor_ena0).turn_on();
-          } else if (motor == 3 || motor == 4) {
-            id(motor_ena1).turn_on();
-          } else if (motor == 5 || motor == 6) {
-            id(motor_ena2).turn_on();
-          }
-          ESP_LOGI("motor", "DRV enable ON for motor %d", motor);
-      - delay: 25ms  # DRV8837 wake from sleep
-                   
-      # 2) Mux: which common return (MNODD vs MNEVEN)
-      - lambda: |-
-          bool is_odd = (id(current_motor) % 2) == 1;
-          if (is_odd) {
-            id(motor_mux).turn_on();  // HIGH = odd (motor 1,3,5 → MNODD)
-          } else {
-            id(motor_mux).turn_off(); // LOW = even (motor 2,4,6 → MNEVEN)
-          }
-      - delay: 50ms  # Optocoupler settling
-      
-      # 3) Direction (IN1/IN2 opposite for H-bridge)
-      - lambda: |-
+          if (motor < 1 || motor > 6) return;
+          uint8_t addr = id(drv_addresses)[motor - 1];
+
+          auto bus = App.get_i2c_bus(0);
+          if (!bus) return;
+
+          // Clear any existing fault
+          uint8_t write_buf[2] = {0x09, 0x60};  // CLR_FLT=1, EN_STALL=1
+          bus->write(addr, write_buf, 2);
+          write_buf[1] = 0x20;  // CLR_FLT back to 0
+          bus->write(addr, write_buf, 2);
+
+          // CONFIG4 (0x0D): I2C_BC=1, PMODE=1, I2C_EN_IN1=1, I2C_PH_IN2=direction
+          // direction=1 (open): PH=1 → forward (OUT1=H, OUT2=L)
+          // direction=0 (close): PH=0 → reverse (OUT1=L, OUT2=H)
+          uint8_t config4 = 0x0C | 0x02;  // PMODE=1, I2C_BC=1, I2C_EN_IN1=1
           if (id(motor_direction) == 1) {
-            id(motor_dir1).turn_on();   // IN1=H, IN2=L → open
-            id(motor_dir2).turn_off();
-          } else {
-            id(motor_dir1).turn_off();
-            id(motor_dir2).turn_on();   // IN1=L, IN2=H → close
+            config4 |= 0x01;  // I2C_PH_IN2=1 (forward/open)
           }
-      - delay: 10ms
-      
-      # 4) Start current measurement
+          write_buf[0] = 0x0D;
+          write_buf[1] = config4;
+          bus->write(addr, write_buf, 2);
+
+          ESP_LOGI("drv8215", "Motor %d @ 0x%02X: enabled, CONFIG4=0x%02X",
+                   motor, addr, config4);
+
       - globals.set:
           id: motor_turning
           value: 'true'
@@ -547,15 +486,14 @@ script:
     then:
       - lambda: |-
           if (id(current_motor) != motor_num && id(motor_mutex)) {
-            ESP_LOGW("motor", "Motor %d not running (current=%d)", 
+            ESP_LOGW("drv8215", "Motor %d not running (current=%d)",
                      motor_num, id(current_motor));
             return;
           }
-          
+
           // Update mean current if we have enough samples
           if (id(motor_current_count) > 20) {
             float new_mean = id(motor_current_sum) / id(motor_current_count);
-            // Blend with existing mean (80% old, 20% new)
             float* mean_ptr = nullptr;
             switch(motor_num) {
               case 1: mean_ptr = &id(motor_mean_current_1); break;
@@ -565,31 +503,30 @@ script:
               case 5: mean_ptr = &id(motor_mean_current_5); break;
               case 6: mean_ptr = &id(motor_mean_current_6); break;
             }
-            if (mean_ptr != nullptr && new_mean > 5.0) {  // Only update if reasonable
+            if (mean_ptr != nullptr && new_mean > 5.0) {
               *mean_ptr = (*mean_ptr) * 0.8 + new_mean * 0.2;
-              ESP_LOGI("motor", "Motor %d mean current updated: %.1f mA", motor_num, *mean_ptr);
+              ESP_LOGI("drv8215", "Motor %d mean current updated: %.1f mA", motor_num, *mean_ptr);
             }
           }
-          
-          ESP_LOGI("motor", "Stopping motor %d", motor_num);
-          
-      # Stop turning flag first
+
+          ESP_LOGI("drv8215", "Stopping motor %d", motor_num);
+
       - globals.set:
           id: motor_turning
           value: 'false'
-          
-      # Put DRV8837 back to sleep (nSLEEP → LOW)
+
+      # Coast motor via I2C: I2C_EN_IN1=0
       - lambda: |-
           int motor = motor_num;
-          if (motor == 1 || motor == 2) {
-            id(motor_ena0).turn_off();  // DRV8837 #1 → sleep
-          } else if (motor == 3 || motor == 4) {
-            id(motor_ena1).turn_off();  // DRV8837 #2 → sleep
-          } else if (motor == 5 || motor == 6) {
-            id(motor_ena2).turn_off();  // DRV8837 #3 → sleep
-          }
-      
-      # Clear state
+          if (motor < 1 || motor > 6) return;
+          uint8_t addr = id(drv_addresses)[motor - 1];
+          auto bus = App.get_i2c_bus(0);
+          if (!bus) return;
+
+          // CONFIG4: PMODE=1, I2C_BC=1, I2C_EN_IN1=0, I2C_PH_IN2=0 → coast
+          uint8_t write_buf[2] = {0x0D, 0x0C};
+          bus->write(addr, write_buf, 2);
+
       - globals.set:
           id: motor_mutex
           value: 'false'

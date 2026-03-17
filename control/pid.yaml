@@ -20,6 +20,7 @@ number:
   - platform: template
     name: "Kp CH${zone_number}"
     id: kp_${zone_number}
+    internal: ${zone_entities_internal}
     min_value: 0.01
     max_value: 1.00
     step: 0.01
@@ -38,6 +39,7 @@ number:
   - platform: template
     name: "Ki CH${zone_number}"
     id: ki_${zone_number}
+    internal: ${zone_entities_internal}
     min_value: 0.00005
     max_value: 0.004
     step: 0.00005
@@ -56,6 +58,7 @@ number:
   - platform: template
     name: "Kd CH${zone_number}"
     id: kd_${zone_number}
+    internal: ${zone_entities_internal}
     min_value: 0.01
     max_value: 10.00
     step: 0.01
@@ -78,6 +81,7 @@ climate:
   - platform: pid
     name: ${friendly_name}
     id: PID_CH${zone_number}
+    internal: ${zone_entities_internal}
     sensor: ${temperature_sensor}
     default_target_temperature: ${target_temp_default}
     heat_output: heater_ch${zone_number}
@@ -157,21 +161,25 @@ sensor:
   - platform: pid
     name: "PID ${friendly_name} Result"
     id: PID_CH${zone_number}_result
+    internal: ${zone_entities_internal}
     type: RESULT
 
   - platform: pid
     name: "PID ${friendly_name} KP"
     climate_id: PID_CH${zone_number}
+    internal: ${zone_entities_internal}
     type: KP
 
   - platform: pid
     name: "PID ${friendly_name} KI"
     climate_id: PID_CH${zone_number}
+    internal: ${zone_entities_internal}
     type: KI
 
   - platform: pid
     name: "PID ${friendly_name} KD"
     climate_id: PID_CH${zone_number}
+    internal: ${zone_entities_internal}
     type: KD
 
 # ============================================
@@ -188,6 +196,7 @@ script:
 button:
   - platform: template
     name: "PID ${friendly_name} Autotune"
+    internal: ${zone_entities_internal}
     icon: mdi:auto-fix
     on_press:
       - logger.log: "Starting PID autotune for CH${zone_number} - this may take hours"
@@ -200,6 +209,7 @@ button:
 
   - platform: template
     name: "PID ${friendly_name} Save Values"
+    internal: ${zone_entities_internal}
     icon: mdi:content-save
     on_press:
       - logger.log: 

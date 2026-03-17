@@ -43,6 +43,7 @@ number:
   - platform: template
     name: "${friendly_name} Area"
     id: ${id_prefix}zone_${zone_number}_area
+    internal: ${zone_entities_internal}
     icon: "mdi:floor-plan"
     unit_of_measurement: "m²"
     optimistic: true
@@ -57,6 +58,7 @@ number:
   - platform: template
     name: "${friendly_name} Max Opening"
     id: ${id_prefix}zone_${zone_number}_max_opening
+    internal: ${zone_entities_internal}
     icon: "mdi:valve-open"
     unit_of_measurement: "%"
     optimistic: true
@@ -76,6 +78,7 @@ cover:
     name: "CH${zone_number}"
     device_class: shutter
     id: CH${zone_number}_cover
+    internal: ${zone_entities_internal}
     
     open_action:
       - script.execute: motor_zone_${zone_number}_open
@@ -102,6 +105,7 @@ cover:
 switch:
   - platform: template
     name: "Run ${friendly_name} Check"
+    internal: ${zone_entities_internal}
     turn_on_action:
       - script.execute: TH${zone_number}_check
     web_server:
@@ -145,6 +149,7 @@ sensor:
   - platform: template
     name: "${friendly_name} Pipe Length"
     id: ${id_prefix}zone_${zone_number}_pipe_length
+    internal: ${zone_entities_internal}
     icon: "mdi:ruler"
     unit_of_measurement: "m"
     accuracy_decimals: 1

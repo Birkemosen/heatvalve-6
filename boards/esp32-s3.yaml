@@ -1,24 +1,26 @@
 # ============================================
-# HeatValve-6 : ESP32-S3 Super Mini Board Configuration
+# HeatValve-6 Rev.2 : ESP32-S3 Super Mini Board Configuration
 # ============================================
-# Hardware: ESP32-S3 Super Mini + 3x DRV8837 Motor Driver
-# Motor control: Multiplexed design with current-based endstop detection
+# Hardware: ESP32-S3 Super Mini + 6x DRV8215 Motor Driver (I2C)
+# Motor control: I2C-based with integrated stall detection and IPROPI current sensing
 #
-# DRV8837 #1: Motor 1+2 (OUT1/OUT2, nSLEEP → GPIO11)
-# DRV8837 #2: Motor 3+4 (OUT1/OUT2, nSLEEP → GPIO3)
-# DRV8837 #3: Motor 5+6 (OUT1/OUT2, nSLEEP → GPIO4)
+# DRV8215 I2C addresses (7-bit):
+#   Motor 1: 0x30 (A1=GND, A0=GND)
+#   Motor 2: 0x31 (A1=GND, A0=Hi-Z)
+#   Motor 3: 0x32 (A1=GND, A0=VCC)
+#   Motor 4: 0x33 (A1=Hi-Z, A0=GND)
+#   Motor 5: 0x34 (A1=Hi-Z, A0=Hi-Z)
+#   Motor 6: 0x35 (A1=Hi-Z, A0=VCC)
 #
-# All DRV8837 IN1 → GPIO6 (Direction 1)
-# All DRV8837 IN2 → GPIO5 (Direction 2)
+# Shared GPIO:
+#   nSLEEP_ALL (GPIO2) → all 6 DRV8215 nSLEEP pins
+#   nFAULT_ALL (GPIO7) ← wired-OR from all 6 DRV8215 nFAULT pins
+#   IPROPI_ADC (GPIO1) ← shared RIPROPI (5.1kΩ, all 6 IPROPI wire-OR)
 #
-# Motor Negative (via GAQY212GSX optocouplers):
-#   N1 = Odd motors (1,3,5)  when Mux=HIGH
-#   N2 = Even motors (2,4,6) when Mux=LOW
+# Current sensing: DRV8215 IPROPI (analog, via ESP32 ADC on GPIO1)
+# Stall detection: DRV8215 hardware (FAULT_STATUS register poll or nFAULT interrupt)
 #
-# Current sensing: INA219 (I2C, 0x40) with 100mΩ shunt on MCOM
-# Tacho: LMV358 conditioning circuit → GPIO7
-#
-# NOTE: Only ONE motor can run at a time due to multiplexing!
+# NOTE: Only ONE motor should run at a time (shared IPROPI, motor thermal design).
 
 esphome:
   name: ${name}
@@ -46,37 +48,35 @@ substitutions:
   framework: esp-idf
 
   # ============================================
-  # DRV8837 Motor Driver Pins
+  # DRV8215 Motor Driver Configuration
   # ============================================
-  # Direction (shared by all DRV8837)
-  motor_mux_pin: GPIO2        # Mux: HIGH=N1 (odd motors), LOW=N2 (even motors)
-  motor_dir1_pin: GPIO6       # IN1 on all DRV8837: direction control
-  motor_dir2_pin: GPIO5       # IN2 on all DRV8837: direction control
-  
-  # nSLEEP / Enable (one per DRV8837, active HIGH)
-  motor_ena0_pin: GPIO11      # DRV8837 #1 nSLEEP: Motors 1 & 2
-  motor_ena1_pin: GPIO3       # DRV8837 #2 nSLEEP: Motors 3 & 4 - WARNING: Strapping pin!
-  motor_ena2_pin: GPIO4       # DRV8837 #3 nSLEEP: Motors 5 & 6
-  
+  # I2C addresses (7-bit, derived from A0/A1 tri-level pins)
+  drv8215_addr_motor1: "0x30"
+  drv8215_addr_motor2: "0x31"
+  drv8215_addr_motor3: "0x32"
+  drv8215_addr_motor4: "0x33"
+  drv8215_addr_motor5: "0x34"
+  drv8215_addr_motor6: "0x35"
+
+  # Shared control GPIO
+  motor_nsleep_pin: GPIO2       # Shared nSLEEP (active HIGH, wakes all DRV8215)
+  motor_nfault_pin: GPIO7       # Shared nFAULT (wired-OR, open-drain, active LOW on fault)
+  motor_ipropi_pin: GPIO1       # Shared IPROPI ADC input (current sense)
+
   # ============================================
-  # Sensing Pins
-  # ============================================
-  tacho_pin: GPIO7            # Tacho input (LMV358 conditioned, software inverted)
-  # Current sensing via INA219 on I2C bus (address 0x40)
-  
-  # ============================================
-  # I2C Pins (SDA=GPIO8, SCL=GPIO9 → INA219 pin3=SDA, pin4=SCL)
+  # I2C Pins (SDA=GPIO8, SCL=GPIO9 → DRV8215 + expansion)
   # ============================================
   i2c_sda_pin: GPIO8          # I2C Data
   i2c_scl_pin: GPIO9          # I2C Clock
-  
+
   # ============================================
   # Other Pins
   # ============================================
   onewire_pin: GPIO10         # Dallas 1-Wire bus
   status_led_pin: GPIO48      # WS2812 RGB LED
-  
-  # Spare: GPIO1, GPIO12, GPIO13
+
+  # Freed GPIO (available for expansion):
+  # GPIO3, GPIO4, GPIO5, GPIO6, GPIO11, GPIO12, GPIO13
 
 esp32:
   board: ${board}
@@ -269,27 +269,20 @@ script:
   - id: led_update_status
     then:
       - lambda: |-
-          // Check conditions in priority order
-          
-          // Motor running - highest visual priority
           if (id(motor_turning)) {
             id(led_status_motor).execute();
             return;
           }
           
-          // Check WiFi and API status
           bool wifi_ok = wifi::global_wifi_component->is_connected();
           bool api_ok = api_is_connected();
           
-          // Not connected to WiFi
           if (!wifi_ok) {
             id(led_status_boot).execute();
             return;
           }
           
-          // WiFi OK but API not connected
           if (!api_ok) {
-            // Check if standalone mode is enabled
             if (id(${id_prefix}standalone_mode).state) {
               id(led_status_standalone).execute();
             } else {
@@ -298,7 +291,6 @@ script:
             return;
           }
           
-          // All OK - green
           id(led_status_ok).execute();
 
 # ============================================
@@ -310,7 +302,7 @@ interval:
       - script.execute: led_update_status
 
 # ============================================
-# I2C Bus (for display or sensors)
+# I2C Bus (DRV8215 motor drivers + expansion)
 # ============================================
 i2c:
   sda: ${i2c_sda_pin}

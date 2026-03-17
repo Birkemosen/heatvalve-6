@@ -19,6 +19,7 @@ climate:
   - platform: thermostat
     id: ${id}_thermostat
     name: ${friendly_name}
+    internal: ${zone_entities_internal}
     sensor: ${temperature_sensor}
     default_preset: ${default_preset}
     on_boot_restore_from: memory
