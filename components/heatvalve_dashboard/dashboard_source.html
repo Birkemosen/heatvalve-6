@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HeatValve-6 Dashboard</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f151e;
+  --bg2:#182230;
+  --card:#162332;
+  --card2:#203245;
+  --border:#335070;
+  --text:#e4edf8;
+  --text2:#9ab0c8;
+  --accent:#ff9f43;
+  --accent2:#ff7b50;
+  --heat:#ff8f5d;
+  --cool:#63c7f2;
+  --ok:#4fd6a0;
+  --warn:#f6be63;
+  --err:#ff7094;
+  --planner:#52d68f;
+  --radius:12px;
+  --shadow:0 10px 30px rgba(0,0,0,0.32);
+}
+body{
+  font-family:system-ui,-apple-system,Segoe UI,sans-serif;
+  background:
+    radial-gradient(950px 540px at 110% -8%, rgba(255,159,67,0.17) 0%, transparent 60%),
+    radial-gradient(1200px 740px at -12% -25%, #2a4058 0%, var(--bg) 50%, #0b1118 100%);
+  color:var(--text);
+  min-height:100vh;
+  padding:12px;
+}
+
+.shell{max-width:1400px;margin:0 auto}
+
+.header{
+  display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:14px 16px;background:rgba(15,24,48,0.95);
+  border:1px solid var(--border);border-radius:var(--radius);
+  box-shadow:var(--shadow);backdrop-filter:blur(6px);
+}
+.title{display:flex;align-items:center;gap:10px}
+.title h1{font-size:1.08em;letter-spacing:0.08em;text-transform:uppercase}
+.title .mark{
+  width:26px;height:26px;border-radius:8px;
+  background:linear-gradient(135deg,var(--accent),#35f0c7);
+  box-shadow:0 0 14px rgba(9,195,255,0.45);
+}
+
+.status{display:flex;gap:16px;align-items:center;font-size:0.83em;color:var(--text2)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+.dot.ok{background:var(--ok);box-shadow:0 0 8px rgba(61,220,154,0.8)}
+.dot.err{background:var(--err);box-shadow:0 0 8px rgba(255,95,127,0.8)}
+
+.tabs{
+  display:flex;gap:8px;margin-top:12px;background:rgba(13,21,42,0.9);
+  border:1px solid var(--border);padding:6px;border-radius:10px;
+}
+.tab{
+  border:1px solid transparent;background:transparent;color:var(--text2);
+  padding:7px 14px;border-radius:8px;font-size:0.82em;letter-spacing:0.06em;
+  text-transform:uppercase;font-weight:700;cursor:pointer;transition:all .2s;
+}
+.tab:hover{color:var(--text);border-color:var(--border)}
+.tab.active{color:var(--text);border-color:#2975ff;background:linear-gradient(180deg,#102753,#0e2248)}
+.tab.planner.active{border-color:#52d68f;background:linear-gradient(180deg,#1b3a2b,#152d21)}
+
+.panel{display:none;margin-top:12px}
+.panel.active{display:block}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px}
+.card{
+  background:linear-gradient(180deg,rgba(17,27,53,0.95),rgba(12,19,39,0.95));
+  border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px;box-shadow:var(--shadow);
+}
+.card h2{
+  font-size:0.75em;color:var(--text2);margin-bottom:10px;
+  letter-spacing:0.18em;text-transform:uppercase;font-weight:700
+}
+
+.zone-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.zone-name{font-weight:700;font-size:1.03em}
+.zone-badge{font-size:0.71em;padding:3px 9px;border-radius:20px;font-weight:700;letter-spacing:0.08em}
+.badge-heating{background:rgba(255,123,74,0.18);color:var(--heat)}
+.badge-idle{background:rgba(75,194,255,0.15);color:var(--cool)}
+.badge-off{background:rgba(126,146,199,0.18);color:var(--text2)}
+
+.zone-temps{display:flex;align-items:baseline;gap:8px}
+.zone-current{font-size:2.1em;font-weight:800;line-height:1}
+.zone-target{font-size:0.9em;color:var(--text2)}
+.zone-target span{color:var(--accent)}
+
+.setpoint-ctrl{display:flex;align-items:center;gap:6px;margin-top:10px}
+.setpoint-ctrl button,.btn{
+  background:var(--card2);border:1px solid var(--border);color:var(--text);
+  height:32px;border-radius:8px;cursor:pointer;padding:0 10px;font-weight:700;
+  transition:all .2s
+}
+.setpoint-ctrl button:hover,.btn:hover{border-color:var(--accent);background:#173269}
+.setpoint-ctrl .sp-val{font-size:1.1em;font-weight:700;min-width:62px;text-align:center}
+
+.zone-valve{margin-top:10px}
+.valve-label{display:flex;justify-content:space-between;font-size:0.78em;color:var(--text2)}
+.valve-bar{height:7px;background:#1d2c54;border-radius:5px;overflow:hidden;margin-top:4px}
+.valve-fill{height:100%;border-radius:5px;transition:width .45s ease}
+
+.zone-controls{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.zone-controls button{
+  background:var(--card2);border:1px solid var(--border);color:var(--text2);
+  padding:4px 10px;border-radius:7px;cursor:pointer;font-size:0.75em;font-weight:700;
+}
+.zone-controls button.active{color:var(--text);background:#1b4ca1;border-color:#2b6fff}
+
+.all-zone-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.all-zone-label{font-size:0.74em;color:var(--text2);text-transform:uppercase;letter-spacing:0.08em;font-weight:700}
+.all-zone-row .btn{height:34px;padding:0 14px}
+.all-zone-row .btn.active{color:var(--text);background:#1b4ca1;border-color:#2b6fff}
+
+.mini-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.metric{text-align:center;background:rgba(24,38,73,0.45);border:1px solid #274074;border-radius:10px;padding:10px}
+.metric .val{font-size:1.45em;font-weight:800}
+.metric .lbl{font-size:0.74em;color:var(--text2);margin-top:4px;text-transform:uppercase;letter-spacing:0.07em}
+
+.switch-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid rgba(54,80,132,.5)}
+.switch-row:last-child{border-bottom:none}
+.toggle{position:relative;width:46px;height:24px;cursor:pointer}
+.toggle input{opacity:0;width:0;height:0}
+.slider{position:absolute;inset:0;border-radius:12px;background:#1f2f58;border:1px solid var(--border);transition:.25s}
+.slider:before{content:'';position:absolute;height:18px;width:18px;left:2px;bottom:2px;background:#8aa2da;border-radius:50%;transition:.25s}
+.toggle input:checked + .slider{background:#1e5cc0;border-color:#3182ff}
+.toggle input:checked + .slider:before{transform:translateX(22px);background:#fff}
+
+.settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.setting-item{display:flex;flex-direction:column;gap:4px}
+.setting-item label{font-size:.76em;color:var(--text2);text-transform:uppercase;letter-spacing:.06em}
+input,select{
+  background:#121f40;border:1px solid var(--border);color:var(--text);
+  padding:7px 10px;border-radius:8px;width:100%
+}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+
+.solver-shell{display:grid;grid-template-columns:1.2fr 1fr;gap:12px}
+.solver-stack{display:grid;gap:12px}
+.solver-status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.solver-kpi{background:#102540;border:1px solid #25517a;border-radius:10px;padding:10px}
+.solver-kpi .k{font-size:0.7em;color:var(--text2);text-transform:uppercase;letter-spacing:0.08em}
+.solver-kpi .v{font-size:1.1em;font-weight:800;margin-top:4px}
+.solver-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.solver-row .btn{height:34px}
+.btn.planner{border-color:#2db67a;background:#133a2b;color:#b7f8dc}
+.btn.planner:hover{background:#16503a}
+
+.table-wrap{overflow:auto;max-height:280px;border:1px solid #243f70;border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:0.78em;min-width:700px}
+th,td{padding:7px 8px;border-bottom:1px solid rgba(46,70,120,.5);text-align:left;white-space:nowrap}
+th{color:var(--text2);text-transform:uppercase;letter-spacing:0.08em;font-size:0.72em;background:#111d3d;position:sticky;top:0}
+.state-pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.7em;font-weight:700;letter-spacing:.05em}
+.state-overheated{background:rgba(255,95,127,.2);color:var(--err)}
+.state-satisfied{background:rgba(61,220,154,.2);color:var(--ok)}
+.state-demand{background:rgba(255,184,77,.2);color:var(--warn)}
+.state-unknown{background:rgba(126,146,199,.25);color:var(--text2)}
+
+.history-list{max-height:260px;overflow:auto;border:1px solid #244067;border-radius:10px;padding:8px;background:#0f1a35}
+.history-entry{border-bottom:1px solid rgba(55,86,138,.45);padding:7px 2px;font-size:0.78em;color:#bcd0ff}
+.history-entry:last-child{border-bottom:none}
+.history-entry b{color:#fff}
+
+.chart{height:180px;border:1px solid #244067;border-radius:10px;background:#0e1933;padding:8px}
+.chart canvas{width:100%;height:100%}
+
+.logs{display:grid;gap:10px}
+.log-area{
+  background:#0e1831;border:1px solid var(--border);border-radius:10px;padding:10px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:0.8em;max-height:320px;overflow:auto;color:#a6b9e8;line-height:1.55;
+}
+.log-entry{border-bottom:1px solid rgba(47,70,118,.5);padding:3px 0}
+.log-entry:last-child{border-bottom:none}
+.log-time{color:var(--accent)}
+.log-actions{display:flex;gap:8px}
+
+.footer{text-align:center;padding:12px 0;color:var(--text2);font-size:0.72em}
+
+@media(max-width:1150px){
+  .solver-shell{grid-template-columns:1fr}
+}
+@media(max-width:760px){
+  .header{flex-direction:column;align-items:flex-start}
+  .status{flex-wrap:wrap;gap:8px}
+  .settings-grid,.solver-status-grid{grid-template-columns:1fr}
+  .mini-grid{grid-template-columns:1fr}
+  .tabs{overflow-x:auto}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="header">
+    <div class="title">
+      <span class="mark"></span>
+      <h1>HeatValve-6 Dashboard</h1>
+    </div>
+    <div class="status">
+      <span><span class="dot" id="conn-dot"></span><span id="conn-text">Connecting…</span></span>
+      <span id="hdr-mode">--</span>
+      <span id="hdr-uptime">--</span>
+      <span id="hdr-status">--</span>
+    </div>
+  </div>
+
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-tab="monitor">Monitor</button>
+    <button class="tab" data-tab="settings">Settings</button>
+    <button class="tab" data-tab="logs">Logs</button>
+  </div>
+
+  <div class="panel active" id="panel-monitor">
+    <div class="card" style="margin-bottom:12px">
+      <h2>All Zones</h2>
+      <div class="all-zone-row">
+        <span class="all-zone-label">Preset</span>
+        <button class="btn" id="all-home-btn" onclick="setPresetAll('HOME')">Home All</button>
+        <button class="btn" id="all-away-btn" onclick="setPresetAll('AWAY')">Away All</button>
+      </div>
+    </div>
+    <div class="grid" id="zones-grid"></div>
+    <div class="grid" style="margin-top:12px;grid-template-columns:repeat(auto-fill,minmax(420px,1fr))">
+      <div class="card">
+        <h2>Heating Circuit</h2>
+        <div class="mini-grid">
+          <div class="metric"><div class="val" id="v-input">--</div><div class="lbl">Supply</div></div>
+          <div class="metric"><div class="val" id="v-output">--</div><div class="lbl">Return</div></div>
+          <div class="metric"><div class="val" id="v-extra">--</div><div class="lbl">Extra</div></div>
+        </div>
+        <div class="mini-grid" style="margin-top:10px">
+          <div class="metric"><div class="val" id="v-avg">--</div><div class="lbl">Avg Valve %</div></div>
+          <div class="metric"><div class="val" id="v-active">--</div><div class="lbl">Active Zones</div></div>
+          <div class="metric"><div class="val" id="v-wifi">--</div><div class="lbl">WiFi dB</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>System</h2>
+        <div class="switch-row">
+          <label>Hydraulic Balancing</label>
+          <label class="toggle"><input type="checkbox" id="sw-bal" onchange="setSwitch('balancing_enabled',this.checked)"><span class="slider"></span></label>
+        </div>
+        <div class="switch-row">
+          <label>Standalone Mode</label>
+          <label class="toggle"><input type="checkbox" id="sw-standalone" onchange="setSwitch('standalone_mode',this.checked)"><span class="slider"></span></label>
+        </div>
+        <div class="switch-row">
+          <label>Controller Status</label>
+          <span id="v-status" style="font-size:.83em;color:var(--text2)">--</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-settings">
+    <div class="card">
+      <h2>Controller Settings</h2>
+      <div class="settings-grid">
+        <div class="setting-item">
+          <label>Pipe Type</label>
+          <select id="set-pipe-type" onchange="setSelect('pipe_type',this.value)"></select>
+        </div>
+        <div class="setting-item">
+          <label>Floor Type</label>
+          <select id="set-floor-type" onchange="setSelect('floor_type',this.value)"></select>
+        </div>
+        <div class="setting-item">
+          <label>Pipe Spacing (mm)</label>
+          <input type="number" id="set-pipe-spacing" onchange="setNumber('pipe_spacing',this.value)">
+        </div>
+        <div class="setting-item">
+          <label>Floor Cover Thickness (mm)</label>
+          <input type="number" id="set-floor-thickness" onchange="setNumber('floor_cover_thickness',this.value)">
+        </div>
+        <div class="setting-item">
+          <label>Min Valve Opening (%)</label>
+          <input type="number" id="set-min-valve" onchange="setNumber('min_valve_opening',this.value)">
+        </div>
+        <div class="setting-item">
+          <label>Comfort Band (°C)</label>
+          <input type="number" id="set-comfort" step="0.1" onchange="setNumber('comfort_band',this.value)">
+        </div>
+        <div class="setting-item">
+          <label>Maintenance Base (%)</label>
+          <input type="number" id="set-maint" onchange="setNumber('maintenance_base',this.value)">
+        </div>
+        <div class="setting-item">
+          <label>Demand Boost (%)</label>
+          <input type="number" id="set-demand" onchange="setNumber('demand_boost',this.value)">
+        </div>
+        <div class="setting-item">
+          <label>Boost Factor (%)</label>
+          <input type="number" id="set-boost" onchange="setNumber('boost_factor',this.value)">
+        </div>
+        <div class="setting-item">
+          <label>Min Movement (%)</label>
+          <input type="number" id="set-minmov" onchange="setNumber('min_movement',this.value)">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="zone-settings-card" style="display:none">
+    <h2>Zone Settings</h2>
+    <div style="overflow-x:auto">
+      <table id="zone-settings-table" style="width:100%;border-collapse:collapse;font-size:.85em">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:4px 8px">Zone</th>
+            <th style="padding:4px 8px">Pipe Type</th>
+            <th style="padding:4px 8px">Floor Type</th>
+            <th style="padding:4px 8px">Spacing (mm)</th>
+            <th style="padding:4px 8px">Cover (mm)</th>
+          </tr>
+        </thead>
+        <tbody id="zone-settings-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-logs">
+    <div class="card logs">
+      <h2>Activity Log</h2>
+      <div class="log-area" id="log-area"></div>
+      <div class="log-actions">
+        <button class="btn" onclick="clearLogs()">Clear</button>
+        <button class="btn" onclick="exportLogs()">Export</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">HeatValve-6 Dashboard</div>
+</div>
+
+<script>
+const POLL_MS = 3000;
+const ZONE_NAMES = ['Zone 1','Zone 2','Zone 3','Zone 4','Zone 5','Zone 6'];
+
+let state = null;
+let logs = [];
+let pollTimer = null;
+let activeTab = 'monitor';
+
+function fmt(v,d){return v==null||Number.isNaN(Number(v))?'--':Number(v).toFixed(d!=null?d:1)}
+function fmtT(v){return v==null||Number.isNaN(Number(v))?'--':Number(v).toFixed(1)+'°'}
+function fmtP(v){return v==null||Number.isNaN(Number(v))?'--':(Number(v)*100).toFixed(0)+'%'}
+function fmtN(v,d){return v==null||Number.isNaN(Number(v))?'--':Number(v).toFixed(d!=null?d:2)}
+
+function valveColor(p){
+  if(p==null||Number.isNaN(Number(p)))return'var(--text2)';
+  let pct = p * 100;
+  if(pct<10)return'var(--cool)';
+  if(pct<50)return'var(--accent)';
+  if(pct<80)return'var(--warn)';
+  return'var(--heat)';
+}
+
+function buildZones(){
+  const g = document.getElementById('zones-grid');
+  g.innerHTML = '';
+  for(let i=0;i<6;i++){
+    const z=i+1;
+    g.innerHTML += `
+      <div class="card" id="zone-${z}">
+        <div class="zone-header">
+          <span class="zone-name" id="zn-${z}">${ZONE_NAMES[i]}</span>
+          <span class="zone-badge" id="zb-${z}">--</span>
+        </div>
+        <div class="zone-temps">
+          <span class="zone-current" id="zt-${z}">--</span>
+          <span class="zone-target">→ <span id="zsp-${z}">--</span></span>
+        </div>
+        <div class="setpoint-ctrl">
+          <button onclick="adjSp(${z},-0.5)">−</button>
+          <span class="sp-val" id="zspv-${z}">--</span>
+          <button onclick="adjSp(${z},0.5)">+</button>
+        </div>
+        <div class="zone-valve">
+          <div class="valve-label"><span>Valve</span><span id="zvl-${z}">--</span></div>
+          <div class="valve-bar"><div class="valve-fill" id="zvf-${z}" style="width:0"></div></div>
+        </div>
+        <div class="zone-controls">
+          <button onclick="setPreset(${z},'BOOST')" id="zp-${z}-BOOST">Boost</button>
+          <button onclick="setMode(${z},'off')" id="zm-${z}-off">Off</button>
+        </div>
+      </div>`;
+  }
+}
+
+function buildZoneSettingsTable(pipeOpts, floorOpts){
+  const card = document.getElementById('zone-settings-card');
+  const tbody = document.getElementById('zone-settings-body');
+  if(!pipeOpts||!floorOpts||!tbody)return;
+  card.style.display='';
+  tbody.innerHTML = '';
+  for(let i=0;i<6;i++){
+    const z=i+1;
+    const pipeOptHtml = pipeOpts.map(o=>`<option value="${o}">${o}</option>`).join('');
+    const floorOptHtml = floorOpts.map(o=>`<option value="${o}">${o}</option>`).join('');
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td style="padding:4px 8px;white-space:nowrap">${ZONE_NAMES[i]}</td>
+      <td style="padding:4px 8px"><select id="zs-pipe-${z}" onchange="setSelect('z${z}_pipe_type',this.value)">${pipeOptHtml}</select></td>
+      <td style="padding:4px 8px"><select id="zs-floor-${z}" onchange="setSelect('z${z}_floor_type',this.value)">${floorOptHtml}</select></td>
+      <td style="padding:4px 8px"><input type="number" id="zs-spacing-${z}" style="width:70px" onchange="setNumber('z${z}_pipe_spacing',this.value)"></td>
+      <td style="padding:4px 8px"><input type="number" id="zs-thickness-${z}" style="width:70px" onchange="setNumber('z${z}_floor_cover_thickness',this.value)"></td>`;
+    tbody.appendChild(row);
+  }
+}
+
+function setActiveTab(tab){
+  activeTab = tab;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===tab));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active', p.id===`panel-${tab}`));
+}
+
+function initTabs(){
+  document.getElementById('tabs').addEventListener('click',e=>{
+    const btn=e.target.closest('.tab');
+    if(!btn)return;
+    setActiveTab(btn.dataset.tab);
+  });
+}
+
+function updateUI(d){
+  state = d;
+
+  let allHome = false;
+  let allAway = false;
+
+  document.getElementById('conn-dot').className='dot ok';
+  document.getElementById('conn-text').textContent='Connected';
+  document.getElementById('hdr-mode').textContent=d.controller_mode||'--';
+  document.getElementById('hdr-uptime').textContent=d.uptime||'--';
+  document.getElementById('hdr-status').textContent=d.system_status||'--';
+
+  if(d.zones){
+    allHome = d.zones.length > 0;
+    allAway = d.zones.length > 0;
+    for(let i=0;i<d.zones.length;i++){
+      const z=i+1,zd=d.zones[i];
+      const temp=zd[`z${z}_temp`],sp=zd[`z${z}_setpoint`],valve=zd[`z${z}_valve`];
+      const action=zd[`z${z}_action`],mode=zd[`z${z}_mode`],preset=zd[`z${z}_preset`];
+      allHome = allHome && preset === 'HOME';
+      allAway = allAway && preset === 'AWAY';
+
+      document.getElementById(`zt-${z}`).textContent=fmtT(temp);
+      document.getElementById(`zsp-${z}`).textContent=fmtT(sp);
+      document.getElementById(`zspv-${z}`).textContent=sp!=null?Number(sp).toFixed(1)+'°':'--';
+
+      const pct=valve!=null&&!Number.isNaN(Number(valve))?valve*100:0;
+      document.getElementById(`zvl-${z}`).textContent=fmtP(valve);
+      const fill=document.getElementById(`zvf-${z}`);
+      fill.style.width=pct+'%';
+      fill.style.background=valveColor(valve);
+
+      const badge=document.getElementById(`zb-${z}`);
+      if(mode==='off'){badge.textContent='OFF';badge.className='zone-badge badge-off';}
+      else if(action==='heating'){badge.textContent='HEATING';badge.className='zone-badge badge-heating';}
+      else{badge.textContent='IDLE';badge.className='zone-badge badge-idle';}
+
+      const boostBtn=document.getElementById(`zp-${z}-BOOST`);
+      if(boostBtn)boostBtn.className=preset==='BOOST'?'active':'';
+      const offBtn=document.getElementById(`zm-${z}-off`);
+      if(offBtn)offBtn.className=mode==='off'?'active':'';
+    }
+  }
+
+  document.getElementById('all-home-btn')?.classList.toggle('active', allHome);
+  document.getElementById('all-away-btn')?.classList.toggle('active', allAway);
+
+  document.getElementById('v-input').textContent=fmtT(d.input_temp);
+  document.getElementById('v-output').textContent=fmtT(d.output_temp);
+  document.getElementById('v-extra').textContent=fmtT(d.extra_temp);
+  document.getElementById('v-avg').textContent=fmt(d.avg_valve_position,1)+'%';
+  document.getElementById('v-active').textContent=fmt(d.active_zones,0);
+  document.getElementById('v-wifi').textContent=fmt(d.wifi_signal,0);
+
+  document.getElementById('sw-bal').checked=!!d.balancing_enabled;
+  document.getElementById('sw-standalone').checked=!!d.standalone_mode;
+  document.getElementById('v-status').textContent=d.system_status||'--';
+
+  updateNumInput('set-min-valve',d.min_valve_opening);
+  updateNumInput('set-comfort',d.comfort_band);
+  updateNumInput('set-maint',d.maintenance_base);
+  updateNumInput('set-demand',d.demand_boost);
+  updateNumInput('set-boost',d.boost_factor);
+  updateNumInput('set-minmov',d.min_movement);
+  updateNumInput('set-pipe-spacing',d.pipe_spacing);
+  updateNumInput('set-floor-thickness',d.floor_cover_thickness);
+
+  if(d.pipe_type&&d.pipe_type.opts){
+    const sel=document.getElementById('set-pipe-type');
+    if(sel.options.length!==d.pipe_type.opts.length){
+      sel.innerHTML='';
+      d.pipe_type.opts.forEach(o=>{
+        const opt=document.createElement('option');
+        opt.value=o;opt.textContent=o;sel.appendChild(opt);
+      });
+    }
+    if(d.pipe_type.idx>=0&&d.pipe_type.idx<d.pipe_type.opts.length){
+      sel.value=d.pipe_type.opts[d.pipe_type.idx];
+    }
+  }
+
+  if(d.floor_type&&d.floor_type.opts){
+    const sel=document.getElementById('set-floor-type');
+    if(sel.options.length!==d.floor_type.opts.length){
+      sel.innerHTML='';
+      d.floor_type.opts.forEach(o=>{
+        const opt=document.createElement('option');
+        opt.value=o;opt.textContent=o;sel.appendChild(opt);
+      });
+    }
+    if(d.floor_type.idx>=0&&d.floor_type.idx<d.floor_type.opts.length){
+      sel.value=d.floor_type.opts[d.floor_type.idx];
+    }
+  }
+
+  // Per-zone settings table
+  if(d.pipe_type&&d.pipe_type.opts&&d.floor_type&&d.floor_type.opts){
+    const tbody = document.getElementById('zone-settings-body');
+    if(!tbody || tbody.rows.length !== 6){
+      buildZoneSettingsTable(d.pipe_type.opts, d.floor_type.opts);
+    }
+    if(d.zones){
+      d.zones.forEach((zd,i)=>{
+        const z=i+1;
+        const pipeIdx = zd[`z${z}_pipe_type_idx`];
+        const floorIdx = zd[`z${z}_floor_type_idx`];
+        const pipeSp = zd[`z${z}_pipe_spacing`];
+        const floorTh = zd[`z${z}_floor_cover_thickness`];
+        const pipeEl = document.getElementById(`zs-pipe-${z}`);
+        const floorEl = document.getElementById(`zs-floor-${z}`);
+        const spacingEl = document.getElementById(`zs-spacing-${z}`);
+        const thickEl = document.getElementById(`zs-thickness-${z}`);
+        if(pipeEl&&pipeIdx!=null&&pipeIdx>=0&&pipeIdx<pipeEl.options.length&&document.activeElement!==pipeEl)
+          pipeEl.selectedIndex=pipeIdx;
+        if(floorEl&&floorIdx!=null&&floorIdx>=0&&floorIdx<floorEl.options.length&&document.activeElement!==floorEl)
+          floorEl.selectedIndex=floorIdx;
+        if(spacingEl&&pipeSp)updateNumInput(`zs-spacing-${z}`,pipeSp);
+        if(thickEl&&floorTh)updateNumInput(`zs-thickness-${z}`,floorTh);
+      });
+    }
+  }
+}
+
+function updateNumInput(id,nd){
+  const el=document.getElementById(id);
+  if(!el||!nd)return;
+  if(document.activeElement!==el)el.value=nd.val!=null?nd.val:'';
+  if(nd.min!=null)el.min=nd.min;
+  if(nd.max!=null)el.max=nd.max;
+  if(nd.step!=null)el.step=nd.step;
+}
+
+function adjSp(z,delta){
+  if(!state||!state.zones||!state.zones[z-1])return;
+  const zd=state.zones[z-1];
+  const sp=zd[`z${z}_setpoint`];
+  if(sp==null)return;
+  postSet(`z${z}_setpoint`,Math.round((sp+delta)*10)/10);
+}
+
+function setPreset(z,preset){postSet(`z${z}_preset`,preset,true)}
+function setPresetAll(preset){
+  for(let z=1;z<=ZONE_NAMES.length;z++)postSet(`z${z}_preset`,preset,true);
+  addLog('Set all zones to '+preset);
+}
+function setMode(z,mode){postSet(`z${z}_mode`,mode,true)}
+function setSwitch(key,val){postSet(key,val?1:0)}
+function setSelect(key,val){postSet(key,val,true)}
+function setNumber(key,val){postSet(key,parseFloat(val))}
+
+function postSet(key,value,isStr){
+  const body=isStr
+    ?JSON.stringify({key:key,value:String(value)})
+    :JSON.stringify({key:key,value:Number(value)});
+
+  fetch('/dashboard/set',{method:'POST',headers:{'Content-Type':'application/json'},body:body})
+    .then(r=>r.json())
+    .then(r=>{if(r.ok)addLog('Set '+key+' = '+value);else addLog('Error: '+JSON.stringify(r));})
+    .catch(e=>addLog('Error: '+e.message));
+
+  setTimeout(poll,450);
+}
+
+function addLog(msg){
+  const ts=new Date().toLocaleTimeString();
+  logs.push({time:ts,msg:msg});
+  if(logs.length>240)logs.shift();
+  renderLogs();
+}
+
+function renderLogs(){
+  const el=document.getElementById('log-area');
+  el.innerHTML=logs.map(l=>`<div class="log-entry"><span class="log-time">${l.time}</span> ${l.msg}</div>`).join('');
+  el.scrollTop=el.scrollHeight;
+}
+
+function clearLogs(){logs=[];renderLogs()}
+
+function exportLogs(){
+  const text=logs.map(l=>l.time+' '+l.msg).join('\n');
+  const blob=new Blob([text],{type:'text/plain'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='heatvalve-logs-'+new Date().toISOString().slice(0,10)+'.txt';
+  a.click();
+}
+
+function poll(){
+  fetch('/dashboard/state')
+    .then(r=>{if(!r.ok)throw new Error(r.status);return r.json();})
+    .then(d=>{
+      updateUI(d);
+    })
+    .catch(()=>{
+      document.getElementById('conn-dot').className='dot err';
+      document.getElementById('conn-text').textContent='Disconnected';
+    });
+}
+
+buildZones();
+initTabs();
+setActiveTab('monitor');
+poll();
+pollTimer=setInterval(poll,POLL_MS);
+addLog('Dashboard loaded');
+</script>
+</body>
+</html>

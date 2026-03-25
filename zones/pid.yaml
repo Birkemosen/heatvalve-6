@@ -1,0 +1,43 @@
+# ============================================
+# Zone with PID Control (Combined)
+# ============================================
+# Complete zone: base infrastructure + PID control profile.
+# Use this file for all zones when using PID control.
+#
+# Required vars:
+#   zone_number: "1"
+#   motor_number: "1"             # 1-6 (motor assigned to this zone)
+#   id: "living"
+#   friendly_name: "Living Room"
+#   temperature_sensor: sensor_id
+#   target_temp_default: "21"
+#   pid_kp: "0.06"
+#   pid_ki: "0.00011"
+#   pid_kd: "4.0"
+#
+# Optional vars:
+#   zone_area_default: "15"
+#   zone_max_opening_default: "90"
+
+packages:
+  base: !include
+    file: base.yaml
+    vars:
+      zone_number: ${zone_number}
+      motor_number: ${motor_number}
+      id: ${id}
+      friendly_name: ${friendly_name}
+      zone_area_default: ${zone_area_default}
+      zone_max_opening_default: ${zone_max_opening_default}
+
+  control: !include
+    file: ../control/pid.yaml
+    vars:
+      zone_number: ${zone_number}
+      id: ${id}
+      friendly_name: ${friendly_name}
+      temperature_sensor: ${temperature_sensor}
+      target_temp_default: ${target_temp_default}
+      pid_kp: ${pid_kp}
+      pid_ki: ${pid_ki}
+      pid_kd: ${pid_kd}

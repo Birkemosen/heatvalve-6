@@ -1,0 +1,512 @@
+# DRV8215 Motor-1 manual hardware test (no automation)
+# Purpose: bring-up of first motor channel only (configurable addr)
+# with explicit manual controls in web UI.
+
+globals:
+  - id: motor_turning
+    type: bool
+    initial_value: 'false'
+
+  - id: drv_m1_last_i2c_error
+    type: int
+    initial_value: '-1'
+
+  - id: drv_m1_last_fault_status
+    type: int
+    initial_value: '0'
+
+  - id: drv_m1_last_config4
+    type: int
+    initial_value: '-1'
+
+  - id: drv_m1_auto_probe_pending
+    type: bool
+    initial_value: 'true'
+
+  - id: drv_m1_last_logged_ipropi_voltage
+    type: float
+    initial_value: '0.0'
+
+switch:
+  - platform: gpio
+    name: "DRV nSLEEP (GPIO${motor_nsleep_pin})"
+    id: drv_nsleep
+    pin:
+      number: ${motor_nsleep_pin}
+    restore_mode: ALWAYS_OFF
+    on_turn_on:
+      then:
+        - lambda: |-
+            ESP_LOGI("drvtest", "nSLEEP ON (GPIO${motor_nsleep_pin})");
+    on_turn_off:
+      then:
+        - lambda: |-
+            ESP_LOGI("drvtest", "nSLEEP OFF (GPIO${motor_nsleep_pin})");
+
+sensor:
+  - platform: adc
+    name: "IPROPI Voltage"
+    id: drv_ipropi_voltage
+    pin: ${motor_ipropi_pin}
+    attenuation: 12db
+    update_interval: 100ms
+    accuracy_decimals: 3
+    unit_of_measurement: "V"
+    on_value:
+      then:
+        - lambda: |-
+            const float delta = fabsf(x - id(drv_m1_last_logged_ipropi_voltage));
+            if (delta < 0.005f) {
+              return;
+            }
+            id(drv_m1_last_logged_ipropi_voltage) = x;
+            ESP_LOGI("drvtest", "IPROPI changed: %.3fV %.1fmA", x, x / 0.032984f);
+
+  - platform: template
+    name: "IPROPI Current (mA)"
+    id: drv_ipropi_current
+    update_interval: 200ms
+    accuracy_decimals: 1
+    unit_of_measurement: "mA"
+    lambda: |-
+      float v = id(drv_ipropi_voltage).state;
+      if (isnan(v)) return 0.0f;
+      return v / 0.032984f;
+
+  - platform: template
+    name: "DRV M1 Last I2C Error"
+    id: drv_m1_last_i2c_error_sensor
+    update_interval: 500ms
+    accuracy_decimals: 0
+    lambda: |-
+      return id(drv_m1_last_i2c_error);
+
+  - platform: template
+    name: "DRV M1 Fault Status Raw"
+    id: drv_m1_fault_status_raw_sensor
+    update_interval: 500ms
+    accuracy_decimals: 0
+    lambda: |-
+      return id(drv_m1_last_fault_status);
+
+  - platform: template
+    name: "DRV M1 CONFIG4 Raw"
+    id: drv_m1_config4_raw_sensor
+    update_interval: 500ms
+    accuracy_decimals: 0
+    lambda: |-
+      return id(drv_m1_last_config4);
+
+text_sensor:
+  - platform: template
+    name: "DRV M1 Last I2C Error Text"
+    id: drv_m1_last_i2c_error_text
+    update_interval: 500ms
+    lambda: |-
+      switch ((int) id(drv_m1_last_i2c_error)) {
+        case -1:
+          return {"NOT_TESTED"};
+        case 0:
+          return {"OK"};
+        case 1:
+          return {"DEVICE_NOT_FOUND"};
+        case 2:
+          return {"NOT_ACKNOWLEDGED"};
+        case 3:
+          return {"TIMEOUT"};
+        case 4:
+          return {"BUS_NOT_INITIALIZED"};
+        default:
+          return {"UNKNOWN"};
+      }
+
+binary_sensor:
+  - platform: gpio
+    name: "DRV nFAULT"
+    id: drv_nfault
+    pin:
+      number: ${motor_nfault_pin}
+      mode: INPUT
+      inverted: true
+    on_press:
+      then:
+        - logger.log:
+            format: "nFAULT ASSERTED (fault detected)"
+            level: WARN
+            tag: drvtest
+    on_release:
+      then:
+        - logger.log:
+            format: "nFAULT released (no fault)"
+            level: INFO
+            tag: drvtest
+
+script:
+  - id: drv_m1_debug_snapshot
+    then:
+      - lambda: |-
+          ESP_LOGI(
+            "drvtest",
+            "Snapshot: addr=0x%02X nSLEEP=%s nFAULT=%s IPROPI=%.3fV %.1fmA last_i2c_err=%d last_fault=0x%02X config4=0x%02X",
+            static_cast<uint8_t>(${drv_m1_addr}),
+            id(drv_nsleep).state ? "ON" : "OFF",
+            id(drv_nfault).state ? "FAULT" : "OK",
+            id(drv_ipropi_voltage).state,
+            id(drv_ipropi_current).state,
+            id(drv_m1_last_i2c_error),
+            id(drv_m1_last_fault_status),
+            id(drv_m1_last_config4));
+
+  - id: drv_m1_read_config4
+    then:
+      - lambda: |-
+          constexpr uint8_t addr = ${drv_m1_addr};
+          auto *bus = id(i2c_bus);
+          if (!bus) {
+            id(drv_m1_last_i2c_error) = esphome::i2c::ERROR_NOT_INITIALIZED;
+            ESP_LOGE("drvtest", "I2C bus not available!");
+            return;
+          }
+
+          uint8_t reg = 0x0D;
+          uint8_t data = 0;
+          auto write_result = bus->write(addr, &reg, 1);
+          auto read_result = bus->read(addr, &data, 1);
+          if (write_result != esphome::i2c::ERROR_OK || read_result != esphome::i2c::ERROR_OK) {
+            id(drv_m1_last_i2c_error) = (write_result != esphome::i2c::ERROR_OK) ? write_result : read_result;
+            ESP_LOGE("drvtest", "Read CONFIG4 failed (write_err=%d read_err=%d)", write_result, read_result);
+            return;
+          }
+
+          id(drv_m1_last_i2c_error) = 0;
+          id(drv_m1_last_config4) = data;
+          ESP_LOGI(
+            "drvtest",
+            "CONFIG4=0x%02X (PMODE=%d I2C_BC=%d IN1=%d IN2=%d)",
+            data,
+            (data >> 3) & 1,
+            (data >> 2) & 1,
+            (data >> 1) & 1,
+            data & 1);
+
+  - id: drv_m1_ping_i2c
+    then:
+      - lambda: |-
+          id(drv_m1_auto_probe_pending) = false;
+      - switch.turn_on: drv_nsleep
+      - delay: 2ms
+      - lambda: |-
+          constexpr uint8_t addr = ${drv_m1_addr};
+          auto *bus = id(i2c_bus);
+          if (!bus) {
+            id(drv_m1_last_i2c_error) = esphome::i2c::ERROR_NOT_INITIALIZED;
+            ESP_LOGE("drvtest", "I2C bus not available!");
+            return;
+          }
+          ESP_LOGI(
+            "drvtest",
+            "Pinging Motor 1 target 0x%02X (nSLEEP=%s nFAULT=%s)",
+            addr,
+            id(drv_nsleep).state ? "ON" : "OFF",
+            id(drv_nfault).state ? "FAULT" : "OK");
+          uint8_t reg = 0x00;
+          uint8_t data = 0;
+          auto write_result = bus->write(addr, &reg, 1);
+          auto read_result = bus->read(addr, &data, 1);
+          bool ok = (write_result == esphome::i2c::ERROR_OK) &&
+                    (read_result == esphome::i2c::ERROR_OK);
+          id(drv_m1_last_i2c_error) = ok ? 0 : (write_result != esphome::i2c::ERROR_OK ? write_result : read_result);
+          if (ok) {
+            id(drv_m1_last_fault_status) = data;
+            ESP_LOGI("drvtest", "Motor 1 @ 0x%02X FOUND (FAULT_STATUS=0x%02X)", addr, data);
+          } else {
+            ESP_LOGW("drvtest", "Motor 1 @ 0x%02X NOT FOUND (write_err=%d read_err=%d)", addr, write_result, read_result);
+          }
+
+  - id: drv_m1_scan_candidates
+    then:
+      - lambda: |-
+          id(drv_m1_auto_probe_pending) = false;
+      - switch.turn_on: drv_nsleep
+      - delay: 2ms
+      - lambda: |-
+          auto *bus = id(i2c_bus);
+          if (!bus) {
+            id(drv_m1_last_i2c_error) = esphome::i2c::ERROR_NOT_INITIALIZED;
+            ESP_LOGE("drvtest", "I2C bus not available!");
+            return;
+          }
+
+          const uint8_t candidates[] = {0x30, 0x31, 0x32, 0x33, 0x34, 0x35};
+          int found = 0;
+
+          ESP_LOGI("drvtest", "Scanning DRV8215 candidate addresses (0x30-0x35)...");
+          for (uint8_t addr : candidates) {
+            uint8_t reg = 0x00;
+            uint8_t data = 0;
+            auto write_result = bus->write(addr, &reg, 1);
+            auto read_result = bus->read(addr, &data, 1);
+            bool ok = (write_result == esphome::i2c::ERROR_OK) &&
+                      (read_result == esphome::i2c::ERROR_OK);
+
+            ESP_LOGI("drvtest", "  0x%02X -> %s (write_err=%d read_err=%d)", addr, ok ? "ACK" : "NO_ACK", write_result,
+                     read_result);
+
+            if (ok) {
+              found++;
+              id(drv_m1_last_fault_status) = data;
+            }
+          }
+
+          if (found == 0) {
+            id(drv_m1_last_i2c_error) = esphome::i2c::ERROR_NOT_ACKNOWLEDGED;
+            ESP_LOGW("drvtest", "No DRV8215 ACK in 0x30-0x35. Check nSLEEP, A0/A1 address strapping, SDA/SCL, and power.");
+          } else {
+            id(drv_m1_last_i2c_error) = esphome::i2c::ERROR_OK;
+            ESP_LOGI("drvtest", "Found %d responding address(es)", found);
+          }
+
+  - id: drv_m1_init
+    then:
+      - switch.turn_on: drv_nsleep
+      - delay: 2ms
+      - lambda: |-
+          constexpr uint8_t addr = ${drv_m1_addr};
+          auto *bus = id(i2c_bus);
+          if (!bus) {
+            id(drv_m1_last_i2c_error) = esphome::i2c::ERROR_NOT_INITIALIZED;
+            ESP_LOGE("drvtest", "I2C bus not available!");
+            return;
+          }
+
+          uint8_t wb[2];
+
+          // CONFIG4: PMODE=1, I2C_BC=1, IN1=0, IN2=0
+          wb[0] = 0x0D; wb[1] = 0x0C;
+          auto result = bus->write(addr, wb, 2);
+          if (result != esphome::i2c::ERROR_OK) {
+            id(drv_m1_last_i2c_error) = result;
+            ESP_LOGE("drvtest", "Init failed writing CONFIG4 (err=%d)", result);
+            return;
+          }
+
+          // CONFIG3: IMODE=00, SMODE=1, INT_VREF=1, OCP=1, TSD=1
+          wb[0] = 0x0C; wb[1] = 0x33;
+          result = bus->write(addr, wb, 2);
+          if (result != esphome::i2c::ERROR_OK) {
+            id(drv_m1_last_i2c_error) = result;
+            ESP_LOGE("drvtest", "Init failed writing CONFIG3 (err=%d)", result);
+            return;
+          }
+
+          // CONFIG0: EN_OUT=1, EN_OVP=1, EN_STALL=1
+          wb[0] = 0x09; wb[1] = 0xE0;
+          result = bus->write(addr, wb, 2);
+          if (result != esphome::i2c::ERROR_OK) {
+            id(drv_m1_last_i2c_error) = result;
+            ESP_LOGE("drvtest", "Init failed writing CONFIG0 (err=%d)", result);
+            return;
+          }
+
+          // RC_CTRL0: CS_GAIN_SEL=110b
+          wb[0] = 0x11; wb[1] = 0x06;
+          result = bus->write(addr, wb, 2);
+          if (result != esphome::i2c::ERROR_OK) {
+            id(drv_m1_last_i2c_error) = result;
+            ESP_LOGE("drvtest", "Init failed writing RC_CTRL0 (err=%d)", result);
+            return;
+          }
+
+          id(drv_m1_last_i2c_error) = 0;
+          ESP_LOGI("drvtest", "Motor 1 @ 0x%02X initialized", addr);
+      - script.execute: drv_m1_read_config4
+
+  - id: drv_m1_stop
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(drv_nsleep).state;'
+          then:
+            - logger.log:
+                tag: drvtest
+                level: WARN
+                format: "nSLEEP was OFF; waking driver before STOP"
+      - switch.turn_on: drv_nsleep
+      - delay: 2ms
+      - lambda: |-
+          constexpr uint8_t addr = ${drv_m1_addr};
+          auto *bus = id(i2c_bus);
+          if (!bus) {
+            id(drv_m1_last_i2c_error) = esphome::i2c::ERROR_NOT_INITIALIZED;
+            return;
+          }
+          uint8_t wb[2] = {0x0D, 0x0C};  // coast (IN1=0, IN2=0)
+          auto result = bus->write(addr, wb, 2);
+          id(drv_m1_last_i2c_error) = (result == esphome::i2c::ERROR_OK) ? 0 : result;
+          if (result != esphome::i2c::ERROR_OK) {
+            ESP_LOGE("drvtest", "Stop write failed (err=%d)", result);
+          }
+          id(motor_turning) = false;
+          ESP_LOGI("drvtest", "Motor 1 STOPPED (coast)");
+      - script.execute: drv_m1_read_config4
+
+  - id: drv_m1_forward
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(drv_nsleep).state;'
+          then:
+            - logger.log:
+                tag: drvtest
+                level: WARN
+                format: "nSLEEP was OFF; waking driver before FORWARD"
+      - switch.turn_on: drv_nsleep
+      - delay: 2ms
+      - lambda: |-
+          constexpr uint8_t addr = ${drv_m1_addr};
+          auto *bus = id(i2c_bus);
+          if (!bus) {
+            id(drv_m1_last_i2c_error) = esphome::i2c::ERROR_NOT_INITIALIZED;
+            return;
+          }
+          // CONFIG4: PMODE=1, I2C_BC=1, IN1=1, IN2=0 (forward)
+          uint8_t wb[2] = {0x0D, 0x0E};
+          auto result = bus->write(addr, wb, 2);
+          id(drv_m1_last_i2c_error) = (result == esphome::i2c::ERROR_OK) ? 0 : result;
+          if (result != esphome::i2c::ERROR_OK) {
+            ESP_LOGE("drvtest", "Forward write failed (err=%d)", result);
+            return;
+          }
+          id(motor_turning) = true;
+          ESP_LOGI("drvtest", "Motor 1 FORWARD (open)");
+      - script.execute: drv_m1_read_config4
+
+  - id: drv_m1_reverse
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(drv_nsleep).state;'
+          then:
+            - logger.log:
+                tag: drvtest
+                level: WARN
+                format: "nSLEEP was OFF; waking driver before REVERSE"
+      - switch.turn_on: drv_nsleep
+      - delay: 2ms
+      - lambda: |-
+          constexpr uint8_t addr = ${drv_m1_addr};
+          auto *bus = id(i2c_bus);
+          if (!bus) {
+            id(drv_m1_last_i2c_error) = esphome::i2c::ERROR_NOT_INITIALIZED;
+            return;
+          }
+          // CONFIG4: PMODE=1, I2C_BC=1, IN1=0, IN2=1 (reverse)
+          uint8_t wb[2] = {0x0D, 0x0D};
+          auto result = bus->write(addr, wb, 2);
+          id(drv_m1_last_i2c_error) = (result == esphome::i2c::ERROR_OK) ? 0 : result;
+          if (result != esphome::i2c::ERROR_OK) {
+            ESP_LOGE("drvtest", "Reverse write failed (err=%d)", result);
+            return;
+          }
+          id(motor_turning) = true;
+          ESP_LOGI("drvtest", "Motor 1 REVERSE (close)");
+      - script.execute: drv_m1_read_config4
+
+  - id: drv_m1_read_fault
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(drv_nsleep).state;'
+          then:
+            - logger.log:
+                tag: drvtest
+                level: WARN
+                format: "nSLEEP was OFF; waking driver before FAULT read"
+      - switch.turn_on: drv_nsleep
+      - delay: 2ms
+      - lambda: |-
+          constexpr uint8_t addr = ${drv_m1_addr};
+          auto *bus = id(i2c_bus);
+          if (!bus) {
+            id(drv_m1_last_i2c_error) = esphome::i2c::ERROR_NOT_INITIALIZED;
+            return;
+          }
+          uint8_t reg = 0x00;
+          uint8_t data = 0;
+          auto write_result = bus->write(addr, &reg, 1);
+          auto read_result = bus->read(addr, &data, 1);
+          if (write_result != esphome::i2c::ERROR_OK || read_result != esphome::i2c::ERROR_OK) {
+            id(drv_m1_last_i2c_error) = (write_result != esphome::i2c::ERROR_OK) ? write_result : read_result;
+            ESP_LOGE("drvtest", "Read fault failed (write_err=%d read_err=%d)", write_result, read_result);
+            return;
+          }
+          id(drv_m1_last_i2c_error) = 0;
+          id(drv_m1_last_fault_status) = data;
+          ESP_LOGI("drvtest", "Motor 1 FAULT_STATUS=0x%02X (FAULT=%d STALL=%d OCP=%d TSD=%d)",
+            data,
+            (data >> 7) & 1,
+            (data >> 5) & 1,
+            (data >> 4) & 1,
+            (data >> 2) & 1);
+
+interval:
+  - interval: 4s
+    then:
+      - if:
+          condition:
+            lambda: 'return id(drv_m1_auto_probe_pending);'
+          then:
+            - logger.log:
+                tag: drvtest
+                level: INFO
+                format: "Auto-probe: scanning DRV addresses after boot"
+            - script.execute: drv_m1_scan_candidates
+
+button:
+  - platform: template
+    name: "DRV M1 Ping I2C"
+    icon: mdi:magnify
+    on_press:
+      - script.execute: drv_m1_ping_i2c
+
+  - platform: template
+    name: "DRV Scan Addresses 0x30-0x35"
+    icon: mdi:radar
+    on_press:
+      - script.execute: drv_m1_scan_candidates
+
+  - platform: template
+    name: "DRV M1 Debug Snapshot"
+    icon: mdi:information-outline
+    on_press:
+      - script.execute: drv_m1_debug_snapshot
+
+  - platform: template
+    name: "DRV M1 Init"
+    icon: mdi:cog
+    on_press:
+      - script.execute: drv_m1_init
+
+  - platform: template
+    name: "DRV M1 Forward (Open)"
+    icon: mdi:arrow-up
+    on_press:
+      - script.execute: drv_m1_forward
+
+  - platform: template
+    name: "DRV M1 Reverse (Close)"
+    icon: mdi:arrow-down
+    on_press:
+      - script.execute: drv_m1_reverse
+
+  - platform: template
+    name: "DRV M1 Stop"
+    icon: mdi:stop
+    on_press:
+      - script.execute: drv_m1_stop
+
+  - platform: template
+    name: "DRV M1 Read Fault"
+    icon: mdi:alert-circle
+    on_press:
+      - script.execute: drv_m1_read_fault

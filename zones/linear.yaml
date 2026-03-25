@@ -1,0 +1,45 @@
+# ============================================
+# Zone with Linear Control (Combined)
+# ============================================
+# Complete zone: base infrastructure + linear control profile.
+# Use this file for all zones when using linear control.
+#
+# Required vars:
+#   zone_number: "1"
+#   motor_number: "1"             # 1-6 (motor assigned to this zone)
+#   id: "living"
+#   friendly_name: "Living Room"
+#   temperature_sensor: sensor_id
+#   default_preset: "home"
+#   preset_home_temp: "21"
+#   preset_away_temp: "18"
+#   preset_boost_temp: "24"
+#   check_interval: "15min"
+#
+# Optional vars:
+#   zone_area_default: "15"
+#   zone_max_opening_default: "90"
+
+packages:
+  base: !include
+    file: base.yaml
+    vars:
+      zone_number: ${zone_number}
+      motor_number: ${motor_number}
+      id: ${id}
+      friendly_name: ${friendly_name}
+      zone_area_default: ${zone_area_default}
+      zone_max_opening_default: ${zone_max_opening_default}
+
+  control: !include
+    file: ../control/linear.yaml
+    vars:
+      zone_number: ${zone_number}
+      id: ${id}
+      friendly_name: ${friendly_name}
+      temperature_sensor: ${temperature_sensor}
+      default_preset: ${default_preset}
+      preset_home_temp: ${preset_home_temp}
+      preset_away_temp: ${preset_away_temp}
+      preset_boost_temp: ${preset_boost_temp}
+      check_interval: ${check_interval}
