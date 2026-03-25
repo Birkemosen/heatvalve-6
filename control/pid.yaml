@@ -113,7 +113,7 @@ output:
     write_action:
       - lambda: |-
           // Check if another motor is running (multiplexed design)
-          if (id(motor_mutex)) {
+              if (id(motor_supervisor_ctrl).is_motor_busy()) {
               ESP_LOGD("pid", "CH${zone_number} skipped - motor busy");
               return;
           }

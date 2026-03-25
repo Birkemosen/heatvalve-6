@@ -28,75 +28,6 @@
 #   0x11: RC_CTRL0 (RW)     - CS_GAIN_SEL[2:0]
 
 # ============================================
-# Motor Control Globals
-# ============================================
-globals:
-  - id: motor_mutex
-    type: bool
-    initial_value: 'false'
-
-  - id: current_motor
-    type: int
-    initial_value: '0'
-
-  - id: motor_direction
-    type: int
-    initial_value: '0'  # 0=close, 1=open
-
-  - id: motor_turning
-    type: bool
-    initial_value: 'false'
-
-  - id: motor_debounce_count
-    type: int
-    initial_value: '0'
-
-  - id: motor_current_raw
-    type: float
-    initial_value: '0.0'
-
-  - id: motor_current_filtered
-    type: float
-    initial_value: '0.0'
-
-  - id: motor_current_sum
-    type: float
-    initial_value: '0.0'
-
-  - id: motor_current_count
-    type: int
-    initial_value: '0'
-
-  - id: motor_mean_current_1
-    type: float
-    restore_value: true
-    initial_value: '40.0'
-  - id: motor_mean_current_2
-    type: float
-    restore_value: true
-    initial_value: '40.0'
-  - id: motor_mean_current_3
-    type: float
-    restore_value: true
-    initial_value: '40.0'
-  - id: motor_mean_current_4
-    type: float
-    restore_value: true
-    initial_value: '40.0'
-  - id: motor_mean_current_5
-    type: float
-    restore_value: true
-    initial_value: '40.0'
-  - id: motor_mean_current_6
-    type: float
-    restore_value: true
-    initial_value: '40.0'
-
-  - id: motor_endstop_event
-    type: bool
-    initial_value: 'false'
-
-# ============================================
 # DRV8215 Component Instances (one per motor)
 # ============================================
 drv8215:
@@ -118,6 +49,33 @@ drv8215:
   - id: motor_drv_6
     address: ${drv8215_addr_motor6}
     motor_num: 6
+
+# ============================================
+# Motor Supervisor (C++ FSM / timing / PWM / fault handling)
+# ============================================
+motor_supervisor:
+  id: motor_supervisor_ctrl
+  motor_1_id: motor_drv_1
+  motor_2_id: motor_drv_2
+  motor_3_id: motor_drv_3
+  motor_4_id: motor_drv_4
+  motor_5_id: motor_drv_5
+  motor_6_id: motor_drv_6
+  ipropi_voltage_id: ${id_prefix}motor_ipropi_voltage
+  nfault_id: motor_nfault
+  current_factor_high_id: ${id_prefix}current_factor_high
+  low_current_threshold_id: ${id_prefix}low_current_threshold_ma
+  low_current_window_ms_id: ${id_prefix}low_current_window_ms
+  max_runtime_seconds_id: ${id_prefix}motor_max_run_seconds
+  pwm_boost_ms_id: ${id_prefix}motor_pwm_boost_ms
+  pwm_hold_duty_percent_id: ${id_prefix}motor_pwm_hold_duty_percent
+  pwm_period_ms_id: ${id_prefix}motor_pwm_period_ms
+  calibration_min_travel_ms_id: ${id_prefix}calibration_min_travel_ms
+  calibration_max_retries_id: ${id_prefix}calibration_max_retries
+  relearn_after_movements_id: ${id_prefix}relearn_after_movements
+  relearn_after_hours_id: ${id_prefix}relearn_after_hours
+  drift_relearn_threshold_percent_id: ${id_prefix}drift_relearn_threshold_percent
+  presence_test_duration_ms_id: ${id_prefix}presence_test_duration_ms
 
 # ============================================
 # nSLEEP Control (shared, wakes all DRV8215)
@@ -145,13 +103,6 @@ binary_sensor:
     internal: true
     filters:
       - delayed_on: 1ms
-    on_press:
-      then:
-        - lambda: |-
-            if (id(motor_turning)) {
-              ESP_LOGW("drv8215", "nFAULT asserted during motor %d operation!", id(current_motor));
-              id(motor_endstop_event) = true;
-            }
 
   - platform: template
     name: "Motor Endstop"
@@ -159,7 +110,7 @@ binary_sensor:
     icon: "mdi:stop-circle"
     entity_category: diagnostic
     lambda: |-
-      return id(motor_endstop_event);
+      return id(motor_supervisor_ctrl).endstop_event();
     web_server:
       sorting_group_id: sorting_group_debug
 
@@ -169,7 +120,50 @@ binary_sensor:
     icon: "mdi:rotate-3d-variant"
     entity_category: diagnostic
     lambda: |-
-      return id(motor_turning);
+      return id(motor_supervisor_ctrl).is_motor_turning();
+    web_server:
+      sorting_group_id: sorting_group_debug
+
+  - platform: template
+    name: "Motor Fault"
+    id: motor_fault_sensor
+    icon: "mdi:alert-circle"
+    entity_category: diagnostic
+    lambda: |-
+      return id(motor_supervisor_ctrl).fault_event();
+    web_server:
+      sorting_group_id: sorting_group_debug
+
+  - platform: template
+    name: "Motor Fault Latched"
+    id: motor_fault_latched_sensor
+    icon: "mdi:alert-octagon"
+    entity_category: diagnostic
+    lambda: |-
+      return id(motor_supervisor_ctrl).has_fault_latch();
+    web_server:
+      sorting_group_id: sorting_group_debug
+
+text_sensor:
+  - platform: template
+    name: "Motor Fault Code"
+    id: ${id_prefix}motor_fault_code
+    icon: "mdi:alert"
+    update_interval: 250ms
+    entity_category: diagnostic
+    lambda: |-
+      return {id(motor_supervisor_ctrl).get_current_fault_name()};
+    web_server:
+      sorting_group_id: sorting_group_debug
+
+  - platform: template
+    name: "Motor Fault Latch Code"
+    id: ${id_prefix}motor_fault_latch_code
+    icon: "mdi:alert-octagon"
+    update_interval: 1s
+    entity_category: diagnostic
+    lambda: |-
+      return {id(motor_supervisor_ctrl).get_latched_fault_name()};
     web_server:
       sorting_group_id: sorting_group_debug
 
@@ -197,7 +191,7 @@ sensor:
     update_interval: 100ms
     entity_category: diagnostic
     lambda: |-
-      return id(motor_current_filtered);
+      return id(motor_supervisor_ctrl).get_current_filtered();
     web_server:
       sorting_group_id: sorting_group_debug
 
@@ -210,17 +204,49 @@ sensor:
     update_interval: 1s
     entity_category: diagnostic
     lambda: |-
-      int motor = id(current_motor);
-      if (motor == 0) return 0;
-      switch(motor) {
-        case 1: return id(motor_mean_current_1);
-        case 2: return id(motor_mean_current_2);
-        case 3: return id(motor_mean_current_3);
-        case 4: return id(motor_mean_current_4);
-        case 5: return id(motor_mean_current_5);
-        case 6: return id(motor_mean_current_6);
-        default: return 0;
+      return id(motor_supervisor_ctrl).get_current_motor_mean_current();
+    web_server:
+      sorting_group_id: sorting_group_debug
+
+  - platform: template
+    name: "Motor Fault Code ID"
+    id: ${id_prefix}motor_fault_code_id
+    icon: "mdi:counter"
+    unit_of_measurement: "id"
+    accuracy_decimals: 0
+    update_interval: 250ms
+    entity_category: diagnostic
+    lambda: |-
+      return id(motor_supervisor_ctrl).get_current_fault_code();
+    web_server:
+      sorting_group_id: sorting_group_debug
+
+  - platform: template
+    name: "Motor Fault Raw"
+    id: ${id_prefix}motor_fault_raw
+    icon: "mdi:code-braces"
+    unit_of_measurement: "raw"
+    accuracy_decimals: 0
+    update_interval: 250ms
+    entity_category: diagnostic
+    lambda: |-
+      return id(motor_supervisor_ctrl).get_current_fault_raw();
+    web_server:
+      sorting_group_id: sorting_group_debug
+
+  - platform: template
+    name: "Motor Latched Fault Motor"
+    id: ${id_prefix}motor_latched_fault_motor
+    icon: "mdi:numeric"
+    unit_of_measurement: "motor"
+    accuracy_decimals: 0
+    update_interval: 1s
+    entity_category: diagnostic
+    lambda: |-
+      if (!id(motor_supervisor_ctrl).has_fault_latch()) {
+        return 0;
       }
+      return id(motor_supervisor_ctrl).get_latched_fault_motor();
     web_server:
       sorting_group_id: sorting_group_debug
 
@@ -242,81 +268,183 @@ number:
     web_server:
       sorting_group_id: sorting_group_settings
 
-# ============================================
-# DRV8215 I2C Helper Functions
-# ============================================
-# IPROPI → mA conversion for CS_GAIN_SEL=110b (5320 µA/A), RIPROPI=5.1kΩ:
-#   V_IPROPI = I_motor × 5320e-6 × 5100 = I_motor × 27.132e-3
-#   I_motor (mA) = V_IPROPI / 0.027132 = V_IPROPI × 36.86
+  - platform: template
+    name: "Low Current Threshold"
+    id: ${id_prefix}low_current_threshold_ma
+    icon: "mdi:current-ac"
+    optimistic: true
+    min_value: 0.0
+    max_value: 30.0
+    step: 0.5
+    unit_of_measurement: "mA"
+    restore_value: true
+    initial_value: 5.0
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
 
-# ============================================
-# Current Measurement & Endstop Detection
-# ============================================
-interval:
-  - interval: 10ms
-    then:
-      - lambda: |-
-          if (!id(motor_turning)) {
-            id(motor_current_filtered) = 0;
-            id(motor_debounce_count) = 0;
-            return;
-          }
+  - platform: template
+    name: "Low Current Window"
+    id: ${id_prefix}low_current_window_ms
+    icon: "mdi:timer-sand"
+    optimistic: true
+    min_value: 100
+    max_value: 5000
+    step: 50
+    unit_of_measurement: "ms"
+    restore_value: true
+    initial_value: 1200
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
 
-          // Read IPROPI voltage and convert to mA
-          // CS_GAIN_SEL=110b (5320 µA/A), RIPROPI=5.1kΩ
-          // I_motor(mA) = V_IPROPI / 0.027132
-          float v_ipropi = id(${id_prefix}motor_ipropi_voltage).state;
-          if (isnan(v_ipropi)) v_ipropi = 0;
-          float raw_current = v_ipropi / 0.027132f;
-          id(motor_current_raw) = raw_current;
+  - platform: template
+    name: "Motor Max Runtime"
+    id: ${id_prefix}motor_max_run_seconds
+    icon: "mdi:timer-outline"
+    optimistic: true
+    min_value: 10
+    max_value: 180
+    step: 1
+    unit_of_measurement: "s"
+    restore_value: true
+    initial_value: 65
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
 
-          float filtered = id(motor_current_filtered) * 0.95 + raw_current * 0.05;
-          id(motor_current_filtered) = filtered;
+  - platform: template
+    name: "Motor PWM Boost"
+    id: ${id_prefix}motor_pwm_boost_ms
+    icon: "mdi:flash"
+    optimistic: true
+    min_value: 0
+    max_value: 2000
+    step: 10
+    unit_of_measurement: "ms"
+    restore_value: true
+    initial_value: 350
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
 
-          if (id(motor_debounce_count) < 255) {
-            id(motor_debounce_count)++;
-          }
+  - platform: template
+    name: "Motor PWM Hold Duty"
+    id: ${id_prefix}motor_pwm_hold_duty_percent
+    icon: "mdi:pulse"
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+    unit_of_measurement: "%"
+    restore_value: true
+    initial_value: 70
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
 
-          // Skip endstop check during inrush (~500ms at 10ms interval)
-          if (id(motor_debounce_count) < 50) {
-            return;
-          }
+  - platform: template
+    name: "Motor PWM Period"
+    id: ${id_prefix}motor_pwm_period_ms
+    icon: "mdi:timer"
+    optimistic: true
+    min_value: 10
+    max_value: 200
+    step: 1
+    unit_of_measurement: "ms"
+    restore_value: true
+    initial_value: 40
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
 
-          // Get mean current for this motor
-          int motor = id(current_motor);
-          float mean_current = 40.0;
-          switch(motor) {
-            case 1: mean_current = id(motor_mean_current_1); break;
-            case 2: mean_current = id(motor_mean_current_2); break;
-            case 3: mean_current = id(motor_mean_current_3); break;
-            case 4: mean_current = id(motor_mean_current_4); break;
-            case 5: mean_current = id(motor_mean_current_5); break;
-            case 6: mean_current = id(motor_mean_current_6); break;
-          }
+  - platform: template
+    name: "Calibration Min Travel"
+    id: ${id_prefix}calibration_min_travel_ms
+    icon: "mdi:ruler"
+    optimistic: true
+    min_value: 500
+    max_value: 30000
+    step: 100
+    unit_of_measurement: "ms"
+    restore_value: true
+    initial_value: 3000
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
 
-          float factor_high = id(${id_prefix}current_factor_high).state;
-          float threshold_high = mean_current * factor_high;
+  - platform: template
+    name: "Calibration Max Retries"
+    id: ${id_prefix}calibration_max_retries
+    icon: "mdi:restart-alert"
+    optimistic: true
+    min_value: 0
+    max_value: 10
+    step: 1
+    restore_value: true
+    initial_value: 2
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
 
-          // Debug log every ~500ms
-          static int debug_cycle = 0;
-          debug_cycle++;
-          if (debug_cycle >= 50) {
-            debug_cycle = 0;
-            ESP_LOGI("drv8215", "Motor %d: V=%.3fV I=%.1fmA filt=%.1fmA mean=%.1fmA thr=%.1fmA",
-                     motor, v_ipropi, raw_current, filtered, mean_current, threshold_high);
-          }
+  - platform: template
+    name: "Relearn After Movements"
+    id: ${id_prefix}relearn_after_movements
+    icon: "mdi:counter"
+    optimistic: true
+    min_value: 0
+    max_value: 20000
+    step: 50
+    restore_value: true
+    initial_value: 2000
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
 
-          // Overcurrent / stall detection (backup to DRV8215 hardware stall)
-          if (filtered > threshold_high || filtered > 150.0) {
-            ESP_LOGI("drv8215", "Endstop (overcurrent): filtered=%.1f mA (threshold=%.1f)", filtered, threshold_high);
-            id(motor_endstop_event) = true;
-          }
+  - platform: template
+    name: "Relearn After Hours"
+    id: ${id_prefix}relearn_after_hours
+    icon: "mdi:clock-outline"
+    optimistic: true
+    min_value: 0
+    max_value: 720
+    step: 1
+    unit_of_measurement: "h"
+    restore_value: true
+    initial_value: 168
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
 
-          // Normal operation: accumulate for mean current
-          else if (filtered > 5.0) {
-            id(motor_current_sum) += filtered;
-            id(motor_current_count)++;
-          }
+  - platform: template
+    name: "Relearn Drift Threshold"
+    id: ${id_prefix}drift_relearn_threshold_percent
+    icon: "mdi:chart-line"
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+    unit_of_measurement: "%"
+    restore_value: true
+    initial_value: 15
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
+
+  - platform: template
+    name: "Presence Test Duration"
+    id: ${id_prefix}presence_test_duration_ms
+    icon: "mdi:timer-outline"
+    optimistic: true
+    min_value: 200
+    max_value: 5000
+    step: 50
+    unit_of_measurement: "ms"
+    restore_value: true
+    initial_value: 800
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
 
 # ============================================
 # Test Buttons
@@ -349,31 +477,24 @@ button:
     web_server:
       sorting_group_id: sorting_group_debug
 
+  - platform: template
+    name: "Acknowledge Motor Fault Latch"
+    icon: mdi:shield-check
+    on_press:
+      - lambda: |-
+          id(motor_supervisor_ctrl).acknowledge_fault_latch();
+    entity_category: diagnostic
+    web_server:
+      sorting_group_id: sorting_group_debug
+
 # ============================================
 # Motor Control Scripts
 # ============================================
 script:
   - id: motor_stop_all
     then:
-      - globals.set:
-          id: motor_turning
-          value: 'false'
       - lambda: |-
-          id(motor_drv_1)->motor_coast();
-          id(motor_drv_2)->motor_coast();
-          id(motor_drv_3)->motor_coast();
-          id(motor_drv_4)->motor_coast();
-          id(motor_drv_5)->motor_coast();
-          id(motor_drv_6)->motor_coast();
-      - globals.set:
-          id: motor_mutex
-          value: 'false'
-      - globals.set:
-          id: current_motor
-          value: '0'
-      - globals.set:
-          id: motor_endstop_event
-          value: 'false'
+          id(motor_supervisor_ctrl).stop_all();
       - script.execute: led_update_status
       - logger.log:
           format: "All motors stopped (coast)"
@@ -401,57 +522,32 @@ script:
       motor_num: int
       direction: int
     then:
-      - lambda: |-
-          if (id(motor_mutex)) {
-            ESP_LOGW("drv8215", "Motor %d already running, cannot start motor %d",
-                     id(current_motor), motor_num);
-            return;
-          }
-
-          id(motor_mutex) = true;
-          id(current_motor) = motor_num;
-          id(motor_direction) = direction;
-          id(motor_endstop_event) = false;
-          id(motor_debounce_count) = 0;
-          id(motor_current_sum) = 0;
-          id(motor_current_count) = 0;
-
-          ESP_LOGI("drv8215", "Starting motor %d, direction=%s",
-                   motor_num, direction ? "OPEN" : "CLOSE");
-
       # Ensure nSLEEP is HIGH (all chips awake)
       - switch.turn_on: motor_nsleep
       - delay: 1ms
-
-      # Set direction and enable via drv8215 component
       - lambda: |-
-          int motor = id(current_motor);
-          if (motor < 1 || motor > 6) return;
-
-          esphome::drv8215::Drv8215* drv = nullptr;
-          switch (motor) {
-            case 1: drv = id(motor_drv_1); break;
-            case 2: drv = id(motor_drv_2); break;
-            case 3: drv = id(motor_drv_3); break;
-            case 4: drv = id(motor_drv_4); break;
-            case 5: drv = id(motor_drv_5); break;
-            case 6: drv = id(motor_drv_6); break;
-          }
-          if (!drv) return;
-
-          drv->clear_fault();
-          if (id(motor_direction) == 1) {
-            drv->motor_forward();
+          if (id(motor_supervisor_ctrl).start_motor(motor_num, direction)) {
+            id(led_status_motor).execute();
           } else {
-            drv->motor_reverse();
+            ESP_LOGW("drv8215", "Motor start rejected (motor=%d direction=%d)", motor_num, direction);
+            id(led_update_status).execute();
           }
-          ESP_LOGI("drv8215", "Motor %d: enabled, direction=%s",
-                   motor, id(motor_direction) ? "FORWARD/OPEN" : "REVERSE/CLOSE");
 
-      - globals.set:
-          id: motor_turning
-          value: 'true'
-      - script.execute: led_status_motor
+  - id: motor_presence_test
+    parameters:
+      motor_num: int
+      direction: int
+    then:
+      - switch.turn_on: motor_nsleep
+      - delay: 1ms
+      - lambda: |-
+          if (id(motor_supervisor_ctrl).start_presence_test(motor_num, direction)) {
+            ESP_LOGI("drv8215", "Presence test started (motor=%d direction=%d)", motor_num, direction);
+            id(led_status_motor).execute();
+          } else {
+            ESP_LOGW("drv8215", "Presence test rejected (motor=%d direction=%d)", motor_num, direction);
+            id(led_update_status).execute();
+          }
 
   # Stop specific motor and update mean current
   - id: motor_stop
@@ -459,57 +555,5 @@ script:
       motor_num: int
     then:
       - lambda: |-
-          if (id(current_motor) != motor_num && id(motor_mutex)) {
-            ESP_LOGW("drv8215", "Motor %d not running (current=%d)",
-                     motor_num, id(current_motor));
-            return;
-          }
-
-          // Update mean current if we have enough samples
-          if (id(motor_current_count) > 20) {
-            float new_mean = id(motor_current_sum) / id(motor_current_count);
-            float* mean_ptr = nullptr;
-            switch(motor_num) {
-              case 1: mean_ptr = &id(motor_mean_current_1); break;
-              case 2: mean_ptr = &id(motor_mean_current_2); break;
-              case 3: mean_ptr = &id(motor_mean_current_3); break;
-              case 4: mean_ptr = &id(motor_mean_current_4); break;
-              case 5: mean_ptr = &id(motor_mean_current_5); break;
-              case 6: mean_ptr = &id(motor_mean_current_6); break;
-            }
-            if (mean_ptr != nullptr && new_mean > 5.0) {
-              *mean_ptr = (*mean_ptr) * 0.8 + new_mean * 0.2;
-              ESP_LOGI("drv8215", "Motor %d mean current updated: %.1f mA", motor_num, *mean_ptr);
-            }
-          }
-
-          ESP_LOGI("drv8215", "Stopping motor %d", motor_num);
-
-      - globals.set:
-          id: motor_turning
-          value: 'false'
-
-      # Coast motor via drv8215 component
-      - lambda: |-
-          int motor = motor_num;
-          if (motor < 1 || motor > 6) return;
-          esphome::drv8215::Drv8215* drv = nullptr;
-          switch (motor) {
-            case 1: drv = id(motor_drv_1); break;
-            case 2: drv = id(motor_drv_2); break;
-            case 3: drv = id(motor_drv_3); break;
-            case 4: drv = id(motor_drv_4); break;
-            case 5: drv = id(motor_drv_5); break;
-            case 6: drv = id(motor_drv_6); break;
-          }
-          if (drv) drv->motor_coast();
-
-      - globals.set:
-          id: motor_mutex
-          value: 'false'
-      - globals.set:
-          id: current_motor
-          value: '0'
-      - globals.set:
-          id: motor_endstop_event
-          value: 'false'
+          id(motor_supervisor_ctrl).stop_motor(motor_num);
+          id(led_update_status).execute();

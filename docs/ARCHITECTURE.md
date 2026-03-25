@@ -7,7 +7,7 @@ HeatValve-6 is a modular underfloor heating (UFH) valve controller built on ESP3
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    User Configuration                       │
-│             heatvalve-6.yaml / heatvalve-6-dev.yaml        │
+│     heatvalve-6.yaml + deploy/*.yaml entrypoints           │
 └─────────────────────┬───────────────────────────────────────┘
                       │
                       ▼
@@ -65,10 +65,13 @@ heatvalve-6/                    (public, open-source)
 ├── components/                 Custom ESPHome components
 │   └── heatvalve_dashboard/    Standalone web dashboard
 ├── docs/                       Documentation
-├── heatvalve-6.yaml            Production config (repo-local)
-├── heatvalve-6-dev.yaml        Development config (basic)
-├── heatvalve-6-package.yaml    Base package for remote_package
-├── heatvalve-6-esphome.yaml    ESPHome server entrypoint (no clone)
+├── heatvalve-6.yaml            Single root template
+├── deploy/                     Deployment entrypoints
+│   ├── local-prod.yaml         Repo-local production
+│   ├── local-dev.yaml          Repo-local development
+│   ├── esphome-remote.yaml     ESPHome server (no clone)
+│   ├── drv8215-test.yaml       DRV8215 test profile
+│   └── drv8215-motor1-manual.yaml
 └── Makefile                    Build targets
 ```
 

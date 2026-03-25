@@ -36,6 +36,14 @@ globals:
     type: bool
     initial_value: 'false'
 
+  - id: zone_${zone_number}_calibration_active
+    type: bool
+    initial_value: 'false'
+
+  - id: zone_${zone_number}_calibration_success
+    type: bool
+    initial_value: 'false'
+
 # ============================================
 # Zone Parameters
 # ============================================
@@ -178,8 +186,18 @@ switch:
     web_server:
       sorting_group_id: sorting_group_zone_${zone_number}
 
+button:
+  - platform: template
+    name: "Self-test ${friendly_name} Valve"
+    internal: ${zone_entities_internal}
+    icon: "mdi:clipboard-check-outline"
+    on_press:
+      - script.execute: self_test_CH${zone_number}_valve
+    web_server:
+      sorting_group_id: sorting_group_zone_${zone_number}
+
 # ============================================
-# Endstop Sensor (uses global motor_endstop_event)
+# Stop Sensor (uses motor_supervisor stop_event)
 # ============================================
 binary_sensor:
   - platform: template
@@ -191,23 +209,54 @@ binary_sensor:
       if (!id(zone_${zone_number}_motor_running)) {
         return false;
       }
-      // Check global endstop event from motor_driver.yaml
-      return id(motor_endstop_event);
+      // Check stop event from motor supervisor
+      return id(motor_supervisor_ctrl).stop_event();
     on_press:
       then:
         - lambda: |-
-            ESP_LOGI("endstop", "CH${zone_number} endstop reached (motor ${motor_number})");
-            
-            // Update position based on direction
             auto cover = id(CH${zone_number}_cover);
-            if (cover->current_operation == COVER_OPERATION_OPENING) {
-              cover->position = 1.0;  // Fully open
-              ESP_LOGI("endstop", "CH${zone_number} fully OPEN");
-            } else if (cover->current_operation == COVER_OPERATION_CLOSING) {
-              cover->position = 0.0;  // Fully closed
-              ESP_LOGI("endstop", "CH${zone_number} fully CLOSED");
+            id(zone_${zone_number}_motor_running) = false;
+
+            if (id(motor_supervisor_ctrl).endstop_event()) {
+              ESP_LOGI("endstop", "CH${zone_number} endstop reached (motor ${motor_number})");
+
+              // Update position only on confirmed endstop
+              if (cover->current_operation == COVER_OPERATION_OPENING) {
+                cover->position = 1.0;  // Fully open
+                ESP_LOGI("endstop", "CH${zone_number} fully OPEN");
+              } else if (cover->current_operation == COVER_OPERATION_CLOSING) {
+                cover->position = 0.0;  // Fully closed
+                ESP_LOGI("endstop", "CH${zone_number} fully CLOSED");
+              }
+            } else if (id(motor_supervisor_ctrl).fault_event()) {
+              ESP_LOGW("endstop", "CH${zone_number} safety stop (motor ${motor_number}) code=%s raw=%d",
+                       id(motor_supervisor_ctrl).get_current_fault_name(),
+                       id(motor_supervisor_ctrl).get_current_fault_raw());
+            } else {
+              ESP_LOGW("endstop", "CH${zone_number} stop event without explicit reason (motor ${motor_number})");
             }
+
             cover->publish_state();
+
+  - platform: template
+    name: "CH${zone_number} Motor Blocked"
+    id: ${id_prefix}zone_${zone_number}_motor_blocked
+    internal: ${zone_entities_internal}
+    entity_category: diagnostic
+    lambda: |-
+      return id(motor_supervisor_ctrl).is_motor_blocked(${motor_number});
+    web_server:
+      sorting_group_id: sorting_group_zone_${zone_number}
+
+  - platform: template
+    name: "CH${zone_number} Motor Present"
+    id: ${id_prefix}zone_${zone_number}_motor_present
+    internal: ${zone_entities_internal}
+    entity_category: diagnostic
+    lambda: |-
+      return id(motor_supervisor_ctrl).is_motor_present(${motor_number});
+    web_server:
+      sorting_group_id: sorting_group_zone_${zone_number}
 
 # ============================================
 # Calculated Sensors
@@ -229,6 +278,47 @@ sensor:
     web_server:
       sorting_group_id: sorting_group_zone_${zone_number}
 
+  - platform: template
+    name: "CH${zone_number} Valve Deadzone"
+    id: ${id_prefix}zone_${zone_number}_valve_deadzone_ms
+    internal: ${zone_entities_internal}
+    icon: "mdi:timer-sand"
+    unit_of_measurement: "ms"
+    accuracy_decimals: 0
+    update_interval: 2s
+    entity_category: diagnostic
+    lambda: |-
+      return id(motor_supervisor_ctrl).get_deadzone_ms(${motor_number});
+    web_server:
+      sorting_group_id: sorting_group_zone_${zone_number}
+
+  - platform: template
+    name: "CH${zone_number} Valve Drift"
+    id: ${id_prefix}zone_${zone_number}_valve_drift_percent
+    internal: ${zone_entities_internal}
+    icon: "mdi:chart-line"
+    unit_of_measurement: "%"
+    accuracy_decimals: 1
+    update_interval: 2s
+    entity_category: diagnostic
+    lambda: |-
+      return id(motor_supervisor_ctrl).get_drift_percent(${motor_number});
+    web_server:
+      sorting_group_id: sorting_group_zone_${zone_number}
+
+  - platform: template
+    name: "CH${zone_number} Calibration Retries"
+    id: ${id_prefix}zone_${zone_number}_calibration_retries
+    internal: ${zone_entities_internal}
+    icon: "mdi:restart-alert"
+    accuracy_decimals: 0
+    update_interval: 2s
+    entity_category: diagnostic
+    lambda: |-
+      return id(motor_supervisor_ctrl).get_calibration_retries(${motor_number});
+    web_server:
+      sorting_group_id: sorting_group_zone_${zone_number}
+
 # ============================================
 # Motor Control Scripts for this Zone
 # ============================================
@@ -236,32 +326,58 @@ script:
   # Open valve (motor direction = open)
   - id: motor_zone_${zone_number}_open
     then:
-      - lambda: |-
-          if (id(motor_mutex)) {
-            ESP_LOGW("motor", "Cannot open CH${zone_number}: motor %d is running", id(current_motor));
-            return;
-          }
-          ESP_LOGI("motor", "CH${zone_number} opening (motor ${motor_number})");
-          id(zone_${zone_number}_motor_running) = true;
-      - script.execute:
-          id: motor_start
-          motor_num: ${motor_number}
-          direction: 1  # Open
+      - if:
+          condition:
+            lambda: |-
+              if (id(motor_supervisor_ctrl).is_motor_blocked(${motor_number})) {
+                ESP_LOGW("motor", "CH${zone_number} open denied: motor ${motor_number} is BLOCKED");
+                return false;
+              }
+              if (!id(zone_${zone_number}_calibration_active) && id(motor_supervisor_ctrl).should_auto_relearn(${motor_number})) {
+                ESP_LOGI("motor", "CH${zone_number} triggering auto-relearn before open");
+                id(calibrate_CH${zone_number}_cover).execute();
+                return false;
+              }
+              if (id(motor_supervisor_ctrl).is_motor_busy()) {
+                ESP_LOGW("motor", "Cannot open CH${zone_number}: motor %d is running", id(motor_supervisor_ctrl).get_current_motor());
+                return false;
+              }
+              ESP_LOGI("motor", "CH${zone_number} opening (motor ${motor_number})");
+              id(zone_${zone_number}_motor_running) = true;
+              return true;
+          then:
+            - script.execute:
+                id: motor_start
+                motor_num: ${motor_number}
+                direction: 1  # Open
 
   # Close valve (motor direction = close)
   - id: motor_zone_${zone_number}_close
     then:
-      - lambda: |-
-          if (id(motor_mutex)) {
-            ESP_LOGW("motor", "Cannot close CH${zone_number}: motor %d is running", id(current_motor));
-            return;
-          }
-          ESP_LOGI("motor", "CH${zone_number} closing (motor ${motor_number})");
-          id(zone_${zone_number}_motor_running) = true;
-      - script.execute:
-          id: motor_start
-          motor_num: ${motor_number}
-          direction: 0  # Close
+      - if:
+          condition:
+            lambda: |-
+              if (id(motor_supervisor_ctrl).is_motor_blocked(${motor_number})) {
+                ESP_LOGW("motor", "CH${zone_number} close denied: motor ${motor_number} is BLOCKED");
+                return false;
+              }
+              if (!id(zone_${zone_number}_calibration_active) && id(motor_supervisor_ctrl).should_auto_relearn(${motor_number})) {
+                ESP_LOGI("motor", "CH${zone_number} triggering auto-relearn before close");
+                id(calibrate_CH${zone_number}_cover).execute();
+                return false;
+              }
+              if (id(motor_supervisor_ctrl).is_motor_busy()) {
+                ESP_LOGW("motor", "Cannot close CH${zone_number}: motor %d is running", id(motor_supervisor_ctrl).get_current_motor());
+                return false;
+              }
+              ESP_LOGI("motor", "CH${zone_number} closing (motor ${motor_number})");
+              id(zone_${zone_number}_motor_running) = true;
+              return true;
+          then:
+            - script.execute:
+                id: motor_start
+                motor_num: ${motor_number}
+                direction: 0  # Close
 
   # Stop valve motor
   - id: motor_zone_${zone_number}_stop
@@ -273,42 +389,122 @@ script:
           id: motor_stop
           motor_num: ${motor_number}
 
+  - id: self_test_CH${zone_number}_valve
+    then:
+      - if:
+          condition:
+            lambda: |-
+              if (id(motor_supervisor_ctrl).is_motor_busy()) {
+                ESP_LOGW("motor", "Self-test CH${zone_number} skipped: motor %d is running", id(motor_supervisor_ctrl).get_current_motor());
+                return false;
+              }
+              id(zone_${zone_number}_motor_running) = true;
+              return true;
+          then:
+            - script.execute:
+                id: motor_presence_test
+                motor_num: ${motor_number}
+                direction: 1
+            - wait_until:
+                condition:
+                  lambda: 'return !id(motor_supervisor_ctrl).is_motor_busy();'
+                timeout: 12s
+            - lambda: |-
+                id(zone_${zone_number}_motor_running) = false;
+                if (id(motor_supervisor_ctrl).is_motor_present(${motor_number})) {
+                  ESP_LOGI("motor", "Self-test CH${zone_number}: motor present");
+                } else {
+                  ESP_LOGW("motor", "Self-test CH${zone_number}: motor absent/open-circuit");
+                }
+
   # Calibration script (learn valve range)
   - id: calibrate_CH${zone_number}_cover
     then:
-      - script.execute: led_status_calibrating  # Purple LED
-      - logger.log:
-          format: "Calibrate CH${zone_number} (${friendly_name}) - close"
-          tag: motor
-      - cover.close: CH${zone_number}_cover
-      - wait_until:
+      - if:
           condition:
-            lambda: 'return !id(zone_${zone_number}_motor_running);'
-          timeout: 70s
-      - delay: 2s
-      
-      - logger.log:
-          format: "Calibrate CH${zone_number} - open"
-          tag: motor
-      - cover.open: CH${zone_number}_cover
-      - wait_until:
-          condition:
-            lambda: 'return !id(zone_${zone_number}_motor_running);'
-          timeout: 70s
-      - delay: 2s
-      
-      - logger.log:
-          format: "Calibrate CH${zone_number} - close (final)"
-          tag: motor
-      - cover.close: CH${zone_number}_cover
-      - wait_until:
-          condition:
-            lambda: 'return !id(zone_${zone_number}_motor_running);'
-          timeout: 70s
-          
-      - logger.log:
-          format: "Calibrate CH${zone_number} complete - mean current: %.1f mA"
-          tag: motor
-          args:
-            - id(motor_mean_current_${motor_number})
-      - script.execute: led_update_status  # Return to normal status
+            lambda: |-
+              if (id(motor_supervisor_ctrl).is_motor_busy()) {
+                ESP_LOGW("motor", "Calibration CH${zone_number} skipped: motor %d is running", id(motor_supervisor_ctrl).get_current_motor());
+                return false;
+              }
+              return true;
+          then:
+            - lambda: |-
+                id(zone_${zone_number}_calibration_active) = true;
+                id(zone_${zone_number}_calibration_success) = false;
+                id(motor_supervisor_ctrl).begin_calibration_session(${motor_number});
+            - script.execute: led_status_calibrating  # Purple LED
+            - repeat:
+                count: 12
+                then:
+                  - if:
+                      condition:
+                        lambda: |-
+                          return id(zone_${zone_number}_calibration_success) || id(motor_supervisor_ctrl).is_motor_blocked(${motor_number});
+                      then:
+                        - delay: 10ms
+                      else:
+                        - lambda: |-
+                            id(motor_supervisor_ctrl).begin_calibration_attempt(${motor_number});
+                            ESP_LOGI("motor", "Calibrate CH${zone_number} attempt %u",
+                                     id(motor_supervisor_ctrl).get_calibration_retries(${motor_number}) + 1);
+
+                        - logger.log:
+                            format: "Calibrate CH${zone_number} (${friendly_name}) - close"
+                            tag: motor
+                        - cover.close: CH${zone_number}_cover
+                        - wait_until:
+                            condition:
+                              lambda: 'return !id(zone_${zone_number}_motor_running);'
+                            timeout: 70s
+                        - delay: 1200ms
+
+                        - logger.log:
+                            format: "Calibrate CH${zone_number} - open"
+                            tag: motor
+                        - cover.open: CH${zone_number}_cover
+                        - wait_until:
+                            condition:
+                              lambda: 'return !id(zone_${zone_number}_motor_running);'
+                            timeout: 70s
+                        - delay: 1200ms
+
+                        - logger.log:
+                            format: "Calibrate CH${zone_number} - close (final)"
+                            tag: motor
+                        - cover.close: CH${zone_number}_cover
+                        - wait_until:
+                            condition:
+                              lambda: 'return !id(zone_${zone_number}_motor_running);'
+                            timeout: 70s
+                        - delay: 1200ms
+
+                        - lambda: |-
+                            bool success = id(motor_supervisor_ctrl).finalize_calibration_attempt(${motor_number});
+                            id(zone_${zone_number}_calibration_success) = success;
+                            if (success) {
+                              ESP_LOGI("motor", "Calibrate CH${zone_number}: attempt successful");
+                            } else {
+                              ESP_LOGW("motor", "Calibrate CH${zone_number}: attempt rejected (retries=%u blocked=%s)",
+                                       id(motor_supervisor_ctrl).get_calibration_retries(${motor_number}),
+                                       id(motor_supervisor_ctrl).is_motor_blocked(${motor_number}) ? "true" : "false");
+                            }
+
+            - lambda: |-
+                id(motor_supervisor_ctrl).end_calibration_session(${motor_number});
+                id(zone_${zone_number}_calibration_active) = false;
+
+            - if:
+                condition:
+                  lambda: 'return id(zone_${zone_number}_calibration_success);'
+                then:
+                  - logger.log:
+                      format: "Calibrate CH${zone_number} complete - mean current: %.1f mA"
+                      tag: motor
+                      args:
+                        - id(motor_supervisor_ctrl).get_mean_current(${motor_number})
+                else:
+                  - logger.log:
+                      format: "Calibrate CH${zone_number} failed or blocked"
+                      tag: motor
+            - script.execute: led_update_status  # Return to normal status

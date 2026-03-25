@@ -272,7 +272,7 @@ script:
   - id: led_update_status
     then:
       - lambda: |-
-          if (id(motor_turning)) {
+          if (id(motor_supervisor_ctrl).is_motor_turning()) {
             id(led_status_motor).execute();
             return;
           }

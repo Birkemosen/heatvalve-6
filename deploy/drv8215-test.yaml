@@ -1,5 +1,5 @@
 # Minimal standalone config for DRV8215 I2C hardware testing
-# Run: esphome run heatvalve-6-drv8215-test.yaml
+# Run from repo root: esphome run deploy/drv8215-test.yaml
 
 esphome:
   name: heatvalve-6
@@ -8,7 +8,7 @@ esphome:
 external_components:
   - source:
       type: local
-      path: components
+      path: ../components
     components:
       - drv8215
 
@@ -60,4 +60,4 @@ web_server:
   version: 3
 
 packages:
-  drv8215_test: !include core/drv8215_test.yaml
+  drv8215_test: !include ../core/drv8215_test.yaml

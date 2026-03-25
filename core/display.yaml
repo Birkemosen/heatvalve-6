@@ -24,22 +24,24 @@ display:
     update_interval: 2s
     lambda: |-
       // Line 1: active motor / system status
-      if (id(motor_turning)) {
+      if (id(motor_supervisor_ctrl).is_motor_turning()) {
         it.printf(0, 0, id(font_small), "Motor %d %s",
-          id(current_motor),
-          id(motor_direction) == 1 ? "OPEN >>" : "<< CLOSE");
+          id(motor_supervisor_ctrl).get_current_motor(),
+          id(motor_supervisor_ctrl).get_motor_direction() == 1 ? "OPEN >>" : "<< CLOSE");
       } else {
         it.print(0, 0, id(font_small), "HeatValve-6");
       }
 
       // Line 2: current (mA) when running
-      if (id(motor_turning)) {
-        it.printf(0, 14, id(font_small), "I: %.0f mA", id(motor_current_filtered));
+      if (id(motor_supervisor_ctrl).is_motor_turning()) {
+        it.printf(0, 14, id(font_small), "I: %.0f mA", id(motor_supervisor_ctrl).get_current_filtered());
       }
 
-      // Line 3: nFAULT indicator
-      if (id(motor_endstop_event)) {
-        it.print(0, 28, id(font_small), "!! ENDSTOP/FAULT");
+      // Line 3: stop/fault indicator
+      if (id(motor_supervisor_ctrl).fault_event()) {
+        it.print(0, 28, id(font_small), "!! SAFETY STOP");
+      } else if (id(motor_supervisor_ctrl).endstop_event()) {
+        it.print(0, 28, id(font_small), "!! ENDSTOP");
       }
 
       // Bottom line: uptime / IP placeholder

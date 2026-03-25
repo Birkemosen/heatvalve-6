@@ -1,21 +1,19 @@
 # DRV8215 motor-1 only manual test profile
-# Run: esphome run heatvalve-6-drv8215-motor1-manual.yaml
+# Run from repo root: esphome run deploy/drv8215-motor1-manual.yaml
 
 esphome:
+  name: ${name}
   friendly_name: HeatValve DRV8215 M1 Manual Test
 
 external_components:
   - source:
       type: local
-      path: components
+      path: ../components
     components:
       - drv8215
 
 substitutions:
   name: heatvalve-6-drv8215-m1
-  id_prefix: "heating_"
-  revision: "1.0.0"
-  onboot_valve_calibration_delay: "0s"
 
   # Pin mapping from attached ESP32-S3 Supermini schematic
   # nFAULT_BUS -> GPIO4, nSLEEP_BUS -> GPIO6, IPROPI -> GPIO7
@@ -26,21 +24,17 @@ substitutions:
   i2c_scl_pin: GPIO9
   drv_m1_addr: "0x30"
 
-switch:
-  - platform: template
-    name: "Standalone Mode (Stub)"
-    id: ${id_prefix}standalone_mode
-    optimistic: true
-    restore_mode: ALWAYS_OFF
-    internal: true
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework:
+    type: esp-idf
 
-script:
-  - id: valve_maintenance
-    then:
-      - logger.log:
-          tag: drvtest
-          level: DEBUG
-          format: "valve_maintenance stub (disabled in motor-1 manual test)"
+i2c:
+  id: i2c_bus
+  sda: ${i2c_sda_pin}
+  scl: ${i2c_scl_pin}
+  scan: true
 
 logger:
   level: INFO
@@ -72,5 +66,4 @@ web_server:
   version: 3
 
 packages:
-  board: !include boards/esp32-s3.yaml
-  drv8215_test_motor1_manual: !include core/drv8215_test_motor1_manual.yaml
+  drv8215_test_motor1_manual: !include ../core/drv8215_test_motor1_manual.yaml

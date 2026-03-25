@@ -1,8 +1,8 @@
 # HeatValve-6 – lokalt udviklingsmiljø
 # Kør fra repo-roden. Kræver: pip install esphome (eller esphome i venv)
 
-CONFIG_DEV = heatvalve-6-dev.yaml
-CONFIG_DRV8215_M1 = heatvalve-6-drv8215-motor1-manual.yaml
+CONFIG_DEV = deploy/local-dev.yaml
+CONFIG_DRV8215_M1 = deploy/drv8215-motor1-manual.yaml
 PYTHON ?= python3
 
 .PHONY: run compile upload log clean run-drv8215-m1 compile-drv8215-m1

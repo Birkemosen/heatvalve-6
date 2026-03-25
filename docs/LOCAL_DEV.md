@@ -34,9 +34,9 @@ Første gang kan du bruge **Install** med USB forbundet.
 
 ## Forskelle fra produktions-config
 
-- **heatvalve-6-dev.yaml** bruger relative stier (`boards/`, `core/`, `zones/`) og `components` (ikke `heatvalve-6/components`), så alt kører fra repo-roden.
+- **deploy/local-dev.yaml** er development-entrypoint og peger på root-template `heatvalve-6.yaml`.
 - **Device-navn** er `heatvalve-6-dev`, så OTA overskriver ikke en evt. produktions-enhed med navnet `heatvalve-6`.
-- Samme indhold som `heatvalve-6.yaml`; kun stier og device-navn er ændret.
+- Samme template bruges i alle deployment-profiler under `deploy/`; forskellen er primært substitutions og external_components source.
 
 ## Tip
 

@@ -76,10 +76,13 @@ heatvalve-6/
 ├── optional/        # Pump control, MQTT integration
 ├── components/      # Custom ESPHome components
 │   └── heatvalve_dashboard/  # Standalone web UI
-├── heatvalve-6.yaml             # Main config (repo-local usage)
-├── heatvalve-6-dev.yaml         # Local development config
-├── heatvalve-6-package.yaml     # Base package for remote_package
-├── heatvalve-6-esphome.yaml     # ESPHome server entrypoint (no clone)
+├── heatvalve-6.yaml             # Single root template (shared by all deployments)
+├── deploy/
+│   ├── local-prod.yaml          # Repo-local production entrypoint
+│   ├── local-dev.yaml           # Repo-local development entrypoint
+│   ├── esphome-remote.yaml      # ESPHome server entrypoint (no clone)
+│   ├── drv8215-test.yaml        # DRV8215 full test profile
+│   └── drv8215-motor1-manual.yaml
 └── docs/            # Documentation
 ```
 
@@ -102,7 +105,7 @@ Device-navn er `heatvalve-6-dev` så OTA ikke overskriver produktions-enhed. Se 
 
 1. Download entrypoint config:
    ```bash
-   curl -L -o /config/heatvalve-6-stue.yaml https://raw.githubusercontent.com/birkemosen/heatvalve-6/main/heatvalve-6-esphome.yaml
+   curl -L -o /config/heatvalve-6-stue.yaml https://raw.githubusercontent.com/birkemosen/heatvalve-6/main/deploy/esphome-remote.yaml
    ```
 2. Add secrets in `/config/secrets.yaml`: `wifi_ssid`, `wifi_password`, `fallback_password`, `ota_password`.
 3. Optional: override `name` and `friendly_name` in substitutions.
@@ -118,7 +121,7 @@ Device-navn er `heatvalve-6-dev` så OTA ikke overskriver produktions-enhed. Se 
    cd /mnt/data/esphome/config
    git clone https://github.com/birkemosen/heatvalve-6.git heatvalve-6
    ```
-2. Use `heatvalve-6/heatvalve-6.yaml` directly.
+2. Use `heatvalve-6/deploy/local-prod.yaml` (or `heatvalve-6/deploy/local-dev.yaml`).
 
 ## Configuration
 
