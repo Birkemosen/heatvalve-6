@@ -69,9 +69,7 @@ heatvalve-6/                    (public, open-source)
 ├── deploy/                     Deployment entrypoints
 │   ├── local-prod.yaml         Repo-local production
 │   ├── local-dev.yaml          Repo-local development
-│   ├── esphome-remote.yaml     ESPHome server (no clone)
-│   ├── drv8215-test.yaml       DRV8215 test profile
-│   └── drv8215-motor1-manual.yaml
+│   └── esphome-remote.yaml     ESPHome server (no clone)
 └── Makefile                    Build targets
 ```
 

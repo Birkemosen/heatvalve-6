@@ -15,7 +15,7 @@ namespace heatvalve_dashboard {
 static const char *const TAG = "heatvalve_dashboard";
 
 void HeatvalveDashboard::setup() {
-  ESP_LOGI(TAG, "Setting up HeatValve Dashboard on /dashboard");
+  ESP_LOGI(TAG, "Setting up HeatValve-6 Dashboard on /dashboard");
   base_->init();
   base_->add_handler(this);
 }
@@ -209,6 +209,25 @@ void HeatvalveDashboard::dispatch_set_(const std::string &key,
     }
   }
 
+  // Zone valve position: z1_position .. z6_position (0.0-1.0, or 0-100%)
+  for (int i = 0; i < NUM_ZONES; i++) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "z%d_position", i + 1);
+    if (key == buf && covers_[i]) {
+      // Handle both percentage (0-100) and fraction (0-1) input
+      float pos = fval;
+      if (pos > 1.0f) pos = pos / 100.0f;  // Convert 0-100% to 0-1
+      if (pos < 0.0f) pos = 0.0f;
+      if (pos > 1.0f) pos = 1.0f;
+      
+      auto call = covers_[i]->make_call();
+      call.set_position(pos);
+      call.perform();
+      ESP_LOGI(TAG, "Zone %d valve position: %.1f%%", i + 1, pos * 100.0f);
+      return;
+    }
+  }
+
   // Zone area: z1_area .. z6_area
   for (int i = 0; i < NUM_ZONES; i++) {
     char buf[16];
@@ -281,6 +300,48 @@ void HeatvalveDashboard::dispatch_set_(const std::string &key,
     }
   }
 
+  // Zone temperature source: z1_source .. z6_source
+  for (int i = 0; i < NUM_ZONES; i++) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "z%d_source", i + 1);
+    if (key == buf && zone_sources_[i]) {
+      auto call = zone_sources_[i]->make_call();
+      if (is_string)
+        call.set_option(sval);
+      else
+        call.set_index((size_t) fval);
+      call.perform();
+      ESP_LOGI(TAG, "Zone %d source: %s", i + 1, is_string ? sval.c_str() : "-");
+      return;
+    }
+  }
+
+  // Zone control profile: z1_profile .. z6_profile (adaptive control)
+  for (int i = 0; i < NUM_ZONES; i++) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "z%d_profile", i + 1);
+    if (key == buf && zone_profiles_[i]) {
+      auto call = zone_profiles_[i]->make_call();
+      if (is_string) call.set_option(sval); else call.set_index((size_t)fval);
+      call.perform();
+      ESP_LOGI(TAG, "Zone %d profile: %s", i + 1, is_string ? sval.c_str() : "-");
+      return;
+    }
+  }
+
+  // Zone BLE MAC assignment: z1_ble_mac .. z6_ble_mac
+  for (int i = 0; i < NUM_ZONES; i++) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "z%d_ble_mac", i + 1);
+    if (key == buf && zone_ble_macs_[i] && is_string) {
+      auto call = zone_ble_macs_[i]->make_call();
+      call.set_value(sval);
+      call.perform();
+      ESP_LOGI(TAG, "Zone %d BLE MAC: %s", i + 1, sval.c_str());
+      return;
+    }
+  }
+
   // Switches
   auto doSwitch = [&](const char *name, switch_::Switch *sw) -> bool {
     if (key == name && sw) {
@@ -291,6 +352,7 @@ void HeatvalveDashboard::dispatch_set_(const std::string &key,
   };
   if (doSwitch("balancing_enabled", sw_balancing_)) return;
   if (doSwitch("standalone_mode", sw_standalone_)) return;
+  if (doSwitch("display_enabled", sw_display_)) return;
 
   // Select
   if (key == "pipe_type" && sel_pipe_type_) {
@@ -430,6 +492,18 @@ void HeatvalveDashboard::update_snapshot_() {
                            ? static_cast<int>(zone_floor_types_[i]->active_index().value()) : -1;
     get_n(zone_pipe_spacings_[i], z.pipe_spacing);
     get_n(zone_floor_cover_thicknesses_[i], z.floor_cover_thickness);
+    z.source_idx = (zone_sources_[i] && zone_sources_[i]->active_index().has_value())
+               ? static_cast<int>(zone_sources_[i]->active_index().value()) : -1;
+    // Control profile (adaptive)
+    z.profile_idx = (zone_profiles_[i] && zone_profiles_[i]->active_index().has_value())
+                        ? static_cast<int>(zone_profiles_[i]->active_index().value()) : -1;
+    // BLE MAC
+    if (zone_ble_macs_[i] && !zone_ble_macs_[i]->state.empty()) {
+      strncpy(z.ble_mac, zone_ble_macs_[i]->state.c_str(), sizeof(z.ble_mac) - 1);
+      z.ble_mac[sizeof(z.ble_mac) - 1] = '\0';
+    } else {
+      z.ble_mac[0] = '\0';
+    }
   }
 
   // Heating circuit
@@ -445,6 +519,7 @@ void HeatvalveDashboard::update_snapshot_() {
   // Switches
   current_snapshot_.sw_balancing = get_sw(sw_balancing_);
   current_snapshot_.sw_standalone = get_sw(sw_standalone_);
+  current_snapshot_.display_enabled = get_sw(sw_display_);
 
   // Select (get_options returns FixedVector - iterate by reference, elements are const char*)
   fill_sel(sel_pipe_type_, current_snapshot_.sel_pipe_type,
@@ -468,14 +543,20 @@ void HeatvalveDashboard::update_snapshot_() {
   safe_copy(current_snapshot_.controller_mode, sizeof(current_snapshot_.controller_mode), controller_mode_);
   safe_copy(current_snapshot_.system_status, sizeof(current_snapshot_.system_status), system_status_);
   safe_copy(current_snapshot_.uptime, sizeof(current_snapshot_.uptime), uptime_);
+
+  // BLE scan results
+  if (ble_scan_results_ && ble_scan_results_->has_state()) {
+    strncpy(current_snapshot_.ble_scan_results, ble_scan_results_->state.c_str(),
+            sizeof(current_snapshot_.ble_scan_results) - 1);
+    current_snapshot_.ble_scan_results[sizeof(current_snapshot_.ble_scan_results) - 1] = '\0';
+  } else {
+    current_snapshot_.ble_scan_results[0] = '\0';
+  }
 }
 
 void HeatvalveDashboard::handle_state_(AsyncWebServerRequest *request) {
-  DashboardSnapshot snap;
-  {
-    std::lock_guard<std::mutex> lock(snapshot_mutex_);
-    snap = current_snapshot_;
-  }
+  std::lock_guard<std::mutex> lock(snapshot_mutex_);
+  const DashboardSnapshot &snap = current_snapshot_;
 
   AsyncResponseStream *response = request->beginResponseStream("application/json");
   if (response == nullptr) {
@@ -593,6 +674,14 @@ void HeatvalveDashboard::handle_state_(AsyncWebServerRequest *request) {
     p_n(buf, z.pipe_spacing);
     snprintf(buf, sizeof(buf), "z%d_floor_cover_thickness", i + 1);
     p_n(buf, z.floor_cover_thickness);
+    snprintf(buf, sizeof(buf), "z%d_source_idx", i + 1);
+    p_i(buf, z.source_idx);
+    // Control profile (-1 if not using adaptive control)
+    snprintf(buf, sizeof(buf), "z%d_profile_idx", i + 1);
+    p_i(buf, z.profile_idx);
+    // BLE MAC
+    snprintf(buf, sizeof(buf), "z%d_ble_mac", i + 1);
+    p_str(buf, z.ble_mac);
     // Remove trailing comma by adding a dummy last field
     response->printf("\"_z\":%d}", i + 1);
   }
@@ -611,6 +700,7 @@ void HeatvalveDashboard::handle_state_(AsyncWebServerRequest *request) {
   // Switches
   p_b("balancing_enabled", snap.sw_balancing);
   p_b("standalone_mode", snap.sw_standalone);
+  p_b("display_enabled", snap.display_enabled);
 
   // Select
   p_sel("pipe_type", snap.sel_pipe_type, snap.sel_pipe_type_opts, snap.sel_pipe_type_opts_count);
@@ -630,6 +720,13 @@ void HeatvalveDashboard::handle_state_(AsyncWebServerRequest *request) {
   p_str("controller_mode", snap.controller_mode);
   p_str("system_status", snap.system_status);
   p_str("uptime", snap.uptime);
+
+  // BLE scan results (raw JSON array, pass through without quoting)
+  if (snap.ble_scan_results[0] != '\0') {
+    response->printf("\"ble_scan_results\":%s,", snap.ble_scan_results);
+  } else {
+    response->print("\"ble_scan_results\":[],");
+  }
 
   response->printf("\"_uptime_ms\":%u}", millis());
   request->send(response);

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HeatValve-6 Dashboard</title>
+<title>HeatValve-6 Dashboard Mock</title>
 <meta name="theme-color" content="#0b0f15">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -46,8 +46,7 @@ body{
   color:var(--text);
   min-height:100vh;
   background:var(--app-bg);
-}
-.app{display:grid;grid-template-columns:260px 1fr;min-height:100vh;gap:18px;padding:18px;transition:grid-template-columns .28s ease}
+}.app{display:grid;grid-template-columns:260px 1fr;min-height:100vh;gap:18px;padding:18px;transition:grid-template-columns .28s ease}
 .sidebar{
   background:var(--sidebar-bg);
   border:1px solid var(--line);
@@ -154,12 +153,12 @@ body{
 .app.sidebar-collapsed .nav-label,
 .app.sidebar-collapsed .nav-meta{display:none}
 .app.sidebar-collapsed .nav button{justify-content:center;padding:10px 8px}
-.app.sidebar-collapsed .sidebar-head{justify-content:space-between}
-.app.sidebar-collapsed .sidebar-toggle{position:static}
 .app.sidebar-collapsed .nav button[data-view="overview"] .nav-icon,
 .app.sidebar-collapsed .nav button[data-view="settings"] .nav-icon{font-size:2.34em}
 .app.sidebar-collapsed .nav button[data-view="overview"] .nav-icon{font-size:2.34em;transform:scaleX(1.1);transform-origin:center}
 .app.sidebar-collapsed .nav button[data-view^="zone-"] .nav-icon{font-size:1.86em}
+.app.sidebar-collapsed .sidebar-head{justify-content:space-between}
+.app.sidebar-collapsed .sidebar-toggle{position:static}
 .main{display:grid;grid-template-rows:auto 1fr;gap:14px;min-width:0}
 .topbar{
   background:var(--panel);
@@ -229,13 +228,6 @@ body{
 .ws-progress{height:6px;border-radius:999px;background:var(--surface-strong);border:1px solid var(--line);overflow:hidden;margin-top:8px}
 .ws-progress > span{display:block;height:100%;background:linear-gradient(135deg,var(--accent),var(--accent-2));width:0%}
 .zone-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
-.zone-head-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-.ble-inline{display:flex;gap:4px;flex-wrap:wrap}
-.ble-inline-item{background:var(--surface-soft);border:1px solid var(--card-rim);border-radius:8px;padding:4px 8px;display:flex;flex-direction:column;align-items:center;min-width:52px}
-.ble-inline-item .val{font-size:0.95rem;font-weight:600;color:var(--accent)}
-.ble-inline-item .lbl{font-size:0.6rem;color:var(--text-soft);text-transform:uppercase}
-.ble-inline-item.rssi{border-color:var(--text-soft)}
-.ble-inline-item.rssi .val{color:var(--ok)}
 .zone-title{font-size:1.45em;font-weight:800}
 .zone-current{font-size:2.7em;line-height:1;font-weight:800;color:var(--accent)}
 .zone-target{color:var(--text-soft);font-size:0.95em}
@@ -255,6 +247,8 @@ body{
 .btn:hover{border-color:var(--accent);color:var(--accent)}
 .btn.active{background:linear-gradient(140deg,var(--accent),var(--accent-2));border-color:transparent;color:#fff}
 .btn.pill{border-radius:999px}
+.scenario-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.scenario-chip{font-size:0.72em}
 .settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
 .field{display:flex;flex-direction:column;gap:5px}
 .field label{font-size:0.72em;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-soft)}
@@ -355,6 +349,12 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
             <span style="font-size:0.74em;color:var(--text-soft);text-transform:uppercase;letter-spacing:0.1em">Preset</span>
             <button class="btn pill" id="all-home-btn" onclick="setPresetAll('HOME')">Home All</button>
             <button class="btn pill" id="all-away-btn" onclick="setPresetAll('AWAY')">Away All</button>
+          </div>
+          <div class="scenario-row">
+            <span style="font-size:0.74em;color:var(--text-soft);text-transform:uppercase;letter-spacing:0.1em;align-self:center">Scenario</span>
+            <button class="btn pill scenario-chip active" id="scenario-normal" onclick="setScenario('normal')">Normal</button>
+            <button class="btn pill scenario-chip" id="scenario-cold" onclick="setScenario('cold')">Cold Start</button>
+            <button class="btn pill scenario-chip" id="scenario-night" onclick="setScenario('night')">Night Setback</button>
           </div>
         </div>
 
@@ -479,6 +479,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
 
 <script>
 const POLL_MS = 3000;
+const MOCK_MODE = true;
 const MAX_CHART_POINTS = 120;
 const ZONE_NAMES = ['Zone 1','Zone 2','Zone 3','Zone 4','Zone 5','Zone 6'];
 const SOURCE_LABELS = ['HA','MQTT','BLE'];
@@ -499,6 +500,172 @@ let chartStore = {
   zoneSetpoint:[[],[],[],[],[],[]],
   zoneValve:[[],[],[],[],[],[]]
 };
+let mockScenario = 'normal';
+
+function makeZone(z, temp, setpoint, valve, mode, sourceIdx, profileIdx, bleMac){
+  const heating = mode!=='off' && temp < (setpoint - 0.12);
+  return {
+    [`z${z}_temp`]:temp,
+    [`z${z}_setpoint`]:setpoint,
+    [`z${z}_valve`]:valve,
+    [`z${z}_action`]:heating ? 'heating' : 'idle',
+    [`z${z}_mode`]:mode,
+    [`z${z}_preset`]:mode==='off' ? 'AWAY' : 'HOME',
+    [`z${z}_source_idx`]:sourceIdx,
+    [`z${z}_profile_idx`]:profileIdx,
+    [`z${z}_ble_mac`]:bleMac || '',
+    [`z${z}_pipe_type_idx`]:z % 3,
+    [`z${z}_floor_type_idx`]:z % 4,
+    [`z${z}_pipe_spacing`]:{val:145 + z*4,min:80,max:300,step:5},
+    [`z${z}_floor_cover_thickness`]:{val:14 + z,min:2,max:80,step:1},
+    [`z${z}_area`]:{val:10 + z*2,min:5,max:80,step:1},
+    [`z${z}_max_opening`]:{val:88,min:20,max:100,step:1}
+  };
+}
+
+function buildScenarioState(scenario){
+  const base = {
+    controller_mode:'Adaptive',
+    uptime:'00d 03:12:49',
+    system_status:'Stable',
+    input_temp:38.2,
+    output_temp:33.5,
+    extra_temp:30.9,
+    avg_valve_position:47.0,
+    active_zones:4,
+    balancing_enabled:true,
+    standalone_mode:false,
+    display_enabled:true,
+    min_valve_opening:{val:8,min:0,max:100,step:1},
+    comfort_band:{val:0.4,min:0,max:2,step:0.1},
+    maintenance_base:{val:12,min:0,max:100,step:1},
+    demand_boost:{val:18,min:0,max:100,step:1},
+    boost_factor:{val:20,min:0,max:100,step:1},
+    min_movement:{val:3,min:0,max:50,step:1},
+    pipe_spacing:{val:150,min:80,max:300,step:5},
+    floor_cover_thickness:{val:18,min:2,max:80,step:1},
+    pipe_type:{idx:0,opts:['PE-X','ALU-PEX','COPPER']},
+    floor_type:{idx:1,opts:['TILE','WOOD','VINYL','CONCRETE']},
+    zones:[]
+  };
+
+  if(scenario==='cold'){
+    base.system_status = 'Recovery';
+    base.zones = [
+      makeZone(1,18.5,21.0,0.82,'heat',0,0),
+      makeZone(2,18.9,21.0,0.76,'heat',1,1),
+      makeZone(3,17.8,20.5,0.88,'heat',2,2),
+      makeZone(4,19.0,21.5,0.72,'heat',0,1),
+      makeZone(5,18.2,20.5,0.80,'heat',1,3),
+      makeZone(6,19.1,21.0,0.70,'heat',2,0)
+    ];
+    return base;
+  }
+  if(scenario==='night'){
+    base.system_status = 'Night Setback';
+    base.zones = [
+      makeZone(1,20.1,19.0,0.16,'heat',0,0),
+      makeZone(2,19.8,18.8,0.12,'heat',1,1),
+      makeZone(3,19.7,18.7,0.10,'heat',2,2),
+      makeZone(4,19.9,19.0,0.14,'heat',0,1),
+      makeZone(5,18.6,18.5,0.08,'off',1,3),
+      makeZone(6,18.4,18.4,0.07,'off',2,0)
+    ];
+    return base;
+  }
+
+  base.zones = [
+    makeZone(1,20.8,21.0,0.48,'heat',0,0),
+    makeZone(2,21.0,21.0,0.38,'heat',1,1),
+    makeZone(3,20.1,20.5,0.55,'heat',2,2,'F8:44:77:2B:BE:5C'),
+    makeZone(4,21.3,21.5,0.42,'heat',0,1),
+    makeZone(5,20.4,20.5,0.36,'heat',1,3),
+    makeZone(6,20.0,20.0,0.34,'heat',2,0,'A4:C1:38:12:34:56')
+  ];
+  
+  // Mock BLE devices (BTHome sensors)
+  base.ble_scan_results = [
+    {mac:'F8:44:77:2B:BE:5C',name:'SBHT-103C',rssi:-58,b:true,e:false,temp:21.3,hum:42,bat:85,light:true},
+    {mac:'A4:C1:38:12:34:56',name:'Shelly BLU H&T',rssi:-72,b:true,e:false,temp:20.8,hum:38,bat:92},
+    {mac:'E4:AA:EC:11:22:33',name:'Shelly Motion',rssi:-65,b:true,e:false,motion:false,bat:78,lux:142},
+    {mac:'38:DE:AD:BE:EF:00',name:'Unknown BLE',rssi:-88,b:false,e:false}
+  ];
+  
+  return base;
+}
+
+function setScenario(scenario){
+  mockScenario = scenario;
+  state = buildScenarioState(scenario);
+  ['normal','cold','night'].forEach(s=>el(`scenario-${s}`)?.classList.toggle('active', s===scenario));
+  poll();
+}
+
+function applyMockSet(key, value){
+  const zMatch = key.match(/^z([1-6])_(.+)$/);
+  if(zMatch){
+    const z = Number(zMatch[1]);
+    const prop = zMatch[2];
+    const zone = state.zones[z-1];
+    if(!zone) return;
+    if(prop==='setpoint') zone[`z${z}_setpoint`] = Number(value);
+    else if(prop==='preset') zone[`z${z}_preset`] = String(value);
+    else if(prop==='mode') zone[`z${z}_mode`] = String(value);
+    else if(prop==='position') zone[`z${z}_valve`] = Math.max(0, Math.min(1, Number(value)));
+    else if(prop==='source') zone[`z${z}_source_idx`] = Math.max(0, SOURCE_LABELS.indexOf(String(value)));
+    else if(prop==='profile') zone[`z${z}_profile_idx`] = Math.max(0, PROFILE_LABELS.indexOf(String(value)));
+    else if(prop==='pipe_type') zone[`z${z}_pipe_type_idx`] = Math.max(0, state.pipe_type.opts.indexOf(String(value)));
+    else if(prop==='floor_type') zone[`z${z}_floor_type_idx`] = Math.max(0, state.floor_type.opts.indexOf(String(value)));
+    else if(prop==='pipe_spacing') zone[`z${z}_pipe_spacing`].val = Number(value);
+    else if(prop==='floor_cover_thickness') zone[`z${z}_floor_cover_thickness`].val = Number(value);
+    else if(prop==='area') zone[`z${z}_area`].val = Number(value);
+    else if(prop==='max_opening') zone[`z${z}_max_opening`].val = Number(value);
+    return;
+  }
+  if(key==='balancing_enabled') state.balancing_enabled = !!Number(value);
+  if(key==='standalone_mode') state.standalone_mode = !!Number(value);
+  if(key==='display_enabled') state.display_enabled = !!Number(value);
+  if(key==='pipe_type') state.pipe_type.idx = Math.max(0, state.pipe_type.opts.indexOf(String(value)));
+  if(key==='floor_type') state.floor_type.idx = Math.max(0, state.floor_type.opts.indexOf(String(value)));
+  if(key==='min_valve_opening') state.min_valve_opening.val = Number(value);
+  if(key==='comfort_band') state.comfort_band.val = Number(value);
+  if(key==='maintenance_base') state.maintenance_base.val = Number(value);
+  if(key==='demand_boost') state.demand_boost.val = Number(value);
+  if(key==='boost_factor') state.boost_factor.val = Number(value);
+  if(key==='min_movement') state.min_movement.val = Number(value);
+  if(key==='pipe_spacing') state.pipe_spacing.val = Number(value);
+  if(key==='floor_cover_thickness') state.floor_cover_thickness.val = Number(value);
+}
+
+function evolveMock(){
+  if(!state?.zones) return;
+  let active = 0;
+  let valveSum = 0;
+  state.zones.forEach((zone,i)=>{
+    const z = i + 1;
+    const mode = zone[`z${z}_mode`];
+    if(mode==='off'){
+      zone[`z${z}_action`] = 'idle';
+      zone[`z${z}_valve`] = Math.max(0, zone[`z${z}_valve`] - 0.018);
+      return;
+    }
+    const set = Number(zone[`z${z}_setpoint`]);
+    const temp = Number(zone[`z${z}_temp`]);
+    const diff = set - temp;
+    const heating = diff > 0.07;
+    zone[`z${z}_action`] = heating ? 'heating' : 'idle';
+    zone[`z${z}_temp`] = Math.round((temp + (heating ? (0.02 + Math.random()*0.03) : (-0.01 + Math.random()*0.015)))*10)/10;
+    zone[`z${z}_valve`] = Math.max(0, Math.min(1, zone[`z${z}_valve`] + (heating ? 0.025 : -0.018)));
+    valveSum += zone[`z${z}_valve`] * 100;
+    if(zone[`z${z}_valve`] > 0.12) active += 1;
+  });
+  state.active_zones = active;
+  state.avg_valve_position = Math.round((valveSum/6)*10)/10;
+  state.input_temp = Math.round((33.5 + active*1.05 + Math.random()*0.5)*10)/10;
+  state.output_temp = Math.round((state.input_temp - 3.8 - Math.random()*0.6)*10)/10;
+  state.extra_temp = Math.round((state.output_temp - 1.6 + Math.random()*0.4)*10)/10;
+  state.uptime = new Date().toLocaleTimeString();
+}
 
 function el(id){return document.getElementById(id)}
 function fmt(v,d){return v==null||Number.isNaN(Number(v))?'--':Number(v).toFixed(d!=null?d:1)}
@@ -536,10 +703,7 @@ function buildZoneViews(){
               <div class="zone-title">${name}</div>
               <div class="zone-target">Target: <span id="zsp-${z}">--</span></div>
             </div>
-            <div class="zone-head-right">
-              <div class="ble-inline" id="ble-inline-${z}"></div>
-              <div class="state-badge badge-off" id="zb-${z}">--</div>
-            </div>
+            <div class="state-badge badge-off" id="zb-${z}">--</div>
           </div>
 
           <div class="zone-current" id="zt-${z}">--</div>
@@ -566,7 +730,10 @@ function buildZoneViews(){
             <input class="slider" type="range" id="zvm-${z}" min="0" max="100" value="0" oninput="setValvePosition(${z},this.value/100)">
           </div>
 
-
+          <div class="ble-zone-panel" id="ble-panel-${z}" style="margin-top:14px;display:none">
+            <h3>BLE Sensor</h3>
+            <div class="ble-zone-info" id="ble-info-${z}"></div>
+          </div>
 
           <div style="margin-top:14px">
             <h3>Zone Trend</h3>
@@ -822,43 +989,46 @@ function renderZoneBleInfo(d){
     const z = i + 1;
     const bleMac = zd[`z${z}_ble_mac`];
     const sourceIdx = zd[`z${z}_source_idx`];
-    const container = el(`ble-inline-${z}`);
-    if(!container) return;
+    const panel = el(`ble-panel-${z}`);
+    const info = el(`ble-info-${z}`);
+    if(!panel || !info) return;
     
     // Only show if source is BLE (idx 2) and MAC is configured
     if(sourceIdx !== 2 || !bleMac || bleMac.length < 10){
-      container.innerHTML = '';
+      panel.style.display = 'none';
       return;
     }
     
+    panel.style.display = 'block';
     const dev = findBleDevice(bleMac, devices);
     
     if(!dev){
-      container.innerHTML = `<div class="ble-inline-item"><span class="val">...</span><span class="lbl">BLE</span></div>`;
+      info.innerHTML = `<div class="ble-zone-device"><span class="mac">${bleMac}</span> - Searching...</div>`;
       return;
     }
     
-    const items = [];
+    const sensors = [];
     if(dev.temp != null && !Number.isNaN(dev.temp)){
-      items.push(`<div class="ble-inline-item"><span class="val">${Number(dev.temp).toFixed(1)}°</span><span class="lbl">TEMP</span></div>`);
+      sensors.push(`<div class="ble-sensor"><span class="ble-sensor-value">${Number(dev.temp).toFixed(1)}°</span><span class="ble-sensor-label">Temp</span></div>`);
     }
     if(dev.hum != null && !Number.isNaN(dev.hum)){
-      items.push(`<div class="ble-inline-item"><span class="val">${Number(dev.hum).toFixed(0)}%</span><span class="lbl">HUM</span></div>`);
+      sensors.push(`<div class="ble-sensor"><span class="ble-sensor-value">${Number(dev.hum).toFixed(0)}%</span><span class="ble-sensor-label">Hum</span></div>`);
     }
     if(dev.bat != null){
-      items.push(`<div class="ble-inline-item"><span class="val">${dev.bat}%</span><span class="lbl">BAT</span></div>`);
+      sensors.push(`<div class="ble-sensor"><span class="ble-sensor-value">${dev.bat}%</span><span class="ble-sensor-label">Bat</span></div>`);
     }
     if(dev.lux != null && !Number.isNaN(dev.lux)){
-      items.push(`<div class="ble-inline-item"><span class="val">${Number(dev.lux).toFixed(0)}</span><span class="lbl">LUX</span></div>`);
-    }
-    if(dev.light != null){
-      items.push(`<div class="ble-inline-item"><span class="val">${dev.light ? '☀' : '●'}</span><span class="lbl">LIGHT</span></div>`);
+      sensors.push(`<div class="ble-sensor"><span class="ble-sensor-value">${Number(dev.lux).toFixed(0)}</span><span class="ble-sensor-label">Lux</span></div>`);
     }
     
     const rssiVal = dev.rssi || -999;
-    items.push(`<div class="ble-inline-item rssi"><span class="val">${rssiVal} dBm</span><span class="lbl">RSSI</span></div>`);
+    const rssiColor = rssiVal > -60 ? 'var(--ok)' : (rssiVal > -80 ? 'var(--accent)' : 'var(--text-soft)');
     
-    container.innerHTML = items.join('');
+    info.innerHTML = `
+      <div class="ble-zone-device"><strong>${dev.name || 'Unknown'}</strong> <span class="mac">${dev.mac}</span></div>
+      ${sensors.join('')}
+      <div class="ble-zone-rssi" style="color:${rssiColor}">${rssiVal} dBm</div>
+    `;
   });
 }
 
@@ -892,11 +1062,6 @@ function renderBleDevices(devices){
     // Illuminance
     if(dev.lux != null && !Number.isNaN(dev.lux)){
       sensors.push(`<div class="ble-sensor"><span class="ble-sensor-value">${Number(dev.lux).toFixed(0)}</span><span class="ble-sensor-label">Lux</span></div>`);
-    }
-    
-    // Light level (BTHome 0x64)
-    if(dev.lvl != null){
-      sensors.push(`<div class="ble-sensor"><span class="ble-sensor-value">${dev.lvl}</span><span class="ble-sensor-label">Light</span></div>`);
     }
     
     // Light (binary)
@@ -966,60 +1131,31 @@ function buildWorkspaceCards(d){
   }).join('');
 }
 
-function cssVar(name){
-  return getComputedStyle(document.body).getPropertyValue(name).trim();
-}
-
-function buildChartOptions(){
-  const soft = cssVar('--text-soft') || '#8fa2c6';
-  const grid = document.body.classList.contains('dark-mode') ? 'rgba(42,52,73,0.45)' : 'rgba(189,198,215,0.55)';
-  return {
-    responsive:true,
-    maintainAspectRatio:false,
-    interaction:{intersect:false,mode:'index'},
-    animation:{duration:760,easing:'easeOutCubic'},
-    plugins:{legend:{labels:{color:soft,boxWidth:10,usePointStyle:true,font:{size:11}}}},
-    scales:{
-      x:{grid:{color:grid},ticks:{color:soft,maxTicksLimit:8}},
-      y:{grid:{color:grid},ticks:{color:soft}}
-    }
-  };
-}
-
-function destroyCharts(){
-  if(charts.system){charts.system.destroy();charts.system=null;}
-  if(charts.demand){charts.demand.destroy();charts.demand=null;}
-  for(let i=0;i<charts.zones.length;i++){
-    if(charts.zones[i]){charts.zones[i].destroy();charts.zones[i]=null;}
+const BASE_CHART_OPTIONS = {
+  responsive:true,
+  maintainAspectRatio:false,
+  interaction:{intersect:false,mode:'index'},
+  animation:{duration:760,easing:'easeOutCubic'},
+  plugins:{legend:{labels:{color:'#9aabc9',boxWidth:10,usePointStyle:true,font:{size:11}}}},
+  scales:{
+    x:{grid:{color:'rgba(42,52,73,0.45)'},ticks:{color:'#8fa2c6',maxTicksLimit:8}},
+    y:{grid:{color:'rgba(42,52,73,0.45)'},ticks:{color:'#8fa2c6'}}
   }
-}
-
-function refreshChartsTheme(){
-  if(!window.Chart) return;
-  destroyCharts();
-  initCharts();
-}
+};
 
 function initCharts(){
   if(!window.Chart) return;
-  const opts = buildChartOptions();
-  const cAccent = cssVar('--accent') || '#ff6420';
-  const cCool = cssVar('--cool') || '#45b9d4';
-  const cOk = cssVar('--ok') || '#4cb481';
-  const cHeat = cssVar('--heat') || '#ff7d57';
-  const cAccent2 = cssVar('--accent-2') || '#ff8b45';
-  const cSoft = cssVar('--text-soft') || '#8fa2c6';
 
   const cs = el('chart-system')?.getContext('2d');
   if(cs){
     charts.system = new Chart(cs, {
       type:'line',
       data:{labels:chartStore.ts,datasets:[
-        {label:'Supply',data:chartStore.systemIn,borderColor:cAccent,tension:.25},
-        {label:'Return',data:chartStore.systemOut,borderColor:cCool,tension:.25},
-        {label:'Extra',data:chartStore.extra,borderColor:cOk,tension:.25}
+        {label:'Supply',data:chartStore.systemIn,borderColor:'#f0c15b',tension:.25},
+        {label:'Return',data:chartStore.systemOut,borderColor:'#5aa6f7',tension:.25},
+        {label:'Extra',data:chartStore.extra,borderColor:'#59c08f',tension:.25}
       ]},
-      options:opts
+      options:BASE_CHART_OPTIONS
     });
   }
 
@@ -1028,10 +1164,10 @@ function initCharts(){
     charts.demand = new Chart(cd, {
       type:'line',
       data:{labels:chartStore.ts,datasets:[
-        {label:'Avg Valve %',data:chartStore.avgValve,borderColor:cHeat,tension:.25},
-        {label:'Active Zones',data:chartStore.activeZones,borderColor:cAccent2,tension:.25}
+        {label:'Avg Valve %',data:chartStore.avgValve,borderColor:'#ff7d57',tension:.25},
+        {label:'Active Zones',data:chartStore.activeZones,borderColor:'#f6a64c',tension:.25}
       ]},
-      options:opts
+      options:BASE_CHART_OPTIONS
     });
   }
 
@@ -1042,16 +1178,16 @@ function initCharts(){
     charts.zones[i] = new Chart(cx, {
       type:'line',
       data:{labels:chartStore.ts,datasets:[
-        {label:'Temp',data:chartStore.zoneTemp[i],borderColor:cAccent,tension:.25,yAxisID:'y'},
-        {label:'Setpoint',data:chartStore.zoneSetpoint[i],borderColor:cOk,borderDash:[5,4],tension:.2,yAxisID:'y'},
-        {label:'Valve %',data:chartStore.zoneValve[i],borderColor:cCool,tension:.25,yAxisID:'y1'}
+        {label:'Temp',data:chartStore.zoneTemp[i],borderColor:'#f0c15b',tension:.25,yAxisID:'y'},
+        {label:'Setpoint',data:chartStore.zoneSetpoint[i],borderColor:'#59c08f',borderDash:[5,4],tension:.2,yAxisID:'y'},
+        {label:'Valve %',data:chartStore.zoneValve[i],borderColor:'#5aa6f7',tension:.25,yAxisID:'y1'}
       ]},
       options:{
-        ...opts,
+        ...BASE_CHART_OPTIONS,
         scales:{
-          ...opts.scales,
-          y:{...opts.scales.y,title:{display:true,text:'Temp',color:cSoft}},
-          y1:{position:'right',grid:{display:false},ticks:{color:cSoft},min:0,max:100,title:{display:true,text:'Valve %',color:cSoft}}
+          ...BASE_CHART_OPTIONS.scales,
+          y:{...BASE_CHART_OPTIONS.scales.y,title:{display:true,text:'Temp',color:'#8fa2c6'}},
+          y1:{position:'right',grid:{display:false},ticks:{color:'#8fa2c6'},min:0,max:100,title:{display:true,text:'Valve %',color:'#8fa2c6'}}
         }
       }
     });
@@ -1097,6 +1233,11 @@ function updateCharts(d){
 }
 
 function postSet(key,value,isStr){
+  if(MOCK_MODE){
+    applyMockSet(key, value);
+    setTimeout(poll, 120);
+    return;
+  }
   const body = isStr
     ? JSON.stringify({key:key,value:String(value)})
     : JSON.stringify({key:key,value:Number(value)});
@@ -1126,6 +1267,12 @@ function setSelect(key,val){postSet(key, val, true)}
 function setNumber(key,val){postSet(key, parseFloat(val), false)}
 
 function poll(){
+  if(MOCK_MODE){
+    evolveMock();
+    updateUI(state);
+    el('conn-text').textContent = `Mock ${mockScenario}`;
+    return;
+  }
   fetch('/dashboard/state')
     .then(r=>{if(!r.ok) throw new Error(String(r.status)); return r.json();})
     .then(updateUI)
@@ -1135,6 +1282,7 @@ function poll(){
     });
 }
 
+state = buildScenarioState('normal');
 buildOverviewZones();
 buildZoneViews();
 initNav();

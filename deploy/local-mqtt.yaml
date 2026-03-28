@@ -1,0 +1,68 @@
+# ============================================
+# MQTT Standalone Deployment
+# ============================================
+# Run from repo root: esphome run deploy/local-mqtt.yaml
+#
+# Features:
+#   - Standalone operation without Home Assistant
+#   - All temperature sensors via MQTT subscription
+#   - BLE sensors enabled as fallback
+#   - See topics below for MQTT integration
+
+# External components (shared across all deployments - see deploy/_base.yaml for reference)
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components:
+      - heatvalve_dashboard
+      - drv8215
+      - motor_supervisor
+
+substitutions:
+  name: heatvalve-6
+  friendly_name: "HeatValve-6 (MQTT)"
+  zone_entities_internal: "false"
+  temperature_source_default: "MQTT"
+  wifi_ssid: !secret wifi_ssid
+  wifi_password: !secret wifi_password
+  fallback_password: !secret fallback_password
+  ota_password: !secret ota_password
+
+# ============================================
+# MQTT Broker (required for mqtt_subscribe sensors)
+# ============================================
+mqtt:
+  broker: !secret mqtt_broker
+  port: !secret mqtt_port
+  username: !secret mqtt_user
+  password: !secret mqtt_password
+  discovery: false
+
+packages:
+  base: !include ../heatvalve-6.yaml
+  zone_temperature_router: !include ../core/zone_temperature_router.yaml
+  ha_sensors: !include ../core/ha_sensors.yaml
+  mqtt_sensors: !include ../core/mqtt_sensor_overrides.yaml
+  ble_sensors: !include ../optional/ble_sensors.yaml
+
+# ============================================
+# MQTT Topic Configuration
+# ============================================
+#
+# Publish temperatures with mosquitto:
+#   mosquitto_pub -h broker.local -t home/floor-heating/sensors/corridor/temperature -m "20.5"
+#   mosquitto_pub -h broker.local -t home/floor-heating/sensors/living-room/temperature -m "21.2"
+#
+# Or via Home Assistant automation:
+#   service: mqtt.publish
+#   data:
+#     topic: home/floor-heating/sensors/corridor/temperature
+#     payload: "{{ states('sensor.corridor_temperature') }}"
+#
+# Topics (all accept float °C):
+#   home/floor-heating/sensors/corridor/temperature
+#   home/floor-heating/sensors/storage/temperature
+#   home/floor-heating/sensors/living-room/temperature
+#   home/floor-heating/sensors/office/temperature
+#   home/floor-heating/sensors/bedroom/temperature

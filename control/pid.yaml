@@ -4,6 +4,16 @@
 # Precise control using ESPHome's PID component.
 # Requires tuning (Kp, Ki, Kd) - has autotune button.
 #
+# NOTE: This uses ESPHome's native PID climate component, which is
+# different from the software PID implementation in adaptive.yaml.
+# Use this profile when you need:
+#   - ESPHome's PID autotune functionality
+#   - More advanced PID diagnostics
+#   - Per-zone Kp/Ki/Kd tuning persistence
+#
+# For simpler software PID that shares global tuning parameters,
+# use zones/adaptive.yaml with the "PID" profile selected at runtime.
+#
 # Required vars:
 #   zone_number, id, friendly_name, temperature_sensor
 #

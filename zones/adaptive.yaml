@@ -1,0 +1,52 @@
+# ============================================
+# Zone with Adaptive Control (Runtime Profile Select)
+# ============================================
+# Complete zone: base infrastructure + adaptive control profile.
+# Allows switching between Tanh / Linear / PID / Fixed at runtime
+# from the dashboard or Home Assistant — no YAML change required.
+#
+# PREREQUISITES (include once in your device config):
+#   core_settings:         !include core/settings.yaml
+#   adaptive_settings:     !include core/adaptive_settings.yaml
+#
+# Required vars:
+#   zone_number: "1"
+#   motor_number: "1"             # 1-6 (motor assigned to this zone)
+#   id: "living"
+#   friendly_name: "Living Room"
+#   temperature_sensor: sensor_id
+#   default_preset: "HOME"
+#   preset_home_temp: "21 °C"
+#   preset_away_temp: "18 °C"
+#   preset_boost_temp: "24 °C"
+#   check_interval: "15min"
+#
+# Optional vars:
+#   zone_area_default: "15"
+#   zone_max_opening_default: "90"
+
+packages:
+  base: !include
+    file: base.yaml
+    vars:
+      zone_number: ${zone_number}
+      motor_number: ${motor_number}
+      id: ${id}
+      friendly_name: ${friendly_name}
+      zone_area_default: ${zone_area_default}
+      zone_max_opening_default: ${zone_max_opening_default}
+
+  control: !include
+    file: ../control/adaptive.yaml
+    vars:
+      zone_number: ${zone_number}
+      id: ${id}
+      id_prefix: ${id_prefix}
+      friendly_name: ${friendly_name}
+      temperature_sensor: ${temperature_sensor}
+      default_preset: ${default_preset}
+      preset_home_temp: ${preset_home_temp}
+      preset_away_temp: ${preset_away_temp}
+      preset_boost_temp: ${preset_boost_temp}
+      check_interval: ${check_interval}
+      zone_entities_internal: ${zone_entities_internal}

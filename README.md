@@ -80,9 +80,7 @@ heatvalve-6/
 ├── deploy/
 │   ├── local-prod.yaml          # Repo-local production entrypoint
 │   ├── local-dev.yaml           # Repo-local development entrypoint
-│   ├── esphome-remote.yaml      # ESPHome server entrypoint (no clone)
-│   ├── drv8215-test.yaml        # DRV8215 full test profile
-│   └── drv8215-motor1-manual.yaml
+│   └── esphome-remote.yaml      # ESPHome server entrypoint (no clone)
 └── docs/            # Documentation
 ```
 

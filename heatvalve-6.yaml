@@ -110,12 +110,6 @@ web_server:
     - id: sorting_group_zone_6
       name: "Zone 6: Office"
       sorting_weight: 15
-    - id: sorting_group_zone_7
-      name: "Zone 7: Bedroom"
-      sorting_weight: 16
-    - id: sorting_group_zone_8
-      name: "Zone 8: Bathroom"
-      sorting_weight: 17
     # System groups
     - id: sorting_group_settings
       name: "Settings"
@@ -146,12 +140,19 @@ heatvalve_dashboard:
   cover_z5_id: CH5_cover
   cover_z6_id: CH6_cover
   # Room temperature sensors
-  temp_z1_id: corridor_temp
-  temp_z2_id: storage_temp
-  temp_z3_id: living_temp
-  temp_z4_id: living_temp
-  temp_z5_id: living_temp
-  temp_z6_id: office_temp
+  temp_z1_id: zone_1_temp
+  temp_z2_id: zone_2_temp
+  temp_z3_id: zone_3_temp
+  temp_z4_id: zone_4_temp
+  temp_z5_id: zone_5_temp
+  temp_z6_id: zone_6_temp
+  # Per-zone runtime temperature source selects
+  sel_zone_1_source_id: heating_zone_1_temp_source
+  sel_zone_2_source_id: heating_zone_2_temp_source
+  sel_zone_3_source_id: heating_zone_3_temp_source
+  sel_zone_4_source_id: heating_zone_4_temp_source
+  sel_zone_5_source_id: heating_zone_5_temp_source
+  sel_zone_6_source_id: heating_zone_6_temp_source
   # Heating circuit sensors
   input_temp_id: heating_dallas_input_temp
   output_temp_id: heating_dallas_output_temp
@@ -167,6 +168,7 @@ heatvalve_dashboard:
   # Switches
   sw_balancing_id: heating_balancing_enabled
   sw_standalone_id: heating_standalone_mode
+  sw_display_id: heating_oled_enabled
   # Select
   sel_pipe_type_id: heating_pipe_type
   sel_floor_type_id: heating_floor_type
@@ -220,6 +222,23 @@ heatvalve_dashboard:
   num_zone_4_floor_cover_thickness_id: heating_zone_4_floor_cover_thickness
   num_zone_5_floor_cover_thickness_id: heating_zone_5_floor_cover_thickness
   num_zone_6_floor_cover_thickness_id: heating_zone_6_floor_cover_thickness
+  # Per-zone control profile selects (runtime algorithm switching)
+  sel_zone_1_profile_id: heating_zone_1_profile
+  sel_zone_2_profile_id: heating_zone_2_profile
+  sel_zone_3_profile_id: heating_zone_3_profile
+  sel_zone_4_profile_id: heating_zone_4_profile
+  sel_zone_5_profile_id: heating_zone_5_profile
+  sel_zone_6_profile_id: heating_zone_6_profile
+  # Per-zone BLE MAC text entities (optional: only when including optional/ble_sensors.yaml)
+  # Uncomment when enabling BLE sensor management:
+  text_zone_1_ble_mac_id: heating_zone_1_ble_mac
+  text_zone_2_ble_mac_id: heating_zone_2_ble_mac
+  text_zone_3_ble_mac_id: heating_zone_3_ble_mac
+  text_zone_4_ble_mac_id: heating_zone_4_ble_mac
+  text_zone_5_ble_mac_id: heating_zone_5_ble_mac
+  text_zone_6_ble_mac_id: heating_zone_6_ble_mac
+  # BLE scan results text sensor (optional: only when including optional/ble_sensors.yaml)
+  ble_scan_results_id: heating_ble_scan_results
 
 api:
   reboot_timeout: 30min
@@ -282,6 +301,7 @@ packages:
   
   # Core infrastructure
   core_settings: !include core/settings.yaml
+  adaptive_settings: !include core/adaptive_settings.yaml  # Runtime control algorithm tuning
   logger: !include core/logger.yaml
   motor_driver: !include core/motor_driver.yaml  # DRV8215 I2C motor control
   time: !include core/time.yaml
@@ -297,13 +317,14 @@ packages:
 
   # ============================================
   # Optional: Pump control via ESP-NOW
+  # Disabled for boards with onboard pump relay control.
   # ============================================
-  pump_control: !include
-    file: optional/pump_control.yaml
-    vars:
-      pump_mac_address: ${pump_mac_address}
-      circulation_check_interval: "24h"
-      circulation_run_duration: "5min"
+  # pump_control: !include
+  #   file: optional/pump_control.yaml
+  #   vars:
+  #     pump_mac_address: ${pump_mac_address}
+  #     circulation_check_interval: "24h"
+  #     circulation_run_duration: "5min"
 
   # ============================================
   # Optional: MQTT Ecodan integration
@@ -311,13 +332,17 @@ packages:
   # mqtt_ecodan: !include optional/mqtt_ecodan.yaml
 
   # ============================================
-  # ZONES
+  # ZONES (Runtime Adaptive Control)
   # ============================================
-  # Control profile options (use same for all zones):
-  #   zones/tanh.yaml   - Smooth tanh curve control
-  #   zones/linear.yaml - Linear proportional control
-  #   zones/pid.yaml    - PID control with auto-tune
-  #   zones/remote.yaml - External/Home Assistant control
+  # All zones use adaptive.yaml which allows runtime profile switching
+  # via dashboard or Home Assistant (Tanh/Linear/PID/Fixed).
+  # No reflash needed to change control algorithm!
+  #
+  # Algorithm tuning parameters are in core/adaptive_settings.yaml:
+  #   - Tanh Steepness, Linear Steepness, PID Kp/Ki/Kd
+  #
+  # For compile-time fixed profiles (smaller binary), use instead:
+  #   zones/tanh.yaml, zones/linear.yaml, zones/pid.yaml, zones/remote.yaml
   #
   # Motor mapping (DRV8215 I2C):
   #   motor_number: 1-6 (maps to physical motor outputs)
@@ -329,16 +354,13 @@ packages:
   #     Motor 6: DRV8215 @ 0x35
   
   zone_1: !include
-    file: zones/tanh.yaml
-    # file: zones/linear.yaml
-    # file: zones/pid.yaml
-    # file: zones/remote.yaml
+    file: zones/adaptive.yaml
     vars:
       zone_number: "1"
       motor_number: "1"
       id: wc
       friendly_name: "WC"
-      temperature_sensor: corridor_temp
+      temperature_sensor: zone_1_temp
       zone_area_default: "4"
       zone_max_opening_default: "90"
       default_preset: HOME
@@ -346,19 +368,15 @@ packages:
       preset_away_temp: "19 °C"
       preset_boost_temp: "23 °C"
       check_interval: "15min"
-      tanh_steepness: "0.70"
 
   zone_2: !include
-    file: zones/tanh.yaml
-    # file: zones/linear.yaml
-    # file: zones/pid.yaml
-    # file: zones/remote.yaml
+    file: zones/adaptive.yaml
     vars:
       zone_number: "2"
       motor_number: "2"
       id: storage
       friendly_name: "Storage"
-      temperature_sensor: storage_temp
+      temperature_sensor: zone_2_temp
       zone_area_default: "6"
       zone_max_opening_default: "90"
       default_preset: HOME
@@ -366,19 +384,15 @@ packages:
       preset_away_temp: "19 °C"
       preset_boost_temp: "23 °C"
       check_interval: "16min"
-      tanh_steepness: "0.70"
 
   zone_3: !include
-    file: zones/tanh.yaml
-    # file: zones/linear.yaml
-    # file: zones/pid.yaml
-    # file: zones/remote.yaml
+    file: zones/adaptive.yaml
     vars:
       zone_number: "3"
       motor_number: "3"
       id: living
       friendly_name: "Living Room"
-      temperature_sensor: living_temp
+      temperature_sensor: zone_3_temp
       zone_area_default: "25"
       zone_max_opening_default: "90"
       default_preset: HOME
@@ -386,19 +400,15 @@ packages:
       preset_away_temp: "19 °C"
       preset_boost_temp: "23 °C"
       check_interval: "17min"
-      tanh_steepness: "0.70"
 
   zone_4: !include
-    file: zones/tanh.yaml
-    # file: zones/linear.yaml
-    # file: zones/pid.yaml
-    # file: zones/remote.yaml
+    file: zones/adaptive.yaml
     vars:
       zone_number: "4"
       motor_number: "4"
       id: dining
       friendly_name: "Dining Room"
-      temperature_sensor: living_temp
+      temperature_sensor: zone_4_temp
       zone_area_default: "15"
       zone_max_opening_default: "90"
       default_preset: HOME
@@ -406,19 +416,15 @@ packages:
       preset_away_temp: "19 °C"
       preset_boost_temp: "23 °C"
       check_interval: "18min"
-      tanh_steepness: "0.70"
 
   zone_5: !include
-    file: zones/tanh.yaml
-    # file: zones/linear.yaml
-    # file: zones/pid.yaml
-    # file: zones/remote.yaml
+    file: zones/adaptive.yaml
     vars:
       zone_number: "5"
       motor_number: "5"
       id: kitchen
       friendly_name: "Kitchen"
-      temperature_sensor: living_temp
+      temperature_sensor: zone_5_temp
       zone_area_default: "12"
       zone_max_opening_default: "90"
       default_preset: HOME
@@ -426,19 +432,15 @@ packages:
       preset_away_temp: "19 °C"
       preset_boost_temp: "23 °C"
       check_interval: "15min"
-      tanh_steepness: "0.70"
 
   zone_6: !include
-    file: zones/tanh.yaml
-    # file: zones/linear.yaml
-    # file: zones/pid.yaml
-    # file: zones/remote.yaml
+    file: zones/adaptive.yaml
     vars:
       zone_number: "6"
       motor_number: "6"
       id: office
       friendly_name: "Office"
-      temperature_sensor: office_temp
+      temperature_sensor: zone_6_temp
       zone_area_default: "10"
       zone_max_opening_default: "90"
       default_preset: HOME
@@ -446,81 +448,25 @@ packages:
       preset_away_temp: "19 °C"
       preset_boost_temp: "23 °C"
       check_interval: "16min"
-      tanh_steepness: "0.70"
 
 
 # ============================================
 # TEMPERATURE SENSORS
 # ============================================
-# Choose sensor type based on your setup.
-# The sensor ID must match the zone's temperature_sensor variable.
-
-sensor:
-  # ============================================
-  # Option 1: Home Assistant sensors (recommended)
-  # ============================================
-  - platform: homeassistant
-    name: "Corridor Temperature"
-    entity_id: sensor.corridor_temperature
-    id: corridor_temp
-
-  - platform: homeassistant
-    name: "Storage Temperature"
-    entity_id: sensor.storage_temperature
-    id: storage_temp
-
-  - platform: homeassistant
-    name: "Living Room Temperature"
-    entity_id: sensor.living_room_temperature
-    id: living_temp
-
-  - platform: homeassistant
-    name: "Office Temperature"
-    entity_id: sensor.office_temperature
-    id: office_temp
-
-  - platform: homeassistant
-    name: "Bedroom Temperature"
-    entity_id: sensor.bedroom_temperature
-    id: bedroom_temp
-
-  - platform: homeassistant
-    name: "Bathroom Temperature"
-    entity_id: sensor.bathroom_temperature
-    id: bathroom_temp
-
-  # ============================================
-  # Option 2: Dallas/OneWire DS18B20 sensors
-  # ============================================
-  # - platform: dallas_temp
-  #   index: 0
-  #   name: "Living Room Temperature"
-  #   id: living_temp
-
-  # ============================================
-  # Option 3: DHT22/DHT11 sensors
-  # ============================================
-  # - platform: dht
-  #   model: DHT22
-  #   pin: GPIO25
-  #   temperature:
-  #     name: "Living Room Temperature"
-  #     id: living_temp
-
-  # ============================================
-  # Option 4: BLE Xiaomi sensors
-  # ============================================
-  # esp32_ble_tracker:
-  # - platform: xiaomi_lywsdcgq
-  #   mac_address: "58:2D:34:37:F1:10"
-  #   temperature:
-  #     name: "Living Room Temperature"
-  #     id: living_temp
-
-  # ============================================
-  # Option 5: I2C sensors (SHT3x, BME280)
-  # ============================================
-  # - platform: sht3xd
-  #   temperature:
-  #     name: "Living Room Temperature"
-  #     id: living_temp
+# Temperature source producers are NOT defined here.
+# Include the router plus one or more source packages in your deployment entrypoint:
+#
+#   zone_temperature_router: !include core/zone_temperature_router.yaml
+#
+#   For Home Assistant sensors:
+#     ha_sensors: !include core/ha_sensors.yaml
+#
+#   For MQTT sensors (standalone, no HA required):
+#     mqtt_sensors: !include core/mqtt_sensor_overrides.yaml
+#
+#   For BLE sensors (Bluetooth thermometers):
+#     ble_sensors: !include optional/ble_sensors.yaml
+#     (then assign BLE MACs via the dashboard BLE tab)
+#
+# Zones and the dashboard consume the router proxy IDs
+# `zone_1_temp` .. `zone_6_temp`.

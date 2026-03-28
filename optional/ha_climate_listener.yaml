@@ -1,0 +1,156 @@
+# ============================================
+# Optional: Home Assistant Climate.set_temperature Listener
+# ============================================
+# Enable this if you want external Home Assistant climate entities
+# to control zone setpoints dynamically.
+#
+# Use case 1: Sync HA Scheduler climate changes
+#   - User sets temp in Home Assistant thermostat UI
+#   - Automatically updates ESP32 zone setpoint
+#
+# Use case 2: Integration with other HA automations
+#   - Voice commands: "Set living room to 22°C"
+#   - External thermostats controlling zones
+#   - Mobile app climate control
+#
+# Implementation:
+#   1. Create matching climate entity in HA (e.g., input_number)
+#   2. Create automation to call esphome.${device}_set_climate_targets
+#   3. Pass zone index (0-5) and target temp
+#
+# This is OPTIONAL and only needed for advanced HA integrations.
+# Basic presets (HOME/AWAY/BOOST) work without this.
+
+# ============================================
+# API Service: Set Climate Targets
+# ============================================
+# Allows Home Assistant to dynamically set zone target temperatures.
+#
+# Example HA service call:
+#   service: esphome.heatvalve_6_set_zone_targets
+#   data:
+#     zone_targets: "21.5,20.0,22.5,21.0,20.5,21.0"
+#
+# Or individual trigger:
+#   service: esphome.heatvalve_6_ha_set_climate_setpoint
+#   data:
+#     zone_index: 0  # 0-5
+#     target_temp: 21.5
+
+api:
+  services:
+    # Service to set individual zone target temperature from HA
+    - service: ha_set_climate_setpoint
+      variables:
+        zone_index: int
+        target_temp: float
+      then:
+        - lambda: |-
+            // zone_index: 0-5 (zone 1-6)
+            // target_temp: degrees Celsius
+            if (zone_index < 0 || zone_index >= 6) {
+              ESP_LOGW("ha_api", "Invalid zone index: %d (valid 0-5)", zone_index);
+              return;
+            }
+            
+            char id_buf[32];
+            snprintf(id_buf, sizeof(id_buf), "living_thermostat");
+            
+            // Map zone indices to thermostats
+            climate::Climate *target_climate = nullptr;
+            switch (zone_index) {
+              case 0: target_climate = id(wc_thermostat); break;
+              case 1: target_climate = id(storage_thermostat); break;
+              case 2: target_climate = id(living_thermostat); break;
+              case 3: target_climate = id(dining_thermostat); break;
+              case 4: target_climate = id(kitchen_thermostat); break;
+              case 5: target_climate = id(office_thermostat); break;
+            }
+            
+            if (target_climate) {
+              auto call = target_climate->make_call();
+              call.set_target_temperature(target_temp);
+              call.perform();
+              ESP_LOGI("ha_api", "Zone %d setpoint set to %.1f°C from HA", zone_index + 1, target_temp);
+            } else {
+              ESP_LOGW("ha_api", "Thermostat not found for zone %d", zone_index);
+            }
+
+    # Service to set all zone targets as CSV string
+    - service: ha_set_climate_targets
+      variables:
+        zone_targets: string  # Format: "20.5,21.0,22.0,21.5,20.0,21.0"
+      then:
+        - lambda: |-
+            // Parse CSV string: zone_targets = "20.5,21.0,22.0,21.5,20.0,21.0"
+            std::string targets = zone_targets;
+            std::vector<float> temps;
+            
+            size_t pos = 0;
+            while (pos < targets.length()) {
+              size_t comma = targets.find(',', pos);
+              if (comma == std::string::npos) comma = targets.length();
+              
+              std::string token = targets.substr(pos, comma - pos);
+              float temp = std::atof(token.c_str());
+              temps.push_back(temp);
+              
+              pos = comma + 1;
+            }
+            
+            if (temps.size() != 6) {
+              ESP_LOGW("ha_api", "Expected 6 temps, got %d", (int)temps.size());
+              return;
+            }
+            
+            // Apply temps to all zones
+            climate::Climate *climates[6] = {
+              id(wc_thermostat),
+              id(storage_thermostat),
+              id(living_thermostat),
+              id(dining_thermostat),
+              id(kitchen_thermostat),
+              id(office_thermostat)
+            };
+            
+            for (int i = 0; i < 6; i++) {
+              if (climates[i]) {
+                auto call = climates[i]->make_call();
+                call.set_target_temperature(temps[i]);
+                call.perform();
+                ESP_LOGI("ha_api", "Zone %d setpoint: %.1f°C", i + 1, temps[i]);
+              }
+            }
+
+# ============================================
+# Usage in Home Assistant
+# ============================================
+#
+# Example: Create climate control via HA automation
+#   - alias: "Set Floor Heating Temps from HA Climate"
+#     trigger:
+#       platform: state
+#       entity_id: climate.living_room_thermostat  # HA climate UI
+#     action:
+#       - service: esphome.heatvalve_6_ha_set_climate_setpoint
+#         data:
+#           zone_index: 2  # Zone 3 (Living Room)
+#           target_temp: "{{ trigger.to_state.attributes.temperature }}"
+#
+# Example: Voice control
+#   - alias: "Voice: Set Living Room Heat"
+#     trigger:
+#       platform: homeassistant
+#       entity_id: input_number.living_room_target_temp
+#     action:
+#       - service: esphome.heatvalve_6_ha_set_climate_setpoint
+#         data_template:
+#           zone_index: 2
+#           target_temp: "{{ states('input_number.living_room_target_temp') | float }}"
+#
+# Example: Mass update (all zones from HA)
+#   - service: esphome.heatvalve_6_ha_set_climate_targets
+#     data:
+#       zone_targets: "20.5,21.0,22.0,21.5,20.0,21.0"
+#
+# ============================================

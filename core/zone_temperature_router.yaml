@@ -1,0 +1,240 @@
+# ============================================
+# Zone Temperature Source Router
+# ============================================
+# Runtime-selectable temperature source for each zone.
+#
+# Source producers write into the globals below:
+#   - HA package updates *_ha
+#   - MQTT package updates *_mqtt
+#   - BLE package updates *_ble
+#
+# Default source is provided by the deployment entrypoint via
+# `${temperature_source_default}`.
+#
+# Zones and dashboard consume the proxy sensors `zone_1_temp` .. `zone_6_temp`.
+
+# Shared storage for all source channels
+globals:
+  - id: ${id_prefix}zone_1_temp_ha
+    type: float
+    initial_value: 'NAN'
+  - id: ${id_prefix}zone_1_temp_mqtt
+    type: float
+    initial_value: 'NAN'
+  - id: ${id_prefix}zone_1_temp_ble
+    type: float
+    initial_value: 'NAN'
+
+  - id: ${id_prefix}zone_2_temp_ha
+    type: float
+    initial_value: 'NAN'
+  - id: ${id_prefix}zone_2_temp_mqtt
+    type: float
+    initial_value: 'NAN'
+  - id: ${id_prefix}zone_2_temp_ble
+    type: float
+    initial_value: 'NAN'
+
+  - id: ${id_prefix}zone_3_temp_ha
+    type: float
+    initial_value: 'NAN'
+  - id: ${id_prefix}zone_3_temp_mqtt
+    type: float
+    initial_value: 'NAN'
+  - id: ${id_prefix}zone_3_temp_ble
+    type: float
+    initial_value: 'NAN'
+
+  - id: ${id_prefix}zone_4_temp_ha
+    type: float
+    initial_value: 'NAN'
+  - id: ${id_prefix}zone_4_temp_mqtt
+    type: float
+    initial_value: 'NAN'
+  - id: ${id_prefix}zone_4_temp_ble
+    type: float
+    initial_value: 'NAN'
+
+  - id: ${id_prefix}zone_5_temp_ha
+    type: float
+    initial_value: 'NAN'
+  - id: ${id_prefix}zone_5_temp_mqtt
+    type: float
+    initial_value: 'NAN'
+  - id: ${id_prefix}zone_5_temp_ble
+    type: float
+    initial_value: 'NAN'
+
+  - id: ${id_prefix}zone_6_temp_ha
+    type: float
+    initial_value: 'NAN'
+  - id: ${id_prefix}zone_6_temp_mqtt
+    type: float
+    initial_value: 'NAN'
+  - id: ${id_prefix}zone_6_temp_ble
+    type: float
+    initial_value: 'NAN'
+
+select:
+  - platform: template
+    name: "Zone 1 Temperature Source"
+    id: ${id_prefix}zone_1_temp_source
+    optimistic: true
+    restore_value: true
+    initial_option: ${temperature_source_default}
+    options: ["HA", "MQTT", "BLE"]
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_zone_1
+
+  - platform: template
+    name: "Zone 2 Temperature Source"
+    id: ${id_prefix}zone_2_temp_source
+    optimistic: true
+    restore_value: true
+    initial_option: ${temperature_source_default}
+    options: ["HA", "MQTT", "BLE"]
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_zone_2
+
+  - platform: template
+    name: "Zone 3 Temperature Source"
+    id: ${id_prefix}zone_3_temp_source
+    optimistic: true
+    restore_value: true
+    initial_option: ${temperature_source_default}
+    options: ["HA", "MQTT", "BLE"]
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_zone_3
+
+  - platform: template
+    name: "Zone 4 Temperature Source"
+    id: ${id_prefix}zone_4_temp_source
+    optimistic: true
+    restore_value: true
+    initial_option: ${temperature_source_default}
+    options: ["HA", "MQTT", "BLE"]
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_zone_4
+
+  - platform: template
+    name: "Zone 5 Temperature Source"
+    id: ${id_prefix}zone_5_temp_source
+    optimistic: true
+    restore_value: true
+    initial_option: ${temperature_source_default}
+    options: ["HA", "MQTT", "BLE"]
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_zone_5
+
+  - platform: template
+    name: "Zone 6 Temperature Source"
+    id: ${id_prefix}zone_6_temp_source
+    optimistic: true
+    restore_value: true
+    initial_option: ${temperature_source_default}
+    options: ["HA", "MQTT", "BLE"]
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_zone_6
+
+sensor:
+  - platform: template
+    name: "Zone 1 Temperature"
+    id: zone_1_temp
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: |-
+      auto source = id(${id_prefix}zone_1_temp_source).current_option();
+      if (source == "MQTT") return id(${id_prefix}zone_1_temp_mqtt);
+      if (source == "BLE") return id(${id_prefix}zone_1_temp_ble);
+      return id(${id_prefix}zone_1_temp_ha);
+    web_server:
+      sorting_group_id: sorting_group_zone_1
+
+  - platform: template
+    name: "Zone 2 Temperature"
+    id: zone_2_temp
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: |-
+      auto source = id(${id_prefix}zone_2_temp_source).current_option();
+      if (source == "MQTT") return id(${id_prefix}zone_2_temp_mqtt);
+      if (source == "BLE") return id(${id_prefix}zone_2_temp_ble);
+      return id(${id_prefix}zone_2_temp_ha);
+    web_server:
+      sorting_group_id: sorting_group_zone_2
+
+  - platform: template
+    name: "Zone 3 Temperature"
+    id: zone_3_temp
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: |-
+      auto source = id(${id_prefix}zone_3_temp_source).current_option();
+      if (source == "MQTT") return id(${id_prefix}zone_3_temp_mqtt);
+      if (source == "BLE") return id(${id_prefix}zone_3_temp_ble);
+      return id(${id_prefix}zone_3_temp_ha);
+    web_server:
+      sorting_group_id: sorting_group_zone_3
+
+  - platform: template
+    name: "Zone 4 Temperature"
+    id: zone_4_temp
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: |-
+      auto source = id(${id_prefix}zone_4_temp_source).current_option();
+      if (source == "MQTT") return id(${id_prefix}zone_4_temp_mqtt);
+      if (source == "BLE") return id(${id_prefix}zone_4_temp_ble);
+      return id(${id_prefix}zone_4_temp_ha);
+    web_server:
+      sorting_group_id: sorting_group_zone_4
+
+  - platform: template
+    name: "Zone 5 Temperature"
+    id: zone_5_temp
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: |-
+      auto source = id(${id_prefix}zone_5_temp_source).current_option();
+      if (source == "MQTT") return id(${id_prefix}zone_5_temp_mqtt);
+      if (source == "BLE") return id(${id_prefix}zone_5_temp_ble);
+      return id(${id_prefix}zone_5_temp_ha);
+    web_server:
+      sorting_group_id: sorting_group_zone_5
+
+  - platform: template
+    name: "Zone 6 Temperature"
+    id: zone_6_temp
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: |-
+      auto source = id(${id_prefix}zone_6_temp_source).current_option();
+      if (source == "MQTT") return id(${id_prefix}zone_6_temp_mqtt);
+      if (source == "BLE") return id(${id_prefix}zone_6_temp_ble);
+      return id(${id_prefix}zone_6_temp_ha);
+    web_server:
+      sorting_group_id: sorting_group_zone_6

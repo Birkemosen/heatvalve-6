@@ -1,0 +1,80 @@
+# ============================================
+# MQTT Temperature Source Inputs
+# ============================================
+# These sensors feed the runtime zone-temperature router.
+# Zone 3, 4, and 5 intentionally share the living-room MQTT topic by default,
+# matching the previous fixed wiring.
+#
+# Test with mosquitto:
+#   mosquitto_pub -h 192.168.1.10 -t "home/floor-heating/sensors/corridor/temperature" -m "21.3"
+
+sensor:
+  - platform: mqtt_subscribe
+    name: "Corridor Temperature MQTT Source"
+    id: ${id_prefix}corridor_temp_mqtt_source
+    internal: true
+    topic: "home/floor-heating/sensors/corridor/temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    filters:
+      - clamp:
+          min_value: 5.0
+          max_value: 40.0
+          ignore_out_of_range: true
+    on_value:
+      - lambda: |-
+          id(${id_prefix}zone_1_temp_mqtt) = x;
+
+  - platform: mqtt_subscribe
+    name: "Storage Temperature MQTT Source"
+    id: ${id_prefix}storage_temp_mqtt_source
+    internal: true
+    topic: "home/floor-heating/sensors/storage/temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    filters:
+      - clamp:
+          min_value: 5.0
+          max_value: 40.0
+          ignore_out_of_range: true
+    on_value:
+      - lambda: |-
+          id(${id_prefix}zone_2_temp_mqtt) = x;
+
+  - platform: mqtt_subscribe
+    name: "Living Room Temperature MQTT Source"
+    id: ${id_prefix}living_temp_mqtt_source
+    internal: true
+    topic: "home/floor-heating/sensors/living-room/temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    filters:
+      - clamp:
+          min_value: 5.0
+          max_value: 40.0
+          ignore_out_of_range: true
+    on_value:
+      - lambda: |-
+          id(${id_prefix}zone_3_temp_mqtt) = x;
+          id(${id_prefix}zone_4_temp_mqtt) = x;
+          id(${id_prefix}zone_5_temp_mqtt) = x;
+
+  - platform: mqtt_subscribe
+    name: "Office Temperature MQTT Source"
+    id: ${id_prefix}office_temp_mqtt_source
+    internal: true
+    topic: "home/floor-heating/sensors/office/temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    filters:
+      - clamp:
+          min_value: 5.0
+          max_value: 40.0
+          ignore_out_of_range: true
+    on_value:
+      - lambda: |-
+          id(${id_prefix}zone_6_temp_mqtt) = x;

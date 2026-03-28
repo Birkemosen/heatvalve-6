@@ -13,4 +13,15 @@ switch:
     entity_category: config
     turn_on_action:
       - script.execute: valve_maintenance
+
+  # OLED display on/off (controlled from dashboard)
+  - platform: template
+    name: "OLED Display"
+    id: heating_oled_enabled
+    icon: "mdi:monitor"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
        

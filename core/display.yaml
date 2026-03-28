@@ -1,49 +1,116 @@
 # ============================================
-# HeatValve-6 : OLED Display (1.54" SSD1306 128x64 I2C)
+# ============================================
+# HeatValve-6 : OLED Display (1.54" CH1116 128x64 I2C, portrait/upright)
 # ============================================
 # Shared I2C bus with DRV8215 motors (SDA=GPIO8, SCL=GPIO9).
 # Default address: 0x3C (OLED_SA0 → GND).
 # Override in board substitutions: oled_address: "0x3D" if SA0 → VCC.
+#
+# CH1116 is compatible with SH1106 command set.
+# rotation: 270  →  portrait 64px-wide × 128px-tall, rotated 180° vs. 90.
+#
+# Layout: 2 columns × 3 rows. Each zone shows a zone label
+# and 5 stacked bars (each bar = 20% valve opening).
+# Fault mode rotates pages (fault details + WiFi/MQTT/BLE status).
+# Display on/off controlled by switch "heating_oled_enabled".
 
 font:
-  - file: "gfonts://Roboto"
-    id: font_small
-    size: 10
-  - file: "gfonts://Roboto"
-    id: font_medium
-    size: 14
   - file: "gfonts://Roboto+Mono"
-    id: font_mono
+    id: font_sm
     size: 11
+  - file: "gfonts://Roboto+Mono"
+    id: font_xs
+    size: 10
 
 display:
   - platform: ssd1306_i2c
     id: oled_display
-    model: "SSD1306 128x64"
+    model: "SH1106 128x64"
     address: ${oled_address}
-    update_interval: 2s
+    rotation: 270        # portrait, 180° flipped vs. previous 90°
+    update_interval: 3s
     lambda: |-
-      // Line 1: active motor / system status
-      if (id(motor_supervisor_ctrl).is_motor_turning()) {
-        it.printf(0, 0, id(font_small), "Motor %d %s",
-          id(motor_supervisor_ctrl).get_current_motor(),
-          id(motor_supervisor_ctrl).get_motor_direction() == 1 ? "OPEN >>" : "<< CLOSE");
-      } else {
-        it.print(0, 0, id(font_small), "HeatValve-6");
+      // Blank when disabled
+      if (!id(heating_oled_enabled).state) {
+        it.fill(COLOR_OFF);
+        return;
       }
 
-      // Line 2: current (mA) when running
-      if (id(motor_supervisor_ctrl).is_motor_turning()) {
-        it.printf(0, 14, id(font_small), "I: %.0f mA", id(motor_supervisor_ctrl).get_current_filtered());
-      }
+      // Always clear frame so old bar outlines/pixels never linger.
+      it.fill(COLOR_OFF);
 
-      // Line 3: stop/fault indicator
+      // ── Fault pages (rotating) ──
       if (id(motor_supervisor_ctrl).fault_event()) {
-        it.print(0, 28, id(font_small), "!! SAFETY STOP");
-      } else if (id(motor_supervisor_ctrl).endstop_event()) {
-        it.print(0, 28, id(font_small), "!! ENDSTOP");
+        const bool wifi_ok = wifi::global_wifi_component != nullptr &&
+                             wifi::global_wifi_component->is_connected();
+
+        const bool ble_ok = id(heating_ble_scan_results).has_state() &&
+                            id(heating_ble_scan_results).state != "[]";
+
+        const uint32_t page_seconds = 3;
+        const uint32_t page = (millis() / (page_seconds * 1000UL)) % 4;
+
+        if (page == 0) {
+          it.printf(3,  8, id(font_sm), "!! FAULT");
+          it.printf(3, 26, id(font_sm), "Motor %d",
+            id(motor_supervisor_ctrl).get_current_motor());
+          it.printf(3, 44, id(font_xs), "%.0f mA",
+            id(motor_supervisor_ctrl).get_current_filtered());
+        } else if (page == 1) {
+          it.printf(3, 10, id(font_sm), "WiFi");
+          it.printf(3, 30, id(font_sm), "%s", wifi_ok ? "OK" : "DOWN");
+        } else {
+          it.printf(3, 10, id(font_sm), "BLE");
+          it.printf(3, 30, id(font_sm), "%s", ble_ok ? "ON" : "OFF");
+        }
+        return;
       }
 
-      // Bottom line: uptime / IP placeholder
-      it.printf(0, 52, id(font_small), "nSLEEP: %s",
-        id(motor_nsleep).state ? "ON" : "OFF");
+      // ── Normal view: 2-column bar chart ──
+      // Canvas after rotation: 64 px wide × 128 px tall.
+      // 2 columns (32 px each), 3 zone rows per column (42 px each).
+      // Per zone block:
+      //   y+0  : zone label  (font_xs, ~10px)
+      //   y+14 : 5 bars
+      //           bar height 4px, gap 1px → 5 bars = 24px
+      const int ZONE_H  = 42;
+      const int COL_W   = 32;
+      const int BAR_H   = 4;
+      const int BAR_GAP = 1;
+      const int BAR_W   = 9;   // extra-slim bar width
+      const int BAR_X   = 11;  // center slimmer bars within each 32px column
+      const int BARS_Y  = 14;  // y offset from zone top to first (top) bar
+
+      auto draw_zone = [&](int col, int row, cover::Cover *cv, const char *lbl) {
+        const int cx = col * COL_W;
+        const int cy = row * ZONE_H;
+        const int pct = (!cv || std::isnan(cv->position))
+                        ? -1 : (int)(cv->position * 100.0f + 0.5f);
+
+        // Label
+        it.print(cx + BAR_X, cy, id(font_xs), lbl);
+
+        // Number of visible bars (1..5) in discrete 20% steps:
+        // 0-20 => 1, 21-40 => 2, ..., 81-100 => 5
+        int bars_on = 0;
+        if (pct >= 0) {
+          bars_on = (pct + 19) / 20;
+          if (bars_on < 1) bars_on = 1;
+          if (bars_on > 5) bars_on = 5;
+        }
+
+        // 5 stacked bars: b=0 top, b=4 bottom.
+        // Show only the required number of bars, starting from bottom.
+        for (int b = 0; b < 5; b++) {
+          const int by = cy + BARS_Y + b * (BAR_H + BAR_GAP);
+          if (bars_on > 0 && b >= (5 - bars_on))
+            it.filled_rectangle(cx + BAR_X, by, BAR_W, BAR_H);
+        }
+      };
+
+      draw_zone(0, 0, id(CH1_cover), "Z1");
+      draw_zone(0, 1, id(CH2_cover), "Z2");
+      draw_zone(0, 2, id(CH3_cover), "Z3");
+      draw_zone(1, 0, id(CH4_cover), "Z4");
+      draw_zone(1, 1, id(CH5_cover), "Z5");
+      draw_zone(1, 2, id(CH6_cover), "Z6");

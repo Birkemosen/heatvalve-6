@@ -4,6 +4,13 @@
 # Non-linear control using hyperbolic tangent.
 # Good for underfloor heating's slow thermal response.
 #
+# RECOMMENDATION: For new installations, consider zones/adaptive.yaml instead.
+# Adaptive allows runtime switching between Tanh/Linear/PID/Fixed without
+# reflashing. Use this standalone profile when:
+#   - You want compile-time profile selection (smaller binary)
+#   - You need to reduce RAM usage
+#   - You prefer explicit per-zone algorithm configuration
+#
 # Required vars:
 #   zone_number, id, friendly_name, temperature_sensor
 #   default_preset, preset_home_temp, preset_away_temp, preset_boost_temp

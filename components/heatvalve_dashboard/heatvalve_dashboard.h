@@ -13,6 +13,7 @@
 #include "esphome/components/switch/switch.h"
 #include "esphome/components/select/select.h"
 #include "esphome/components/cover/cover.h"
+#include "esphome/components/text/text.h"
 
 namespace esphome {
 namespace heatvalve_dashboard {
@@ -46,6 +47,11 @@ struct ZoneSnapshot {
   int floor_type_idx{-1};
   NumData pipe_spacing;
   NumData floor_cover_thickness;
+  int source_idx{-1};
+  // Adaptive profile (optional: only set when adaptive control is wired)
+  int profile_idx{-1};
+  // BLE MAC address assigned to this zone (empty if none)
+  char ble_mac[18]{0};
 };
 
 struct DashboardSnapshot {
@@ -60,6 +66,7 @@ struct DashboardSnapshot {
 
   bool sw_balancing{false};
   bool sw_standalone{false};
+  bool display_enabled{true};
 
   int sel_pipe_type{-1};
   char sel_pipe_type_opts[12][24]{{0}};
@@ -80,6 +87,8 @@ struct DashboardSnapshot {
   char controller_mode[32]{0};
   char system_status[64]{0};
   char uptime[32]{0};
+  // BLE scan results (JSON array string, set by ble_sensors.yaml text_sensor)
+  char ble_scan_results[2048]{0};
 };
 
 // 20 bytes per record: 6 zones * 2 (temp) + 6 * 1 (valve packed) + timestamp + flags
@@ -122,6 +131,12 @@ class HeatvalveDashboard : public Component, public AsyncWebHandler {
   void set_temp_z4(sensor::Sensor *s) { zone_temps_[3] = s; }
   void set_temp_z5(sensor::Sensor *s) { zone_temps_[4] = s; }
   void set_temp_z6(sensor::Sensor *s) { zone_temps_[5] = s; }
+  void set_sel_zone_1_source(select::Select *s) { zone_sources_[0] = s; }
+  void set_sel_zone_2_source(select::Select *s) { zone_sources_[1] = s; }
+  void set_sel_zone_3_source(select::Select *s) { zone_sources_[2] = s; }
+  void set_sel_zone_4_source(select::Select *s) { zone_sources_[3] = s; }
+  void set_sel_zone_5_source(select::Select *s) { zone_sources_[4] = s; }
+  void set_sel_zone_6_source(select::Select *s) { zone_sources_[5] = s; }
 
   // Heating circuit
   void set_input_temp(sensor::Sensor *s) { input_temp_ = s; }
@@ -141,6 +156,7 @@ class HeatvalveDashboard : public Component, public AsyncWebHandler {
   // Switches
   void set_sw_balancing(switch_::Switch *s) { sw_balancing_ = s; }
   void set_sw_standalone(switch_::Switch *s) { sw_standalone_ = s; }
+  void set_sw_display(switch_::Switch *s) { sw_display_ = s; }
 
   // Select
   void set_sel_pipe_type(select::Select *s) { sel_pipe_type_ = s; }
@@ -196,7 +212,24 @@ class HeatvalveDashboard : public Component, public AsyncWebHandler {
   void set_num_zone_5_floor_cover_thickness(number::Number *n) { zone_floor_cover_thicknesses_[4] = n; }
   void set_num_zone_6_floor_cover_thickness(number::Number *n) { zone_floor_cover_thicknesses_[5] = n; }
 
-  // AsyncWebHandler
+  // Zone control profile selects (optional: set when using zones/adaptive.yaml)
+  void set_sel_zone_1_profile(select::Select *s) { zone_profiles_[0] = s; }
+  void set_sel_zone_2_profile(select::Select *s) { zone_profiles_[1] = s; }
+  void set_sel_zone_3_profile(select::Select *s) { zone_profiles_[2] = s; }
+  void set_sel_zone_4_profile(select::Select *s) { zone_profiles_[3] = s; }
+  void set_sel_zone_5_profile(select::Select *s) { zone_profiles_[4] = s; }
+  void set_sel_zone_6_profile(select::Select *s) { zone_profiles_[5] = s; }
+
+  // Zone BLE MAC text entities (optional: set when using optional/ble_sensors.yaml)
+  void set_text_zone_1_ble_mac(text::Text *t) { zone_ble_macs_[0] = t; }
+  void set_text_zone_2_ble_mac(text::Text *t) { zone_ble_macs_[1] = t; }
+  void set_text_zone_3_ble_mac(text::Text *t) { zone_ble_macs_[2] = t; }
+  void set_text_zone_4_ble_mac(text::Text *t) { zone_ble_macs_[3] = t; }
+  void set_text_zone_5_ble_mac(text::Text *t) { zone_ble_macs_[4] = t; }
+  void set_text_zone_6_ble_mac(text::Text *t) { zone_ble_macs_[5] = t; }
+
+  // BLE scan results text sensor (optional)
+  void set_ble_scan_results(text_sensor::TextSensor *t) { ble_scan_results_ = t; }
   bool canHandle(AsyncWebServerRequest *request) const override;
   void handleRequest(AsyncWebServerRequest *request) override;
   bool isRequestHandlerTrivial() const override { return false; }
@@ -224,6 +257,7 @@ class HeatvalveDashboard : public Component, public AsyncWebHandler {
   climate::Climate *climates_[NUM_ZONES]{};
   cover::Cover *covers_[NUM_ZONES]{};
   sensor::Sensor *zone_temps_[NUM_ZONES]{};
+  select::Select *zone_sources_[NUM_ZONES]{};
   number::Number *zone_areas_[NUM_ZONES]{};
   number::Number *zone_max_openings_[NUM_ZONES]{};
   select::Select *zone_pipe_types_[NUM_ZONES]{};
@@ -249,6 +283,7 @@ class HeatvalveDashboard : public Component, public AsyncWebHandler {
   // Switches
   switch_::Switch *sw_balancing_{nullptr};
   switch_::Switch *sw_standalone_{nullptr};
+  switch_::Switch *sw_display_{nullptr};
 
   // Select
   select::Select *sel_pipe_type_{nullptr};
@@ -263,6 +298,15 @@ class HeatvalveDashboard : public Component, public AsyncWebHandler {
   number::Number *num_min_movement_{nullptr};
   number::Number *num_pipe_spacing_{nullptr};
   number::Number *num_floor_cover_thickness_{nullptr};
+
+  // Zone control profile selects (adaptive control)
+  select::Select *zone_profiles_[NUM_ZONES]{};
+
+  // Zone BLE MAC text entities
+  text::Text *zone_ble_macs_[NUM_ZONES]{};
+
+  // BLE scan results (JSON)
+  text_sensor::TextSensor *ble_scan_results_{nullptr};
 
  private:
   static const size_t MAX_HISTORY = 1440;  // 24h at 1min intervals

@@ -175,7 +175,7 @@ sensor:
     name: "Motor IPROPI Voltage"
     id: ${id_prefix}motor_ipropi_voltage
     pin: ${motor_ipropi_pin}
-    attenuation: 11db
+    attenuation: 12db
     update_interval: 50ms
     accuracy_decimals: 3
     unit_of_measurement: "V"

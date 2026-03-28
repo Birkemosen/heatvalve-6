@@ -2,10 +2,9 @@
 # Kør fra repo-roden. Kræver: pip install esphome (eller esphome i venv)
 
 CONFIG_DEV = deploy/local-dev.yaml
-CONFIG_DRV8215_M1 = deploy/drv8215-motor1-manual.yaml
 PYTHON ?= python3
 
-.PHONY: run compile upload log clean run-drv8215-m1 compile-drv8215-m1
+.PHONY: run compile upload log clean
 
 # ============================================
 # Basic Control (default)
@@ -30,15 +29,3 @@ log:
 # Ryd build-cache
 clean:
 	rm -rf .esphome/build
-
-# ============================================
-# DRV8215 hardware bring-up (motor 1 manual)
-# ============================================
-
-run-drv8215-m1:
-	esphome run $(CONFIG_DRV8215_M1)
-
-compile-drv8215-m1:
-	esphome compile $(CONFIG_DRV8215_M1)
-
-

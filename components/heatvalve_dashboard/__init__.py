@@ -4,11 +4,11 @@ from esphome.components import web_server_base
 from esphome.const import CONF_ID
 
 DEPENDENCIES = ["web_server_base", "network"]
-AUTO_LOAD = ["web_server_base"]
+AUTO_LOAD = ["web_server_base", "text"]
 
 CONF_WEB_SERVER_BASE_ID = "web_server_base_id"
 
-from esphome.components import sensor, text_sensor, climate, number, switch, select, cover
+from esphome.components import sensor, text_sensor, climate, number, switch, select, cover, text
 
 heatvalve_dashboard_ns = cg.esphome_ns.namespace("heatvalve_dashboard")
 HeatvalveDashboard = heatvalve_dashboard_ns.class_("HeatvalveDashboard", cg.Component)
@@ -39,6 +39,13 @@ _SCHEMA_DICT = {
         cv.Optional("temp_z4_id"): cv.use_id(sensor.Sensor),
         cv.Optional("temp_z5_id"): cv.use_id(sensor.Sensor),
         cv.Optional("temp_z6_id"): cv.use_id(sensor.Sensor),
+        # Zone temperature source selects
+        cv.Optional("sel_zone_1_source_id"): cv.use_id(select.Select),
+        cv.Optional("sel_zone_2_source_id"): cv.use_id(select.Select),
+        cv.Optional("sel_zone_3_source_id"): cv.use_id(select.Select),
+        cv.Optional("sel_zone_4_source_id"): cv.use_id(select.Select),
+        cv.Optional("sel_zone_5_source_id"): cv.use_id(select.Select),
+        cv.Optional("sel_zone_6_source_id"): cv.use_id(select.Select),
         # Heating circuit sensors
         cv.Optional("input_temp_id"): cv.use_id(sensor.Sensor),
         cv.Optional("output_temp_id"): cv.use_id(sensor.Sensor),
@@ -54,6 +61,7 @@ _SCHEMA_DICT = {
         # Switches
         cv.Optional("sw_balancing_id"): cv.use_id(switch.Switch),
         cv.Optional("sw_standalone_id"): cv.use_id(switch.Switch),
+        cv.Optional("sw_display_id"): cv.use_id(switch.Switch),
         # Select
         cv.Optional("sel_pipe_type_id"): cv.use_id(select.Select),
         cv.Optional("sel_floor_type_id"): cv.use_id(select.Select),
@@ -107,6 +115,22 @@ _SCHEMA_DICT = {
         cv.Optional("num_zone_4_floor_cover_thickness_id"): cv.use_id(number.Number),
         cv.Optional("num_zone_5_floor_cover_thickness_id"): cv.use_id(number.Number),
         cv.Optional("num_zone_6_floor_cover_thickness_id"): cv.use_id(number.Number),
+        # Zone control profile selects (adaptive control)
+        cv.Optional("sel_zone_1_profile_id"): cv.use_id(select.Select),
+        cv.Optional("sel_zone_2_profile_id"): cv.use_id(select.Select),
+        cv.Optional("sel_zone_3_profile_id"): cv.use_id(select.Select),
+        cv.Optional("sel_zone_4_profile_id"): cv.use_id(select.Select),
+        cv.Optional("sel_zone_5_profile_id"): cv.use_id(select.Select),
+        cv.Optional("sel_zone_6_profile_id"): cv.use_id(select.Select),
+        # Zone BLE MAC text entities
+        cv.Optional("text_zone_1_ble_mac_id"): cv.use_id(text.Text),
+        cv.Optional("text_zone_2_ble_mac_id"): cv.use_id(text.Text),
+        cv.Optional("text_zone_3_ble_mac_id"): cv.use_id(text.Text),
+        cv.Optional("text_zone_4_ble_mac_id"): cv.use_id(text.Text),
+        cv.Optional("text_zone_5_ble_mac_id"): cv.use_id(text.Text),
+        cv.Optional("text_zone_6_ble_mac_id"): cv.use_id(text.Text),
+        # BLE scan results text sensor
+        cv.Optional("ble_scan_results_id"): cv.use_id(text_sensor.TextSensor),
     }
 CONFIG_SCHEMA = cv.Schema(_SCHEMA_DICT).extend(cv.COMPONENT_SCHEMA)
 
@@ -146,6 +170,13 @@ async def to_code(config):
         ("temp_z4_id", "set_temp_z4"),
         ("temp_z5_id", "set_temp_z5"),
         ("temp_z6_id", "set_temp_z6"),
+        # Zone temperature source selects
+        ("sel_zone_1_source_id", "set_sel_zone_1_source"),
+        ("sel_zone_2_source_id", "set_sel_zone_2_source"),
+        ("sel_zone_3_source_id", "set_sel_zone_3_source"),
+        ("sel_zone_4_source_id", "set_sel_zone_4_source"),
+        ("sel_zone_5_source_id", "set_sel_zone_5_source"),
+        ("sel_zone_6_source_id", "set_sel_zone_6_source"),
         # Heating circuit
         ("input_temp_id", "set_input_temp"),
         ("output_temp_id", "set_output_temp"),
@@ -161,6 +192,7 @@ async def to_code(config):
         # Switches
         ("sw_balancing_id", "set_sw_balancing"),
         ("sw_standalone_id", "set_sw_standalone"),
+        ("sw_display_id", "set_sw_display"),
         # Select
         ("sel_pipe_type_id", "set_sel_pipe_type"),
         ("sel_floor_type_id", "set_sel_floor_type"),
@@ -214,6 +246,22 @@ async def to_code(config):
         ("num_zone_4_floor_cover_thickness_id", "set_num_zone_4_floor_cover_thickness"),
         ("num_zone_5_floor_cover_thickness_id", "set_num_zone_5_floor_cover_thickness"),
         ("num_zone_6_floor_cover_thickness_id", "set_num_zone_6_floor_cover_thickness"),
+        # Zone control profile selects
+        ("sel_zone_1_profile_id", "set_sel_zone_1_profile"),
+        ("sel_zone_2_profile_id", "set_sel_zone_2_profile"),
+        ("sel_zone_3_profile_id", "set_sel_zone_3_profile"),
+        ("sel_zone_4_profile_id", "set_sel_zone_4_profile"),
+        ("sel_zone_5_profile_id", "set_sel_zone_5_profile"),
+        ("sel_zone_6_profile_id", "set_sel_zone_6_profile"),
+        # Zone BLE MAC text entities
+        ("text_zone_1_ble_mac_id", "set_text_zone_1_ble_mac"),
+        ("text_zone_2_ble_mac_id", "set_text_zone_2_ble_mac"),
+        ("text_zone_3_ble_mac_id", "set_text_zone_3_ble_mac"),
+        ("text_zone_4_ble_mac_id", "set_text_zone_4_ble_mac"),
+        ("text_zone_5_ble_mac_id", "set_text_zone_5_ble_mac"),
+        ("text_zone_6_ble_mac_id", "set_text_zone_6_ble_mac"),
+        # BLE scan results
+        ("ble_scan_results_id", "set_ble_scan_results"),
     ]
 
     for conf_key, setter in pairs:

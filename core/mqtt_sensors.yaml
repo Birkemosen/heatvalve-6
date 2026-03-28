@@ -1,0 +1,223 @@
+# ============================================
+# Optional: MQTT Temperature Sensors
+# ============================================
+# Use this to integrate temperature sensors from MQTT brokers.
+# Useful for:
+#   - Standalone operation (no Home Assistant dependency)
+#   - Integrating external temperature sensors (e.g., Node-RED, Zigbee2MQTT)
+#   - Multi-building setups with remote sensors
+#
+# To enable:
+#   1. Add MQTT broker config below (or uncomment mqtt_ecodan.yaml)
+#   2. Map sensor IDs to zone temperature_sensor variables
+#
+# Example usage in deploy file:
+#   mqtt:
+#     broker: "192.168.1.100"
+#     username: !secret mqtt_user
+#     password: !secret mqtt_password
+#   
+#   Then include this file in packages and reference sensor IDs per zone.
+
+# ============================================
+# MQTT Configuration (required for mqtt_subscribe sensors)
+# ============================================
+# Uncomment and configure your MQTT broker.
+# Ensure your MQTT broker is running and credentials are set in secrets.yaml
+#
+# mqtt:
+#   broker: !secret mqtt_broker
+#   username: !secret mqtt_user
+#   password: !secret mqtt_password
+#   discovery: false  # Disable auto-discovery if not needed
+
+# ============================================
+# Zone Temperature Sensors from MQTT
+# ============================================
+# Platform: mqtt_subscribe (requires mqtt component enabled above)
+# Replace topics with your actual MQTT topics.
+#
+# Example MQTT hierarchy:
+#   home/floor-heating/sensors/corridor/temperature
+#   home/floor-heating/sensors/storage/temperature
+#   home/floor-heating/sensors/living-room/temperature
+#
+# If you publish as JSON (recommended for reliability):
+#   home/floor-heating/sensors/corridor -> {"temperature": 19.5, "humidity": 45}
+#   Then use JSON parse path: "$.temperature"
+
+sensor:
+  # ============================================
+  # Corridor / WC Area
+  # ============================================
+  - platform: mqtt_subscribe
+    name: "Corridor Temperature (MQTT)"
+    topic: "home/floor-heating/sensors/corridor/temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    id: corridor_temp_mqtt
+    filters:
+      - clamp:
+          min_value: 5.0
+          max_value: 40.0
+    # Optional: For JSON payload like {"temp": 19.5}
+    # json_path: "$.temperature"
+    icon: "mdi:thermometer"
+
+  # ============================================
+  # Storage Room
+  # ============================================
+  - platform: mqtt_subscribe
+    name: "Storage Temperature (MQTT)"
+    topic: "home/floor-heating/sensors/storage/temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    id: storage_temp_mqtt
+    filters:
+      - clamp:
+          min_value: 5.0
+          max_value: 40.0
+    icon: "mdi:thermometer"
+
+  # ============================================
+  # Living Room / Dining Room / Kitchen
+  # ============================================
+  - platform: mqtt_subscribe
+    name: "Living Room Temperature (MQTT)"
+    topic: "home/floor-heating/sensors/living-room/temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    id: living_temp_mqtt
+    filters:
+      - clamp:
+          min_value: 5.0
+          max_value: 40.0
+    icon: "mdi:thermometer"
+
+  # ============================================
+  # Office
+  # ============================================
+  - platform: mqtt_subscribe
+    name: "Office Temperature (MQTT)"
+    topic: "home/floor-heating/sensors/office/temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    id: office_temp_mqtt
+    filters:
+      - clamp:
+          min_value: 5.0
+          max_value: 40.0
+    icon: "mdi:thermometer"
+
+  # ============================================
+  # Bedroom
+  # ============================================
+  - platform: mqtt_subscribe
+    name: "Bedroom Temperature (MQTT)"
+    topic: "home/floor-heating/sensors/bedroom/temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    id: bedroom_temp_mqtt
+    filters:
+      - clamp:
+          min_value: 5.0
+          max_value: 40.0
+    icon: "mdi:thermometer"
+
+  # ============================================
+  # Bathroom
+  # ============================================
+  - platform: mqtt_subscribe
+    name: "Bathroom Temperature (MQTT)"
+    topic: "home/floor-heating/sensors/bathroom/temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    id: bathroom_temp_mqtt
+    filters:
+      - clamp:
+          min_value: 5.0
+          max_value: 40.0
+    icon: "mdi:thermometer"
+
+  # ============================================
+  # Heating Circuit Sensors (Return/Supply Temps)
+  # ============================================
+  - platform: mqtt_subscribe
+    name: "Heating Supply Temperature (MQTT)"
+    topic: "home/floor-heating/sensors/heating/supply_temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    id: heating_supply_temp_mqtt
+    filters:
+      - clamp:
+          min_value: 10.0
+          max_value: 60.0
+    icon: "mdi:pipe"
+
+  - platform: mqtt_subscribe
+    name: "Heating Return Temperature (MQTT)"
+    topic: "home/floor-heating/sensors/heating/return_temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    id: heating_return_temp_mqtt
+    filters:
+      - clamp:
+          min_value: 10.0
+          max_value: 60.0
+    icon: "mdi:pipe"
+
+# ============================================
+# Usage Instructions
+# ============================================
+#
+# 1. Enable MQTT in your main config (heatvalve-6.yaml or deploy file):
+#    mqtt:
+#      broker: !secret mqtt_broker
+#      username: !secret mqtt_user
+#      password: !secret mqtt_password
+#
+# 2. In your deploy file, change zone temperature_sensor references:
+#    # Instead of:
+#    # temperature_sensor: corridor_temp  # HA sensor
+#    # Use:
+#    temperature_sensor: corridor_temp_mqtt  # MQTT sensor
+#
+# 3. Configure your MQTT publisher to send temperatures to these topics:
+#    - Option A: Home Assistant MQTT integration (publish HA sensor to MQTT)
+#    - Option B: Node-RED flows
+#    - Option C: Custom script / Home Assistant automation
+#    - Option D: Direct MQTT clients on IoT devices
+#
+# 4. Topic format:
+#    - Plain JSON: {"value": 19.5} (will auto-parse with json_path: "$.value")
+#    - Simple float: "19.5" (auto-parses as sensor value)
+#    - CSV: "19.5,45" (use filters or JSON Path)
+#
+# Example Home Assistant automation to bridge HA sensor to MQTT:
+#   - alias: "Sync Corridor Temp to MQTT"
+#     trigger:
+#       platform: state
+#       entity_id: sensor.corridor_temperature
+#     action:
+#       service: mqtt.publish
+#       data:
+#         topic: "home/floor-heating/sensors/corridor/temperature"
+#         payload: "{{ states('sensor.corridor_temperature') }}"
+#
+# ============================================
+# Fallback Strategy (Multi-Source)
+# ============================================
+# If your deployment needs BOTH Home Assistant AND MQTT sources,
+# use ESPHome's filter chain to prefer available sources:
+#   - platform: mqtt_subscribe (primary)
+#   - platform: homeassistant (fallback, lower availability weight)
+#
+# Or add a lambda-based sensor that selects which source to use:
+#   - platform: lambda
+#     lambda: |-
+#       if (id(corridor_temp_mqtt).has_state()) {
+#         return id(corridor_temp_mqtt).state;
+#       } else if (id(corridor_temp).has_state()) {
+#         return id(corridor_temp).state;
+#       }
+#       return NAN;
