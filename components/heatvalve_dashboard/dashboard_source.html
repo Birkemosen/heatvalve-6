@@ -299,13 +299,12 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
       <div class="brand">
         <div class="brand-mark">
           <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-            <circle cx="16" cy="16" r="8" stroke="currentColor" stroke-width="2"/>
-            <circle cx="16" cy="16" r="3" fill="currentColor"/>
-            <path d="M16 2v6M16 24v6M2 16h6M24 16h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <path d="M6.1 6.1l4.24 4.24M21.66 21.66l4.24 4.24M6.1 25.9l4.24-4.24M21.66 10.34l4.24-4.24" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <rect x="8" y="4" width="16" height="24" rx="3" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 10h8M12 14h8M12 18h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <circle cx="16" cy="24" r="2" fill="currentColor"/>
           </svg>
         </div>
-        <h1>Helios</h1>
+        <h1>HeatValve-6</h1>
       </div>
     </div>
     <div class="nav" id="nav-main">
@@ -573,19 +572,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
           </div>
         </div>
 
-        <div class="card" id="helios-panel" style="margin-top:14px;display:none">
-          <h3>Helios Advanced Control</h3>
-          <div class="switch-row">
-            <span>License Status</span>
-            <strong id="helios-license-status">--</strong>
-          </div>
-          <div class="text-soft" style="padding:8px 0;font-size:0.85em">
-            Advanced features: Hydraulic balancing, weather-aware control, energy optimization, predictive thermal model.
-          </div>
-          <div class="switch-row" style="border-bottom:none">
-            <span>More settings available in Home Assistant</span>
-          </div>
-        </div>
+
       </div>
 
       <div class="footer">HeatValve-6 Dashboard</div>
@@ -873,21 +860,6 @@ function updateUI(d){
     } else {
       asgardStatus.textContent = 'Secondary';
       asgardStatus.style.color = 'var(--text-soft)';
-    }
-  }
-
-  // Helios panel visibility (license-gated)
-  const heliosPanel = el('helios-panel');
-  const heliosLicenseStatus = el('helios-license-status');
-  if(heliosPanel) {
-    if(d.helios_status) {
-      heliosPanel.style.display = '';
-      if(heliosLicenseStatus) {
-        heliosLicenseStatus.textContent = d.helios_status;
-        heliosLicenseStatus.style.color = d.helios_licensed ? 'var(--ok)' : 'var(--warning)';
-      }
-    } else {
-      heliosPanel.style.display = 'none';
     }
   }
 

@@ -561,18 +561,6 @@ void HeatvalveDashboard::update_snapshot_() {
     current_snapshot_.asgard_host[0] = '\0';
   }
 
-  // Helios/Threyr license status (optional)
-  if (helios_status_ && helios_status_->has_state()) {
-    current_snapshot_.helios_licensed = (helios_status_->state.find("VALID") != std::string::npos ||
-                                         helios_status_->state.find("GRACE") != std::string::npos);
-    strncpy(current_snapshot_.helios_status, helios_status_->state.c_str(),
-            sizeof(current_snapshot_.helios_status) - 1);
-    current_snapshot_.helios_status[sizeof(current_snapshot_.helios_status) - 1] = '\0';
-  } else {
-    current_snapshot_.helios_licensed = false;
-    current_snapshot_.helios_status[0] = '\0';
-  }
-
   // Text sensors
   safe_copy(current_snapshot_.controller_mode, sizeof(current_snapshot_.controller_mode), controller_mode_);
   safe_copy(current_snapshot_.system_status, sizeof(current_snapshot_.system_status), system_status_);
@@ -761,10 +749,6 @@ void HeatvalveDashboard::handle_state_(AsyncWebServerRequest *request) {
   p_n("min_movement", snap.num_min_movement);
   p_n("asgard_reference_setpoint", snap.num_asgard_reference_setpoint);
   p_str("asgard_host", snap.asgard_host);
-
-  // Helios/Threyr license status
-  p_b("helios_licensed", snap.helios_licensed);
-  p_str("helios_status", snap.helios_status);
 
   // Text sensors
   p_str("controller_mode", snap.controller_mode);

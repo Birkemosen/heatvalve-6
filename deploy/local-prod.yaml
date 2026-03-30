@@ -16,6 +16,7 @@ external_components:
       path: ../components
     components:
       - heatvalve_dashboard
+      - heatvalve_balancer
       - drv8215
       - motor_supervisor
 

@@ -82,10 +82,6 @@ struct DashboardSnapshot {
   NumData num_asgard_reference_setpoint;
   char asgard_host[65]{0};
 
-  // Helios/Threyr license status (optional advanced features)
-  bool helios_licensed{false};
-  char helios_status[32]{0};
-
   char controller_mode[32]{0};
   char system_status[64]{0};
   char uptime[32]{0};
@@ -178,9 +174,6 @@ class HeatvalveDashboard : public Component, public AsyncWebHandler {
   void set_num_min_movement(number::Number *n) { num_min_movement_ = n; }
   void set_num_asgard_reference_setpoint(number::Number *n) { num_asgard_reference_setpoint_ = n; }
   void set_text_asgard_host(text::Text *t) { text_asgard_host_ = t; }
-
-  // Helios/Threyr license status (text_sensor from Threyr component, optional)
-  void set_helios_status(text_sensor::TextSensor *t) { helios_status_ = t; }
 
   // Zone numbers
   void set_num_zone_1_area(number::Number *n) { zone_areas_[0] = n; }
@@ -316,9 +309,6 @@ class HeatvalveDashboard : public Component, public AsyncWebHandler {
   number::Number *num_min_movement_{nullptr};
   number::Number *num_asgard_reference_setpoint_{nullptr};
   text::Text *text_asgard_host_{nullptr};
-
-  // Helios/Threyr license status (optional)
-  text_sensor::TextSensor *helios_status_{nullptr};
 
   // Zone control profile selects (adaptive control)
   select::Select *zone_profiles_[NUM_ZONES]{};

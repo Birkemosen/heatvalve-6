@@ -80,8 +80,6 @@ _SCHEMA_DICT = {
         # Asgard integration
         cv.Optional("num_asgard_reference_setpoint_id"): cv.use_id(number.Number),
         cv.Optional("text_asgard_host_id"): cv.use_id(text.Text),
-        # Helios/Threyr integration (optional)
-        cv.Optional("helios_status_id"): cv.use_id(text_sensor.TextSensor),
         # Zone numbers
         cv.Optional("num_zone_1_area_id"): cv.use_id(number.Number),
         cv.Optional("num_zone_2_area_id"): cv.use_id(number.Number),
@@ -226,8 +224,6 @@ async def to_code(config):
         # Asgard integration
         ("num_asgard_reference_setpoint_id", "set_num_asgard_reference_setpoint"),
         ("text_asgard_host_id", "set_text_asgard_host"),
-        # Helios/Threyr integration (optional)
-        ("helios_status_id", "set_helios_status"),
         # Zone numbers
         ("num_zone_1_area_id", "set_num_zone_1_area"),
         ("num_zone_2_area_id", "set_num_zone_2_area"),

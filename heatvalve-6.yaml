@@ -264,6 +264,68 @@ heatvalve_dashboard:
   # BLE scan results text sensor (optional: only when including optional/ble_sensors.yaml)
   ble_scan_results_id: heating_ble_scan_results
 
+# ============================================
+# Hydraulic Balancer (free, no license required)
+# ============================================
+# Computes per-zone hydraulic factors from pipe lengths,
+# pipe types, floor types, and floor cover thickness.
+# Factors are written to per-zone globals and used by the
+# adaptive control scripts when "Hydraulic Balancing" is enabled.
+heatvalve_balancer:
+  update_interval: 5min
+  # Zone climates
+  climate_z1_id: wc_thermostat
+  climate_z2_id: storage_thermostat
+  climate_z3_id: living_thermostat
+  climate_z4_id: dining_thermostat
+  climate_z5_id: kitchen_thermostat
+  climate_z6_id: office_thermostat
+  # Settings
+  comfort_band_id: heating_comfort_band
+  maintenance_base_id: heating_maintenance_base
+  # Per-zone areas
+  zone_1_area_id: heating_zone_1_area
+  zone_2_area_id: heating_zone_2_area
+  zone_3_area_id: heating_zone_3_area
+  zone_4_area_id: heating_zone_4_area
+  zone_5_area_id: heating_zone_5_area
+  zone_6_area_id: heating_zone_6_area
+  # Per-zone pipe spacings
+  zone_1_pipe_spacing_id: heating_zone_1_pipe_spacing
+  zone_2_pipe_spacing_id: heating_zone_2_pipe_spacing
+  zone_3_pipe_spacing_id: heating_zone_3_pipe_spacing
+  zone_4_pipe_spacing_id: heating_zone_4_pipe_spacing
+  zone_5_pipe_spacing_id: heating_zone_5_pipe_spacing
+  zone_6_pipe_spacing_id: heating_zone_6_pipe_spacing
+  # Per-zone pipe types
+  zone_1_pipe_type_id: heating_zone_1_pipe_type
+  zone_2_pipe_type_id: heating_zone_2_pipe_type
+  zone_3_pipe_type_id: heating_zone_3_pipe_type
+  zone_4_pipe_type_id: heating_zone_4_pipe_type
+  zone_5_pipe_type_id: heating_zone_5_pipe_type
+  zone_6_pipe_type_id: heating_zone_6_pipe_type
+  # Per-zone floor types
+  zone_1_floor_type_id: heating_zone_1_floor_type
+  zone_2_floor_type_id: heating_zone_2_floor_type
+  zone_3_floor_type_id: heating_zone_3_floor_type
+  zone_4_floor_type_id: heating_zone_4_floor_type
+  zone_5_floor_type_id: heating_zone_5_floor_type
+  zone_6_floor_type_id: heating_zone_6_floor_type
+  # Per-zone floor cover thicknesses
+  zone_1_floor_cover_thickness_id: heating_zone_1_floor_cover_thickness
+  zone_2_floor_cover_thickness_id: heating_zone_2_floor_cover_thickness
+  zone_3_floor_cover_thickness_id: heating_zone_3_floor_cover_thickness
+  zone_4_floor_cover_thickness_id: heating_zone_4_floor_cover_thickness
+  zone_5_floor_cover_thickness_id: heating_zone_5_floor_cover_thickness
+  zone_6_floor_cover_thickness_id: heating_zone_6_floor_cover_thickness
+  # Per-zone hydraulic factor output globals
+  hyd_factor_z1_id: heating_zone_1_hydraulic_factor
+  hyd_factor_z2_id: heating_zone_2_hydraulic_factor
+  hyd_factor_z3_id: heating_zone_3_hydraulic_factor
+  hyd_factor_z4_id: heating_zone_4_hydraulic_factor
+  hyd_factor_z5_id: heating_zone_5_hydraulic_factor
+  hyd_factor_z6_id: heating_zone_6_hydraulic_factor
+
 api:
   reboot_timeout: 30min
 

@@ -16,6 +16,7 @@ external_components:
       path: ../components
     components:
       - heatvalve_dashboard
+      - heatvalve_balancer
       - drv8215
       - motor_supervisor
 
@@ -30,22 +31,19 @@ substitutions:
   fallback_password: !secret fallback_password
   ota_password: !secret ota_password
 
-# MQTT disabled: inter-VLAN routing issue (0x8001 TLS error)
-# causes event queue flood → memory exhaustion → crash
-# Re-enable once network routing is fixed.
-#mqtt:
-#  broker: !secret mqtt_broker
-#  port: !secret mqtt_port
-#  client_id: ${name}
-#  username: !secret mqtt_user
-#  password: !secret mqtt_password
-#  discovery: false
+mqtt:
+  broker: !secret mqtt_broker
+  port: !secret mqtt_port
+  client_id: ${name}
+  username: !secret mqtt_user
+  password: !secret mqtt_password
+  discovery: false
 
 packages:
   base: !include ../heatvalve-6.yaml
   zone_temperature_router: !include ../core/zone_temperature_router.yaml
-  #ha_sensors: !include ../core/ha_sensors.yaml
-  #mqtt_sensors: !include ../core/mqtt_sensor_overrides.yaml
+  ha_sensors: !include ../core/ha_sensors.yaml
+  mqtt_sensors: !include ../core/mqtt_sensor_overrides.yaml
   ble_sensors: !include ../optional/ble_sensors.yaml
 
 # Optional fixed IP for local debugging.
