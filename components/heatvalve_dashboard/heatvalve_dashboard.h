@@ -52,6 +52,8 @@ struct ZoneSnapshot {
   int profile_idx{-1};
   // BLE MAC address assigned to this zone (empty if none)
   char ble_mac[18]{0};
+  // Zone link group index (-1 = None, 0=A, 1=B, 2=C, 3=D)
+  int link_group_idx{-1};
 };
 
 struct DashboardSnapshot {
@@ -66,14 +68,10 @@ struct DashboardSnapshot {
 
   bool sw_balancing{false};
   bool sw_standalone{false};
+  bool sw_ecodan_coordinator{false};
   bool display_enabled{true};
 
-  int sel_pipe_type{-1};
-  char sel_pipe_type_opts[12][24]{{0}};
-  int sel_pipe_type_opts_count{0};
-  int sel_floor_type{-1};
-  char sel_floor_type_opts[12][24]{{0}};
-  int sel_floor_type_opts_count{0};
+  bool zone_enabled[NUM_ZONES]{true, true, true, true, true, true};
 
   NumData num_min_valve_opening;
   NumData num_comfort_band;
@@ -81,8 +79,12 @@ struct DashboardSnapshot {
   NumData num_demand_boost;
   NumData num_boost_factor;
   NumData num_min_movement;
-  NumData num_pipe_spacing;
-  NumData num_floor_cover_thickness;
+  NumData num_asgard_reference_setpoint;
+  char asgard_host[65]{0};
+
+  // Helios/Threyr license status (optional advanced features)
+  bool helios_licensed{false};
+  char helios_status[32]{0};
 
   char controller_mode[32]{0};
   char system_status[64]{0};
@@ -157,10 +159,15 @@ class HeatvalveDashboard : public Component, public AsyncWebHandler {
   void set_sw_balancing(switch_::Switch *s) { sw_balancing_ = s; }
   void set_sw_standalone(switch_::Switch *s) { sw_standalone_ = s; }
   void set_sw_display(switch_::Switch *s) { sw_display_ = s; }
+  void set_sw_ecodan_coordinator(switch_::Switch *s) { sw_ecodan_coordinator_ = s; }
 
-  // Select
-  void set_sel_pipe_type(select::Select *s) { sel_pipe_type_ = s; }
-  void set_sel_floor_type(select::Select *s) { sel_floor_type_ = s; }
+  // Zone enable switches
+  void set_sw_zone_1_enabled(switch_::Switch *s) { zone_enables_[0] = s; }
+  void set_sw_zone_2_enabled(switch_::Switch *s) { zone_enables_[1] = s; }
+  void set_sw_zone_3_enabled(switch_::Switch *s) { zone_enables_[2] = s; }
+  void set_sw_zone_4_enabled(switch_::Switch *s) { zone_enables_[3] = s; }
+  void set_sw_zone_5_enabled(switch_::Switch *s) { zone_enables_[4] = s; }
+  void set_sw_zone_6_enabled(switch_::Switch *s) { zone_enables_[5] = s; }
 
   // Numbers (settings)
   void set_num_min_valve_opening(number::Number *n) { num_min_valve_opening_ = n; }
@@ -169,8 +176,11 @@ class HeatvalveDashboard : public Component, public AsyncWebHandler {
   void set_num_demand_boost(number::Number *n) { num_demand_boost_ = n; }
   void set_num_boost_factor(number::Number *n) { num_boost_factor_ = n; }
   void set_num_min_movement(number::Number *n) { num_min_movement_ = n; }
-  void set_num_pipe_spacing(number::Number *n) { num_pipe_spacing_ = n; }
-  void set_num_floor_cover_thickness(number::Number *n) { num_floor_cover_thickness_ = n; }
+  void set_num_asgard_reference_setpoint(number::Number *n) { num_asgard_reference_setpoint_ = n; }
+  void set_text_asgard_host(text::Text *t) { text_asgard_host_ = t; }
+
+  // Helios/Threyr license status (text_sensor from Threyr component, optional)
+  void set_helios_status(text_sensor::TextSensor *t) { helios_status_ = t; }
 
   // Zone numbers
   void set_num_zone_1_area(number::Number *n) { zone_areas_[0] = n; }
@@ -219,6 +229,14 @@ class HeatvalveDashboard : public Component, public AsyncWebHandler {
   void set_sel_zone_4_profile(select::Select *s) { zone_profiles_[3] = s; }
   void set_sel_zone_5_profile(select::Select *s) { zone_profiles_[4] = s; }
   void set_sel_zone_6_profile(select::Select *s) { zone_profiles_[5] = s; }
+
+  // Zone link group selects
+  void set_sel_zone_1_link_group(select::Select *s) { zone_link_groups_[0] = s; }
+  void set_sel_zone_2_link_group(select::Select *s) { zone_link_groups_[1] = s; }
+  void set_sel_zone_3_link_group(select::Select *s) { zone_link_groups_[2] = s; }
+  void set_sel_zone_4_link_group(select::Select *s) { zone_link_groups_[3] = s; }
+  void set_sel_zone_5_link_group(select::Select *s) { zone_link_groups_[4] = s; }
+  void set_sel_zone_6_link_group(select::Select *s) { zone_link_groups_[5] = s; }
 
   // Zone BLE MAC text entities (optional: set when using optional/ble_sensors.yaml)
   void set_text_zone_1_ble_mac(text::Text *t) { zone_ble_macs_[0] = t; }
@@ -284,10 +302,10 @@ class HeatvalveDashboard : public Component, public AsyncWebHandler {
   switch_::Switch *sw_balancing_{nullptr};
   switch_::Switch *sw_standalone_{nullptr};
   switch_::Switch *sw_display_{nullptr};
+  switch_::Switch *sw_ecodan_coordinator_{nullptr};
 
-  // Select
-  select::Select *sel_pipe_type_{nullptr};
-  select::Select *sel_floor_type_{nullptr};
+  // Zone enable switches
+  switch_::Switch *zone_enables_[NUM_ZONES]{};
 
   // Numbers
   number::Number *num_min_valve_opening_{nullptr};
@@ -296,11 +314,17 @@ class HeatvalveDashboard : public Component, public AsyncWebHandler {
   number::Number *num_demand_boost_{nullptr};
   number::Number *num_boost_factor_{nullptr};
   number::Number *num_min_movement_{nullptr};
-  number::Number *num_pipe_spacing_{nullptr};
-  number::Number *num_floor_cover_thickness_{nullptr};
+  number::Number *num_asgard_reference_setpoint_{nullptr};
+  text::Text *text_asgard_host_{nullptr};
+
+  // Helios/Threyr license status (optional)
+  text_sensor::TextSensor *helios_status_{nullptr};
 
   // Zone control profile selects (adaptive control)
   select::Select *zone_profiles_[NUM_ZONES]{};
+
+  // Zone link group selects
+  select::Select *zone_link_groups_[NUM_ZONES]{};
 
   // Zone BLE MAC text entities
   text::Text *zone_ble_macs_[NUM_ZONES]{};

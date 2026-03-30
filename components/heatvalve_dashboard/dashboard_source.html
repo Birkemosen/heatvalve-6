@@ -4,162 +4,132 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HeatValve-6 Dashboard</title>
-<meta name="theme-color" content="#0b0f15">
+<meta name="theme-color" content="#161616">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0b0f15;
-  --bg-soft:#121925;
-  --panel:#171f2d;
-  --card:#1d2636;
-  --card-alt:#1b2332;
-  --line:#2a3449;
-  --card-rim:rgba(255,176,0,0.14);
-  --text:#eef4ff;
-  --text-soft:#9aabc9;
-  --accent:#ffb300;
-  --accent-2:#ff8c00;
-  --heat:#ff7d57;
-  --cool:#45b9d4;
-  --ok:#4cb481;
-  --err:#ef6d6d;
-  --app-bg:radial-gradient(680px 380px at 105% -8%, rgba(255,179,0,0.22), transparent 62%),radial-gradient(620px 340px at -8% 102%, rgba(90,166,247,0.14), transparent 62%),linear-gradient(145deg,#070a11 0%, #0d121c 48%, #090d15 100%);
-  --sidebar-bg:#ffb300;
-  --sidebar-text:#1a1600;
-  --sidebar-soft:rgba(26,22,0,0.64);
-  --sidebar-chip-bg:rgba(255,255,255,0.28);
-  --sidebar-active-bg:#1a1600;
-  --sidebar-active-text:#ffb300;
-  --zone-icon:#ffd966;
-  --settings-icon:#ffe680;
-  --surface-soft:#172133;
-  --surface-strong:#141d2c;
-  --radius:16px;
-  --shadow:0 18px 36px rgba(0,0,0,0.35);
+  --bg:#161616;
+  --bg-soft:#1C1C1C;
+  --panel:#1C1C1C;
+  --card:#1C1C1C;
+  --card-alt:#1C1C1C;
+  --line:rgba(255,255,255,0.08);
+  --card-rim:rgba(238,161,17,0.12);
+  --text:#FFFFFF;
+  --text-soft:rgba(255,255,255,0.6);
+  --accent:#EEA111;
+  --accent-2:#D4900F;
+  --accent-glow:rgba(238,161,17,0.25);
+  --heat:#EEA111;
+  --cool:#5AA6F7;
+  --ok:#4CB481;
+  --warning:#EEA111;
+  --err:#EF4444;
+  --critical:#EF4444;
+  --info:#5AA6F7;
+  --neutral:#8B95A5;
+  --surface-soft:#2D2D2D;
+  --surface-strong:#1C1C1C;
+  --radius:20px;
+  --radius-sm:12px;
+  --shadow:0 8px 32px rgba(0,0,0,0.4);
 }
 body{
-  font-family:'Manrope',sans-serif;
+  font-family:'Montserrat',sans-serif;
   color:var(--text);
   min-height:100vh;
-  background:var(--app-bg);
+  background:var(--bg);
 }
-.app{display:grid;grid-template-columns:260px 1fr;min-height:100vh;gap:18px;padding:18px;transition:grid-template-columns .28s ease}
+.app{display:grid;grid-template-columns:110px 1fr;min-height:100vh;gap:20px;padding:20px;transition:grid-template-columns .28s ease}
 .sidebar{
-  background:var(--sidebar-bg);
-  border:1px solid var(--line);
-  border-radius:20px;
-  padding:18px;
+  background:var(--bg-soft);
+  border-radius:24px;
+  padding:16px 12px;
   box-shadow:var(--shadow);
   display:flex;
   flex-direction:column;
-  gap:16px;
+  align-items:center;
+  gap:8px;
   position:relative;
   overflow:hidden;
+  overflow-y:auto;
 }
-.sidebar-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.brand{display:flex;align-items:center;gap:12px;padding:6px 8px 14px;border-bottom:1px solid rgba(255,255,255,0.24)}
+.sidebar-head{display:flex;align-items:center;justify-content:center;padding-bottom:12px;margin-bottom:4px}
+.brand{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+}
 .brand-mark{
-  width:40px;height:40px;border-radius:50%;flex-shrink:0;
-  background:radial-gradient(circle at 36% 34%, #ffffff 0%, #fff6e0 16%, #ffd87c 44%, #ffaa38 72%, #d4700e 100%);
-  border:2.5px solid rgba(255,255,255,0.92);
-  box-shadow:0 0 0 1px rgba(255,255,255,0.2),0 8px 20px rgba(0,0,0,0.26),0 2px 6px rgba(0,0,0,0.14);
-  position:relative;
+  width:56px;height:56px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--bg);
+  border-radius:16px;
+  border:1px solid var(--line);
 }
-.brand-mark:before{
-  content:'';
-  position:absolute;
-  inset:7px;
-  border:1.5px solid rgba(255,255,255,0.68);
-  border-radius:50%;
-}
-.brand-mark:after{
-  content:'';
-  position:absolute;
-  width:8px;
-  height:16px;
-  left:14px;
-  top:10px;
-  border-radius:5px;
-  background:linear-gradient(180deg,#ffffff,#ffe7b8);
-  box-shadow:inset 0 -3px 0 rgba(185,100,20,0.32);
-}
-.brand h1{font-size:1.05em;font-weight:800;letter-spacing:0.02em;color:var(--sidebar-text)}
-.brand small{display:block;color:var(--sidebar-soft);font-size:0.76em;margin-top:2px}
-.sidebar-toggle{
-  width:34px;height:34px;border-radius:10px;border:1px solid var(--line);
-  background:var(--bg-soft);color:var(--text-soft);cursor:pointer;
-  display:inline-flex;align-items:center;justify-content:center;
-  font-weight:800;font-size:1.04em;line-height:1;transition:all .2s ease;
-}
-.sidebar-toggle:hover{border-color:var(--sidebar-active-bg);color:var(--sidebar-active-bg)}
-.nav-title{font-size:0.74em;text-transform:uppercase;letter-spacing:0.12em;color:var(--sidebar-soft);padding:0 8px}
-.nav{display:grid;gap:8px}
+.brand-mark svg{color:var(--accent)}
+.brand h1{font-size:0.65em;font-weight:600;color:var(--text-soft);letter-spacing:0.05em;text-transform:uppercase}
+.brand small{display:none}
+.sidebar-toggle{display:none}
+.nav-title{display:none}
+.nav{display:flex;flex-direction:column;gap:8px;width:100%}
 .nav button{
-  border:1px solid transparent;
-  background:transparent;
-  color:var(--sidebar-text);
-  padding:10px 12px;
-  border-radius:12px;
-  text-align:left;
-  font-size:0.9em;
+  border:1px solid rgba(255,255,255,0.2);
+  background:var(--bg);
+  color:var(--text);
+  padding:16px 8px 12px;
+  border-radius:16px;
+  text-align:center;
+  font-size:0.72em;
   font-weight:600;
   cursor:pointer;
-  transition:all .22s ease;
+  transition:all .2s ease;
   display:flex;
+  flex-direction:column;
   align-items:center;
-  justify-content:space-between;
+  justify-content:center;
   gap:8px;
+  min-height:80px;
 }
-.nav button:hover{border-color:rgba(255,255,255,0.36);background:rgba(255,255,255,0.14);color:var(--sidebar-text)}
+.nav button:hover{border-color:rgba(255,255,255,0.4);background:var(--bg-soft)}
 .nav button.active{
-  color:var(--sidebar-active-text);
-  background:var(--sidebar-active-bg);
+  color:var(--bg);
+  background:var(--accent);
   border-color:transparent;
-  box-shadow:0 10px 18px rgba(20,22,28,0.16);
+  box-shadow:0 4px 20px var(--accent-glow);
 }
-.nav-main{display:flex;align-items:center;gap:10px;min-width:0}
+.nav-main{display:flex;flex-direction:column;align-items:center;gap:6px}
 .nav-icon{
-  display:inline-flex;align-items:center;justify-content:center;
-  font-size:1.95em;font-weight:780;line-height:1;
-  font-family:'IBM Plex Sans',sans-serif;
-  color:var(--sidebar-text);background:transparent;border:none;
-  flex:0 0 auto;
-  min-width:26px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.5em;font-weight:600;line-height:1;
+  font-family:'Montserrat',sans-serif;
+  width:32px;height:32px;
 }
-.nav-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav-label{font-size:0.9em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nav-meta{
-  font-size:0.68em;padding:2px 7px;border-radius:999px;
-  border:1px solid rgba(255,255,255,0.32);color:var(--sidebar-soft);
-  background:var(--sidebar-chip-bg);
+  display:none;
 }
-.nav button.active .nav-icon{color:var(--sidebar-active-text)}
-.nav button.active .nav-meta{border-color:transparent;color:var(--sidebar-active-text);background:rgba(0,0,0,0.06)}
+.nav button.active .nav-icon{color:var(--bg)}
+.nav button.active .nav-label{color:var(--bg)}
+.nav button.zone-disabled:not(.active){
+  opacity:.42;
+  filter:grayscale(.8);
+}
+.nav button.zone-disabled:not(.active):hover{
+  border-color:transparent;
+  background:transparent;
+}
 .nav button[data-view="overview"] .nav-icon,
-.nav button[data-view="settings"] .nav-icon{font-size:2.24em;font-weight:920}
-.nav button[data-view="overview"] .nav-icon{transform:scaleX(1.12);transform-origin:center}
-.nav button[data-view^="zone-"] .nav-icon{font-size:1.68em;font-weight:740}
-.nav button[data-view^="zone-"] .nav-icon{color:var(--zone-icon)}
-.nav button[data-view="settings"] .nav-icon{color:var(--settings-icon)}
+.nav button[data-view="settings"] .nav-icon{font-size:1.6em}
+.nav button[data-view^="zone-"] .nav-icon{font-size:1.3em}
 
-.app.sidebar-collapsed{grid-template-columns:84px 1fr}
-.app.sidebar-collapsed .sidebar{padding:12px 10px}
-.app.sidebar-collapsed .brand{padding:4px 0 10px;justify-content:center}
-.app.sidebar-collapsed .brand h1,
-.app.sidebar-collapsed .brand small,
-.app.sidebar-collapsed .nav-title,
-.app.sidebar-collapsed .nav-label,
-.app.sidebar-collapsed .nav-meta{display:none}
-.app.sidebar-collapsed .nav button{justify-content:center;padding:10px 8px}
-.app.sidebar-collapsed .sidebar-head{justify-content:space-between}
-.app.sidebar-collapsed .sidebar-toggle{position:static}
-.app.sidebar-collapsed .nav button[data-view="overview"] .nav-icon,
-.app.sidebar-collapsed .nav button[data-view="settings"] .nav-icon{font-size:2.34em}
-.app.sidebar-collapsed .nav button[data-view="overview"] .nav-icon{font-size:2.34em;transform:scaleX(1.1);transform-origin:center}
-.app.sidebar-collapsed .nav button[data-view^="zone-"] .nav-icon{font-size:1.86em}
+/* Collapsed sidebar mode disabled - using icon sidebar */
+.app.sidebar-collapsed{grid-template-columns:110px 1fr}
 .main{display:grid;grid-template-rows:auto 1fr;gap:14px;min-width:0}
 .topbar{
   background:var(--panel);
@@ -193,7 +163,12 @@ body{
 .card h3{font-size:0.76em;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-soft);margin-bottom:12px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
 .kpi{padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft)}
-.kpi .v{font-size:1.45em;font-weight:800;color:var(--accent)}
+.kpi .v{font-size:1.45em;font-weight:800;color:var(--text)}
+.kpi .v.ok{color:var(--ok)}
+.kpi .v.warning{color:var(--warning)}
+.kpi .v.critical{color:var(--critical)}
+.kpi .v.info{color:var(--info)}
+.kpi .v.accent{color:var(--accent)}
 .kpi .k{font-size:0.75em;color:var(--text-soft);margin-top:4px;text-transform:uppercase;letter-spacing:0.08em}
 .zone-mini-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
 .zone-mini{
@@ -204,10 +179,13 @@ body{
 .zone-mini .name{font-size:0.82em;color:var(--text-soft)}
 .zone-mini .temp{font-size:1.45em;font-weight:800;color:var(--text)}
 .zone-mini .meta{font-size:0.78em;color:var(--text-soft)}
-.state-badge{font-size:0.69em;padding:3px 8px;border-radius:999px;font-weight:700;letter-spacing:0.08em}
-.badge-heat{background:rgba(255,125,87,0.2);color:var(--heat)}
-.badge-idle{background:rgba(90,166,247,0.2);color:var(--cool)}
-.badge-off{background:rgba(154,171,201,0.2);color:var(--text-soft)}
+.state-badge{font-size:0.69em;padding:4px 10px;border-radius:999px;font-weight:600;letter-spacing:0.04em;display:inline-flex;align-items:center;gap:4px}
+.badge-heat{background:rgba(238,161,17,0.15);color:var(--heat)}
+.badge-idle{background:rgba(90,166,247,0.15);color:var(--cool)}
+.badge-off{background:rgba(139,149,165,0.15);color:var(--neutral)}
+.badge-ok{background:rgba(76,180,129,0.15);color:var(--ok)}
+.badge-warning{background:rgba(238,161,17,0.15);color:var(--warning)}
+.badge-critical{background:rgba(239,68,68,0.15);color:var(--critical)}
 .chart-shell{height:250px;border:1px solid var(--card-rim);border-radius:12px;padding:10px;background:var(--surface-strong)}
 .chart-shell canvas{width:100%;height:100%}
 .chart-shell{opacity:.58;transform:translateY(10px) scale(.99);transition:opacity .35s ease,transform .35s ease,border-color .2s ease}
@@ -249,11 +227,13 @@ body{
 .slider{width:100%;accent-color:var(--accent);margin-top:8px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .btn{
-  border:1px solid var(--line);background:transparent;color:var(--text-soft);
-  padding:7px 11px;border-radius:9px;font-size:0.8em;font-weight:700;cursor:pointer;
+  border:1px solid rgba(255,255,255,0.3);background:var(--bg);color:var(--text);
+  padding:10px 16px;border-radius:999px;font-size:0.82em;font-weight:600;cursor:pointer;
+  display:inline-flex;align-items:center;gap:6px;transition:all .2s ease;
 }
-.btn:hover{border-color:var(--accent);color:var(--accent)}
-.btn.active{background:linear-gradient(140deg,var(--accent),var(--accent-2));border-color:transparent;color:#fff}
+.btn:hover{border-color:rgba(255,255,255,0.5);background:var(--bg-soft)}
+.btn.primary,.btn.active{background:var(--accent);border-color:transparent;color:var(--bg)}
+.btn.primary:hover,.btn.active:hover{background:var(--accent-2)}
 .btn.pill{border-radius:999px}
 .settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
 .field{display:flex;flex-direction:column;gap:5px}
@@ -294,14 +274,17 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
 .ble-zone-device .mac{font-family:monospace;font-size:0.9em}
 .ble-zone-rssi{font-size:0.75em;padding:3px 8px;border-radius:6px;background:var(--surface-strong)}
 @media(max-width:1100px){
-  .app{grid-template-columns:1fr}
-  .sidebar{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;padding:12px}
-  .brand{grid-column:1/-1}
-  .nav-title{display:none}
-  .sidebar-toggle{display:none}
+  .app{grid-template-columns:90px 1fr}
+  .sidebar{padding:12px 8px}
+  .nav button{min-height:70px;padding:12px 6px 10px}
+  .nav-icon{font-size:1.3em !important}
+  .nav-label{font-size:0.8em}
 }
 @media(max-width:760px){
-  .app{padding:10px;gap:10px}
+  .app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .sidebar{flex-direction:row;border-radius:16px;padding:8px 12px;gap:6px;overflow-x:auto;overflow-y:hidden}
+  .nav{flex-direction:row;width:auto;gap:6px}
+  .nav button{min-height:60px;min-width:70px;padding:10px 8px 8px}
   .topbar{flex-direction:column;align-items:flex-start}
   .split{grid-template-columns:1fr}
   .zone-current{font-size:2.2em}
@@ -314,25 +297,112 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
   <aside class="sidebar">
     <div class="sidebar-head">
       <div class="brand">
-        <div class="brand-mark"></div>
-        <div>
-          <h1>HeatValve-6</h1>
-          <small>Helios Console</small>
+        <div class="brand-mark">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+            <circle cx="16" cy="16" r="8" stroke="currentColor" stroke-width="2"/>
+            <circle cx="16" cy="16" r="3" fill="currentColor"/>
+            <path d="M16 2v6M16 24v6M2 16h6M24 16h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M6.1 6.1l4.24 4.24M21.66 21.66l4.24 4.24M6.1 25.9l4.24-4.24M21.66 10.34l4.24-4.24" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
         </div>
+        <h1>Helios</h1>
       </div>
-      <button class="sidebar-toggle" id="sidebar-toggle" title="Collapse sidebar" aria-label="Collapse sidebar">&#x2039;</button>
     </div>
-
-    <div class="nav-title">Navigation</div>
     <div class="nav" id="nav-main">
-      <button class="active" data-view="overview" title="Overview"><span class="nav-main"><span class="nav-icon">&#8962;</span><span class="nav-label">Overview</span></span><span class="nav-meta">Live</span></button>
-      <button data-view="zone-1" title="Zone 1"><span class="nav-main"><span class="nav-icon">1</span><span class="nav-label">Zone 1</span></span><span class="nav-meta" id="nav-z1">--</span></button>
-      <button data-view="zone-2" title="Zone 2"><span class="nav-main"><span class="nav-icon">2</span><span class="nav-label">Zone 2</span></span><span class="nav-meta" id="nav-z2">--</span></button>
-      <button data-view="zone-3" title="Zone 3"><span class="nav-main"><span class="nav-icon">3</span><span class="nav-label">Zone 3</span></span><span class="nav-meta" id="nav-z3">--</span></button>
-      <button data-view="zone-4" title="Zone 4"><span class="nav-main"><span class="nav-icon">4</span><span class="nav-label">Zone 4</span></span><span class="nav-meta" id="nav-z4">--</span></button>
-      <button data-view="zone-5" title="Zone 5"><span class="nav-main"><span class="nav-icon">5</span><span class="nav-label">Zone 5</span></span><span class="nav-meta" id="nav-z5">--</span></button>
-      <button data-view="zone-6" title="Zone 6"><span class="nav-main"><span class="nav-icon">6</span><span class="nav-label">Zone 6</span></span><span class="nav-meta" id="nav-z6">--</span></button>
-      <button data-view="settings" title="Settings"><span class="nav-main"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></span><span class="nav-meta">Ctrl</span></button>
+      <button class="active" data-view="overview" title="Overview">
+        <span class="nav-main">
+          <span class="nav-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          </span>
+          <span class="nav-label">Home</span>
+        </span>
+      </button>
+      <button data-view="zone-1" title="Zone 1">
+        <span class="nav-main">
+          <span class="nav-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13 3H4a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h9a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H4a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h9a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H2"/>
+              <path d="M20 5v10" stroke-width="2"/>
+              <circle cx="20" cy="17.5" r="2.5"/>
+              <path d="M20 8v7" stroke-width="1"/>
+            </svg>
+          </span>
+          <span class="nav-label">Zone 1</span>
+        </span>
+      </button>
+      <button data-view="zone-2" title="Zone 2">
+        <span class="nav-main">
+          <span class="nav-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13 3H4a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h9a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H4a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h9a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H2"/>
+              <path d="M20 5v10" stroke-width="2"/>
+              <circle cx="20" cy="17.5" r="2.5"/>
+              <path d="M20 8v7" stroke-width="1"/>
+            </svg>
+          </span>
+          <span class="nav-label">Zone 2</span>
+        </span>
+      </button>
+      <button data-view="zone-3" title="Zone 3">
+        <span class="nav-main">
+          <span class="nav-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13 3H4a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h9a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H4a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h9a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H2"/>
+              <path d="M20 5v10" stroke-width="2"/>
+              <circle cx="20" cy="17.5" r="2.5"/>
+              <path d="M20 8v7" stroke-width="1"/>
+            </svg>
+          </span>
+          <span class="nav-label">Zone 3</span>
+        </span>
+      </button>
+      <button data-view="zone-4" title="Zone 4">
+        <span class="nav-main">
+          <span class="nav-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13 3H4a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h9a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H4a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h9a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H2"/>
+              <path d="M20 5v10" stroke-width="2"/>
+              <circle cx="20" cy="17.5" r="2.5"/>
+              <path d="M20 8v7" stroke-width="1"/>
+            </svg>
+          </span>
+          <span class="nav-label">Zone 4</span>
+        </span>
+      </button>
+      <button data-view="zone-5" title="Zone 5">
+        <span class="nav-main">
+          <span class="nav-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13 3H4a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h9a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H4a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h9a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H2"/>
+              <path d="M20 5v10" stroke-width="2"/>
+              <circle cx="20" cy="17.5" r="2.5"/>
+              <path d="M20 8v7" stroke-width="1"/>
+            </svg>
+          </span>
+          <span class="nav-label">Zone 5</span>
+        </span>
+      </button>
+      <button data-view="zone-6" title="Zone 6">
+        <span class="nav-main">
+          <span class="nav-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13 3H4a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h9a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H4a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h9a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H2"/>
+              <path d="M20 5v10" stroke-width="2"/>
+              <circle cx="20" cy="17.5" r="2.5"/>
+              <path d="M20 8v7" stroke-width="1"/>
+            </svg>
+          </span>
+          <span class="nav-label">Zone 6</span>
+        </span>
+      </button>
+      <button data-view="settings" title="Settings">
+        <span class="nav-main">
+          <span class="nav-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </span>
+          <span class="nav-label">Settings</span>
+        </span>
+      </button>
     </div>
   </aside>
 
@@ -401,22 +471,6 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
             <h3>General System Settings</h3>
             <div class="settings-grid">
               <div class="field">
-                <label>Pipe Type</label>
-                <select id="set-pipe-type" onchange="setSelect('pipe_type',this.value)"></select>
-              </div>
-              <div class="field">
-                <label>Floor Type</label>
-                <select id="set-floor-type" onchange="setSelect('floor_type',this.value)"></select>
-              </div>
-              <div class="field">
-                <label>Pipe Spacing (mm)</label>
-                <input type="number" id="set-pipe-spacing" onchange="setNumber('pipe_spacing',this.value)">
-              </div>
-              <div class="field">
-                <label>Floor Cover Thickness (mm)</label>
-                <input type="number" id="set-floor-thickness" onchange="setNumber('floor_cover_thickness',this.value)">
-              </div>
-              <div class="field">
                 <label>Min Valve Opening (%)</label>
                 <input type="number" id="set-min-valve" onchange="setNumber('min_valve_opening',this.value)">
               </div>
@@ -462,12 +516,74 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
               <strong id="v-status">--</strong>
             </div>
           </div>
+
+          <div class="card">
+            <h3>Zone Enables</h3>
+            <div class="switch-row">
+              <span>Zone 1 Enabled</span>
+              <label class="toggle"><input type="checkbox" id="sw-z1-en" onchange="setSwitch('z1_enabled',this.checked)"><span class="s"></span></label>
+            </div>
+            <div class="switch-row">
+              <span>Zone 2 Enabled</span>
+              <label class="toggle"><input type="checkbox" id="sw-z2-en" onchange="setSwitch('z2_enabled',this.checked)"><span class="s"></span></label>
+            </div>
+            <div class="switch-row">
+              <span>Zone 3 Enabled</span>
+              <label class="toggle"><input type="checkbox" id="sw-z3-en" onchange="setSwitch('z3_enabled',this.checked)"><span class="s"></span></label>
+            </div>
+            <div class="switch-row">
+              <span>Zone 4 Enabled</span>
+              <label class="toggle"><input type="checkbox" id="sw-z4-en" onchange="setSwitch('z4_enabled',this.checked)"><span class="s"></span></label>
+            </div>
+            <div class="switch-row">
+              <span>Zone 5 Enabled</span>
+              <label class="toggle"><input type="checkbox" id="sw-z5-en" onchange="setSwitch('z5_enabled',this.checked)"><span class="s"></span></label>
+            </div>
+            <div class="switch-row" style="border-bottom:none">
+              <span>Zone 6 Enabled</span>
+              <label class="toggle"><input type="checkbox" id="sw-z6-en" onchange="setSwitch('z6_enabled',this.checked)"><span class="s"></span></label>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Ecodan / Asgard Bridge</h3>
+            <div class="switch-row">
+              <span>Coordinator Mode</span>
+              <label class="toggle"><input type="checkbox" id="sw-ecodan-coord" onchange="setSwitch('ecodan_coordinator',this.checked)"><span class="s"></span></label>
+            </div>
+            <div class="field" style="margin-top:10px">
+              <label>Asgard Host</label>
+              <input type="text" id="set-asgard-host" placeholder="ecodan-heatpump.local" onchange="setText('asgard_host',this.value)">
+            </div>
+            <div class="field">
+              <label>Reference Setpoint (°C)</label>
+              <input type="number" id="set-asgard-sp" step="0.5" onchange="setNumber('asgard_reference_setpoint',this.value)">
+            </div>
+            <div class="switch-row" style="border-bottom:none;margin-top:8px">
+              <span>Push Status</span>
+              <strong id="asgard-status">--</strong>
+            </div>
+          </div>
         </div>
 
         <div class="card" style="margin-top:14px">
           <h3>BLE Devices</h3>
           <div class="ble-devices" id="ble-devices">
             <div class="text-soft" style="padding:12px;text-align:center">No BLE devices discovered</div>
+          </div>
+        </div>
+
+        <div class="card" id="helios-panel" style="margin-top:14px;display:none">
+          <h3>Helios Advanced Control</h3>
+          <div class="switch-row">
+            <span>License Status</span>
+            <strong id="helios-license-status">--</strong>
+          </div>
+          <div class="text-soft" style="padding:8px 0;font-size:0.85em">
+            Advanced features: Hydraulic balancing, weather-aware control, energy optimization, predictive thermal model.
+          </div>
+          <div class="switch-row" style="border-bottom:none">
+            <span>More settings available in Home Assistant</span>
           </div>
         </div>
       </div>
@@ -483,6 +599,9 @@ const MAX_CHART_POINTS = 120;
 const ZONE_NAMES = ['Zone 1','Zone 2','Zone 3','Zone 4','Zone 5','Zone 6'];
 const SOURCE_LABELS = ['HA','MQTT','BLE'];
 const PROFILE_LABELS = ['Tanh','Linear','PID','Fixed'];
+const PIPE_TYPE_OPTS = ['PEX 12x2','PEX 14x2','PEX 16x2','PEX 17x2','PEX 18x2','PEX 20x2','AluPEX 16x2','AluPEX 20x2'];
+const FLOOR_TYPE_OPTS = ['Tile','Parquet','Oak/Beech','Carpet'];
+const LINK_GROUP_LABELS = ['None','A','B','C','D'];
 
 let state = null;
 let activeView = 'overview';
@@ -518,7 +637,7 @@ function buildOverviewZones(){
         <span class="state-badge badge-off" id="ov-badge-${z}">--</span>
       </div>
       <div class="temp" id="ov-temp-${z}">--</div>
-      <div class="meta">Target <span id="ov-sp-${z}">--</span></div>
+      <div class="meta">Target <span id="ov-sp-${z}">--</span> <span id="ov-link-${z}" style="margin-left:4px;font-size:0.82em;color:var(--accent);display:none"></span></div>
     </div>`;
   }).join('');
 }
@@ -547,6 +666,7 @@ function buildZoneViews(){
             <span class="tag accent" id="zpreset-${z}">--</span>
             <span class="tag" id="zsource-${z}">--</span>
             <span class="tag" id="zprofile-${z}">--</span>
+            <span class="tag" id="zlink-${z}" style="display:none"></span>
           </div>
 
           <div class="row" style="margin-bottom:8px">
@@ -598,15 +718,21 @@ function buildZoneViews(){
               <select id="zs-floor-${z}" onchange="setSelect('z${z}_floor_type',this.value)"></select>
             </div>
             <div class="field">
+              <label>Link Group</label>
+              <select id="zs-link-${z}" onchange="setSelect('z${z}_link_group',this.value)">
+                <option value="None">None</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
+              </select>
+            </div>
+            <div class="field">
               <label>Pipe Spacing (mm)</label>
               <input type="number" id="zs-spacing-${z}" onchange="setNumber('z${z}_pipe_spacing',this.value)">
             </div>
             <div class="field">
               <label>Cover Thickness (mm)</label>
-              <input type="number" id="zs-thickness-${z}" onchange="setNumber('z${z}_floor_cover_thickness',this.value)">
+              <input type="number" id="zs-thickness-${z}" onfocus="prefillZoneNumberInput(${z},'floor_cover_thickness',this)" onchange="setNumber('z${z}_floor_cover_thickness',this.value)">
             </div>
             <div class="field">
-              <label>Area</label>
+              <label>Area (m²)</label>
               <input type="number" id="zs-area-${z}" onchange="setNumber('z${z}_area',this.value)">
             </div>
             <div class="field">
@@ -633,12 +759,23 @@ function setView(view){
   if(target) target.classList.add('active');
   const title = view==='overview' ? 'Overview' : (view==='settings' ? 'Settings' : `Zone ${view.split('-')[1]}`);
   el('page-title').textContent = title;
+  if(state) updateUI(state);
   requestAnimationFrame(()=>{
     (target?.querySelectorAll('.chart-shell') || []).forEach((c, i)=>{
       c.classList.remove('reveal');
       setTimeout(()=>c.classList.add('reveal'), 35 + i*70);
     });
   });
+}
+
+function prefillZoneNumberInput(zone, key, input){
+  if(!state || !input || input.value !== '') return;
+  const zoneState = state.zones?.[zone - 1];
+  if(!zoneState) return;
+  const d = zoneState[`z${zone}_${key}`];
+  const source = (typeof d === 'object' && d !== null) ? d : { val: d };
+  const v = Number(source?.val);
+  if(Number.isFinite(v)) input.value = v;
 }
 
 function initNav(){
@@ -648,24 +785,6 @@ function initNav(){
     if(!b) return;
     setView(b.dataset.view);
   });
-
-  const app = document.querySelector('.app');
-  const toggle = el('sidebar-toggle');
-  if(toggle && app){
-    const saved = window.localStorage.getItem('hv_sidebar_collapsed');
-    if(saved==='1'){
-      app.classList.add('sidebar-collapsed');
-      toggle.innerHTML='&#x203A;';
-      toggle.setAttribute('aria-label','Expand sidebar');
-    }
-    toggle.addEventListener('click',()=>{
-      app.classList.toggle('sidebar-collapsed');
-      const collapsed = app.classList.contains('sidebar-collapsed');
-      toggle.innerHTML = collapsed ? '&#x203A;' : '&#x2039;';
-      toggle.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
-      window.localStorage.setItem('hv_sidebar_collapsed', collapsed ? '1' : '0');
-    });
-  }
 }
 
 function fillSelect(id, opts, idx){
@@ -688,10 +807,16 @@ function fillSelect(id, opts, idx){
 function updateNumInput(id, nd){
   const n = el(id);
   if(!n || !nd) return;
-  if(document.activeElement!==n) n.value = nd.val!=null ? nd.val : '';
-  if(nd.min!=null) n.min = nd.min;
-  if(nd.max!=null) n.max = nd.max;
-  if(nd.step!=null) n.step = nd.step;
+  const d = (typeof nd === 'object' && nd !== null) ? nd : { val: nd };
+  const v = Number(d.val);
+  if(document.activeElement!==n) n.value = Number.isFinite(v) ? v : '';
+
+  const min = Number(d.min);
+  const max = Number(d.max);
+  const step = Number(d.step);
+  if(Number.isFinite(min)) n.min = min;
+  if(Number.isFinite(max)) n.max = max;
+  if(Number.isFinite(step) && step > 0) n.step = step;
 }
 
 function updateUI(d){
@@ -704,16 +829,67 @@ function updateUI(d){
   el('hdr-status').textContent=d.system_status||'--';
   el('v-status').textContent=d.system_status||'--';
 
-  el('v-input').textContent=fmtT(d.input_temp);
-  el('v-output').textContent=fmtT(d.output_temp);
-  el('v-extra').textContent=fmtT(d.extra_temp);
-  el('v-avg').textContent=fmt(d.avg_valve_position,1)+'%';
-  el('v-active').textContent=fmt(d.active_zones,0);
-  el('v-wifi').textContent=fmt(d.wifi_signal,0);
+  // KPI values with semantic colors
+  const vInput = el('v-input');
+  vInput.textContent=fmtT(d.input_temp);
+  vInput.className='v accent';
+  
+  const vOutput = el('v-output');
+  vOutput.textContent=fmtT(d.output_temp);
+  vOutput.className='v info';
+  
+  const vExtra = el('v-extra');
+  vExtra.textContent=fmtT(d.extra_temp);
+  vExtra.className='v info';
+  
+  const vAvg = el('v-avg');
+  const avgVal = d.avg_valve_position;
+  vAvg.textContent=fmt(avgVal,1)+'%';
+  vAvg.className = avgVal > 70 ? 'v warning' : (avgVal > 40 ? 'v accent' : 'v ok');
+  
+  const vActive = el('v-active');
+  vActive.textContent=fmt(d.active_zones,0);
+  vActive.className = d.active_zones > 0 ? 'v ok' : 'v info';
+  
+  const vWifi = el('v-wifi');
+  const wifiVal = d.wifi_signal;
+  vWifi.textContent=fmt(wifiVal,0);
+  vWifi.className = wifiVal > -50 ? 'v ok' : (wifiVal > -70 ? 'v warning' : 'v critical');
 
   el('sw-bal').checked=!!d.balancing_enabled;
   el('sw-standalone').checked=!!d.standalone_mode;
   el('sw-display').checked=!!d.display_enabled;
+
+  // Ecodan / Asgard controls
+  el('sw-ecodan-coord').checked=!!d.ecodan_coordinator;
+  const asgardHostEl = el('set-asgard-host');
+  if(asgardHostEl && document.activeElement!==asgardHostEl) asgardHostEl.value = d.asgard_host || '';
+  updateNumInput('set-asgard-sp', d.asgard_reference_setpoint);
+  const asgardStatus = el('asgard-status');
+  if(asgardStatus) {
+    if(d.ecodan_coordinator) {
+      asgardStatus.textContent = d.asgard_host ? 'Active' : 'No Host';
+      asgardStatus.style.color = d.asgard_host ? 'var(--ok)' : 'var(--warning)';
+    } else {
+      asgardStatus.textContent = 'Secondary';
+      asgardStatus.style.color = 'var(--text-soft)';
+    }
+  }
+
+  // Helios panel visibility (license-gated)
+  const heliosPanel = el('helios-panel');
+  const heliosLicenseStatus = el('helios-license-status');
+  if(heliosPanel) {
+    if(d.helios_status) {
+      heliosPanel.style.display = '';
+      if(heliosLicenseStatus) {
+        heliosLicenseStatus.textContent = d.helios_status;
+        heliosLicenseStatus.style.color = d.helios_licensed ? 'var(--ok)' : 'var(--warning)';
+      }
+    } else {
+      heliosPanel.style.display = 'none';
+    }
+  }
 
   updateNumInput('set-min-valve',d.min_valve_opening);
   updateNumInput('set-comfort',d.comfort_band);
@@ -721,16 +897,21 @@ function updateUI(d){
   updateNumInput('set-demand',d.demand_boost);
   updateNumInput('set-boost',d.boost_factor);
   updateNumInput('set-minmov',d.min_movement);
-  updateNumInput('set-pipe-spacing',d.pipe_spacing);
-  updateNumInput('set-floor-thickness',d.floor_cover_thickness);
 
-  if(d.pipe_type&&d.pipe_type.opts){
-    fillSelect('set-pipe-type', d.pipe_type.opts, d.pipe_type.idx);
-    for(let z=1;z<=6;z++) fillSelect(`zs-pipe-${z}`, d.pipe_type.opts, d.zones?.[z-1]?.[`z${z}_pipe_type_idx`]);
+  // Zone enable switches
+  for(let z=1;z<=6;z++) {
+    const sw = el(`sw-z${z}-en`);
+    if(sw) sw.checked = !!d[`z${z}_enabled`];
+
+    // Grey out disabled zones in sidebar menu.
+    const zoneBtn = document.querySelector(`.nav button[data-view="zone-${z}"]`);
+    if(zoneBtn) zoneBtn.classList.toggle('zone-disabled', !d[`z${z}_enabled`]);
   }
-  if(d.floor_type&&d.floor_type.opts){
-    fillSelect('set-floor-type', d.floor_type.opts, d.floor_type.idx);
-    for(let z=1;z<=6;z++) fillSelect(`zs-floor-${z}`, d.floor_type.opts, d.zones?.[z-1]?.[`z${z}_floor_type_idx`]);
+
+  // Zone pipe/floor type selects (hard-coded options, per-zone index from state)
+  for(let z=1;z<=6;z++){
+    fillSelect(`zs-pipe-${z}`, PIPE_TYPE_OPTS, d.zones?.[z-1]?.[`z${z}_pipe_type_idx`]);
+    fillSelect(`zs-floor-${z}`, FLOOR_TYPE_OPTS, d.zones?.[z-1]?.[`z${z}_floor_type_idx`]);
   }
 
   let allHome = !!(d.zones && d.zones.length);
@@ -754,16 +935,24 @@ function updateUI(d){
       const pct = valve!=null && !Number.isNaN(Number(valve)) ? Math.round(Number(valve)*100) : 0;
       const badgeClass = mode==='off' ? 'badge-off' : (action==='heating' ? 'badge-heat' : 'badge-idle');
       const badgeText = mode==='off' ? 'OFF' : (action==='heating' ? 'HEATING' : 'IDLE');
-      const navMeta = el(`nav-z${z}`);
-      if(navMeta) navMeta.textContent = fmtT(temp);
+      
+      // Temperature color based on delta from setpoint
+      const delta = (temp != null && sp != null) ? temp - sp : 0;
+      const tempColorClass = Math.abs(delta) < 0.5 ? 'ok' : (delta < -1 ? 'info' : (delta > 1 ? 'warning' : 'accent'));
 
-      el(`ov-temp-${z}`).textContent = fmtT(temp);
+      const ovTemp = el(`ov-temp-${z}`);
+      ovTemp.textContent = fmtT(temp);
+      ovTemp.style.color = `var(--${tempColorClass})`;
+      
       el(`ov-sp-${z}`).textContent = fmtT(sp);
       const ob = el(`ov-badge-${z}`);
       ob.className = `state-badge ${badgeClass}`;
       ob.textContent = badgeText;
 
-      el(`zt-${z}`).textContent = fmtT(temp);
+      const zt = el(`zt-${z}`);
+      zt.textContent = fmtT(temp);
+      zt.style.color = `var(--${tempColorClass})`;
+      
       el(`zsp-${z}`).textContent = fmtT(sp);
       el(`zspv-${z}`).textContent = sp!=null ? Number(sp).toFixed(1)+' deg' : '--';
       el(`zvl-${z}`).textContent = fmtP(valve);
@@ -778,6 +967,20 @@ function updateUI(d){
       el(`zpreset-${z}`).textContent = preset;
       el(`zsource-${z}`).textContent = source;
       el(`zprofile-${z}`).textContent = profile;
+
+      // Link group badge (zone detail + overview)
+      const lgIdx = zd[`z${z}_link_group`];
+      const lgLabel = (lgIdx!=null && lgIdx>=0 && lgIdx<4) ? LINK_GROUP_LABELS[lgIdx+1] : null;
+      const zlinkBadge = el(`zlink-${z}`);
+      if(zlinkBadge){
+        if(lgLabel){ zlinkBadge.textContent='Link '+lgLabel; zlinkBadge.style.display=''; zlinkBadge.style.color='var(--accent)'; }
+        else { zlinkBadge.style.display='none'; }
+      }
+      const ovLink = el(`ov-link-${z}`);
+      if(ovLink){
+        if(lgLabel){ ovLink.textContent='Link '+lgLabel; ovLink.style.display=''; }
+        else { ovLink.style.display='none'; }
+      }
 
       el(`zp-${z}-BOOST`).classList.toggle('active', preset==='BOOST');
       el(`zm-${z}-off`).classList.toggle('active', mode==='off');
@@ -795,6 +998,13 @@ function updateUI(d){
       updateNumInput(`zs-thickness-${z}`, zd[`z${z}_floor_cover_thickness`]);
       updateNumInput(`zs-area-${z}`, zd[`z${z}_area`]);
       updateNumInput(`zs-max-${z}`, zd[`z${z}_max_opening`]);
+
+      // Link group select
+      const linkIdx = zd[`z${z}_link_group`];
+      const linkSel = el(`zs-link-${z}`);
+      if(linkSel && document.activeElement!==linkSel){
+        linkSel.selectedIndex = (linkIdx!=null && linkIdx>=0 && linkIdx<4) ? linkIdx+1 : 0;
+      }
     });
   }
 
@@ -953,9 +1163,8 @@ function buildWorkspaceCards(d){
     const delta = Number.isFinite(temp) && Number.isFinite(sp) ? Math.abs(sp-temp) : 0;
     const urgency = delta > 0.8 ? 'High' : (delta > 0.35 ? 'Medium' : 'Low');
     const due = delta > 0.8 ? 'Due now' : (delta > 0.35 ? 'Due in 30m' : 'Due in 2h');
-    const stateClass = urgency==='High' ? 'badge-heat' : (urgency==='Medium' ? 'badge-idle' : 'badge-off');
-    return `<article class="ws-card" onclick="setView('zone-${z}')">
-      <div class="ws-top">
+    const stateClass = urgency==='High' ? 'badge-critical' : (urgency==='Medium' ? 'badge-warning' : 'badge-ok');
+    return `<article class="ws-card" onclick="setView('zone-${z}')">\n      <div class="ws-top">
         <span class="ws-zone">Zone ${z}</span>
         <span class="ws-state ${stateClass}">${urgency}</span>
       </div>
@@ -1124,6 +1333,7 @@ function setValvePosition(z,pos){postSet(`z${z}_position`, pos, false)}
 function setSwitch(key,val){postSet(key, val ? 1 : 0, false)}
 function setSelect(key,val){postSet(key, val, true)}
 function setNumber(key,val){postSet(key, parseFloat(val), false)}
+function setText(key,val){postSet(key, val, true)}
 
 function poll(){
   fetch('/dashboard/state')

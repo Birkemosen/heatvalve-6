@@ -342,6 +342,18 @@ void HeatvalveDashboard::dispatch_set_(const std::string &key,
     }
   }
 
+  // Zone link group: z1_link_group .. z6_link_group
+  for (int i = 0; i < NUM_ZONES; i++) {
+    char buf[24];
+    snprintf(buf, sizeof(buf), "z%d_link_group", i + 1);
+    if (key == buf && zone_link_groups_[i]) {
+      auto call = zone_link_groups_[i]->make_call();
+      if (is_string) call.set_option(sval); else call.set_index((size_t) fval);
+      call.perform();
+      return;
+    }
+  }
+
   // Switches
   auto doSwitch = [&](const char *name, switch_::Switch *sw) -> bool {
     if (key == name && sw) {
@@ -353,25 +365,13 @@ void HeatvalveDashboard::dispatch_set_(const std::string &key,
   if (doSwitch("balancing_enabled", sw_balancing_)) return;
   if (doSwitch("standalone_mode", sw_standalone_)) return;
   if (doSwitch("display_enabled", sw_display_)) return;
+  if (doSwitch("ecodan_coordinator", sw_ecodan_coordinator_)) return;
 
-  // Select
-  if (key == "pipe_type" && sel_pipe_type_) {
-    auto call = sel_pipe_type_->make_call();
-    if (is_string)
-      call.set_option(sval);
-    else
-      call.set_index((size_t) fval);
-    call.perform();
-    return;
-  }
-  if (key == "floor_type" && sel_floor_type_) {
-    auto call = sel_floor_type_->make_call();
-    if (is_string)
-      call.set_option(sval);
-    else
-      call.set_index((size_t) fval);
-    call.perform();
-    return;
+  // Zone enable switches: z1_enabled .. z6_enabled
+  for (int i = 0; i < NUM_ZONES; i++) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "z%d_enabled", i + 1);
+    if (doSwitch(buf, zone_enables_[i])) return;
   }
 
   // Numbers (settings)
@@ -390,8 +390,16 @@ void HeatvalveDashboard::dispatch_set_(const std::string &key,
   if (doNumber("demand_boost", num_demand_boost_)) return;
   if (doNumber("boost_factor", num_boost_factor_)) return;
   if (doNumber("min_movement", num_min_movement_)) return;
-  if (doNumber("pipe_spacing", num_pipe_spacing_)) return;
-  if (doNumber("floor_cover_thickness", num_floor_cover_thickness_)) return;
+  if (doNumber("asgard_reference_setpoint", num_asgard_reference_setpoint_)) return;
+
+  // Text entities
+  if (key == "asgard_host" && text_asgard_host_ && is_string) {
+    auto call = text_asgard_host_->make_call();
+    call.set_value(sval);
+    call.perform();
+    ESP_LOGI(TAG, "Asgard host: %s", sval.c_str());
+    return;
+  }
 
   ESP_LOGW(TAG, "Unknown key: %s", key.c_str());
 }
@@ -405,7 +413,9 @@ void HeatvalveDashboard::update_snapshot_() {
   auto get_sw = [](switch_::Switch *s) -> bool { return s ? s->state : false; };
   auto get_n = [](number::Number *n, NumData &d) {
     if (n) {
-      d.val = n->has_state() ? n->state : NAN;
+      // Some template numbers may report has_state=false briefly after boot/reflash
+      // even though state already carries the restored/initial value.
+      d.val = n->state;
       d.min = n->traits.get_min_value();
       d.max = n->traits.get_max_value();
       d.step = n->traits.get_step();
@@ -504,6 +514,12 @@ void HeatvalveDashboard::update_snapshot_() {
     } else {
       z.ble_mac[0] = '\0';
     }
+    // Link group
+    z.link_group_idx = (zone_link_groups_[i] && zone_link_groups_[i]->active_index().has_value())
+                           ? static_cast<int>(zone_link_groups_[i]->active_index().value()) : -1;
+    // Map: 0=None -> -1, 1=A -> 0, 2=B -> 1, 3=C -> 2, 4=D -> 3
+    if (z.link_group_idx == 0) z.link_group_idx = -1;
+    else if (z.link_group_idx > 0) z.link_group_idx -= 1;
   }
 
   // Heating circuit
@@ -519,15 +535,13 @@ void HeatvalveDashboard::update_snapshot_() {
   // Switches
   current_snapshot_.sw_balancing = get_sw(sw_balancing_);
   current_snapshot_.sw_standalone = get_sw(sw_standalone_);
+  current_snapshot_.sw_ecodan_coordinator = get_sw(sw_ecodan_coordinator_);
   current_snapshot_.display_enabled = get_sw(sw_display_);
 
-  // Select (get_options returns FixedVector - iterate by reference, elements are const char*)
-  fill_sel(sel_pipe_type_, current_snapshot_.sel_pipe_type,
-           current_snapshot_.sel_pipe_type_opts,
-           current_snapshot_.sel_pipe_type_opts_count);
-  fill_sel(sel_floor_type_, current_snapshot_.sel_floor_type,
-           current_snapshot_.sel_floor_type_opts,
-           current_snapshot_.sel_floor_type_opts_count);
+  // Zone enable switches
+  for (int i = 0; i < NUM_ZONES; i++) {
+    current_snapshot_.zone_enabled[i] = zone_enables_[i] ? zone_enables_[i]->state : true;
+  }
 
   // Numbers
   get_n(num_min_valve_opening_, current_snapshot_.num_min_valve_opening);
@@ -536,8 +550,28 @@ void HeatvalveDashboard::update_snapshot_() {
   get_n(num_demand_boost_, current_snapshot_.num_demand_boost);
   get_n(num_boost_factor_, current_snapshot_.num_boost_factor);
   get_n(num_min_movement_, current_snapshot_.num_min_movement);
-  get_n(num_pipe_spacing_, current_snapshot_.num_pipe_spacing);
-  get_n(num_floor_cover_thickness_, current_snapshot_.num_floor_cover_thickness);
+  get_n(num_asgard_reference_setpoint_, current_snapshot_.num_asgard_reference_setpoint);
+
+  // Asgard host text
+  if (text_asgard_host_ && !text_asgard_host_->state.empty()) {
+    strncpy(current_snapshot_.asgard_host, text_asgard_host_->state.c_str(),
+            sizeof(current_snapshot_.asgard_host) - 1);
+    current_snapshot_.asgard_host[sizeof(current_snapshot_.asgard_host) - 1] = '\0';
+  } else {
+    current_snapshot_.asgard_host[0] = '\0';
+  }
+
+  // Helios/Threyr license status (optional)
+  if (helios_status_ && helios_status_->has_state()) {
+    current_snapshot_.helios_licensed = (helios_status_->state.find("VALID") != std::string::npos ||
+                                         helios_status_->state.find("GRACE") != std::string::npos);
+    strncpy(current_snapshot_.helios_status, helios_status_->state.c_str(),
+            sizeof(current_snapshot_.helios_status) - 1);
+    current_snapshot_.helios_status[sizeof(current_snapshot_.helios_status) - 1] = '\0';
+  } else {
+    current_snapshot_.helios_licensed = false;
+    current_snapshot_.helios_status[0] = '\0';
+  }
 
   // Text sensors
   safe_copy(current_snapshot_.controller_mode, sizeof(current_snapshot_.controller_mode), controller_mode_);
@@ -589,10 +623,15 @@ void HeatvalveDashboard::handle_state_(AsyncWebServerRequest *request) {
     response->printf("\"%s\":%d,", k, v);
   };
   auto p_n = [&](const char *k, const NumData &d) {
-    if (!std::isnan(d.val))
-      response->printf("\"%s\":{\"val\":%.1f,\"min\":%.1f,\"max\":%.1f,\"step\":%.2f},", k, d.val, d.min, d.max, d.step);
-    else
-      response->printf("\"%s\":null,", k);
+    float val = d.val;
+    if (std::isnan(val)) {
+      if (!std::isnan(d.min)) val = d.min;
+      else val = 0.0f;
+    }
+    float min = std::isnan(d.min) ? 0.0f : d.min;
+    float max = std::isnan(d.max) ? min : d.max;
+    float step = std::isnan(d.step) ? 1.0f : d.step;
+    response->printf("\"%s\":{\"val\":%.1f,\"min\":%.1f,\"max\":%.1f,\"step\":%.2f},", k, val, min, max, step);
   };
   auto p_str = [&](const char *k, const char *v) {
     response->printf("\"%s\":\"", k);
@@ -649,7 +688,7 @@ void HeatvalveDashboard::handle_state_(AsyncWebServerRequest *request) {
     if (i > 0) response->print(",");
     const auto &z = snap.zones[i];
     response->print("{");
-    char buf[24];
+    char buf[32];
     snprintf(buf, sizeof(buf), "z%d_temp", i + 1);
     p_f1(buf, z.current_temp);
     snprintf(buf, sizeof(buf), "z%d_setpoint", i + 1);
@@ -682,6 +721,9 @@ void HeatvalveDashboard::handle_state_(AsyncWebServerRequest *request) {
     // BLE MAC
     snprintf(buf, sizeof(buf), "z%d_ble_mac", i + 1);
     p_str(buf, z.ble_mac);
+    // Link group (-1 = None, 0=A, 1=B, 2=C, 3=D)
+    snprintf(buf, sizeof(buf), "z%d_link_group", i + 1);
+    p_i(buf, z.link_group_idx);
     // Remove trailing comma by adding a dummy last field
     response->printf("\"_z\":%d}", i + 1);
   }
@@ -700,11 +742,15 @@ void HeatvalveDashboard::handle_state_(AsyncWebServerRequest *request) {
   // Switches
   p_b("balancing_enabled", snap.sw_balancing);
   p_b("standalone_mode", snap.sw_standalone);
+  p_b("ecodan_coordinator", snap.sw_ecodan_coordinator);
   p_b("display_enabled", snap.display_enabled);
 
-  // Select
-  p_sel("pipe_type", snap.sel_pipe_type, snap.sel_pipe_type_opts, snap.sel_pipe_type_opts_count);
-  p_sel("floor_type", snap.sel_floor_type, snap.sel_floor_type_opts, snap.sel_floor_type_opts_count);
+  // Zone enable switches
+  for (int i = 0; i < NUM_ZONES; i++) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "z%d_enabled", i + 1);
+    p_b(buf, snap.zone_enabled[i]);
+  }
 
   // Numbers
   p_n("min_valve_opening", snap.num_min_valve_opening);
@@ -713,8 +759,12 @@ void HeatvalveDashboard::handle_state_(AsyncWebServerRequest *request) {
   p_n("demand_boost", snap.num_demand_boost);
   p_n("boost_factor", snap.num_boost_factor);
   p_n("min_movement", snap.num_min_movement);
-  p_n("pipe_spacing", snap.num_pipe_spacing);
-  p_n("floor_cover_thickness", snap.num_floor_cover_thickness);
+  p_n("asgard_reference_setpoint", snap.num_asgard_reference_setpoint);
+  p_str("asgard_host", snap.asgard_host);
+
+  // Helios/Threyr license status
+  p_b("helios_licensed", snap.helios_licensed);
+  p_str("helios_status", snap.helios_status);
 
   // Text sensors
   p_str("controller_mode", snap.controller_mode);

@@ -98,104 +98,19 @@ number:
     web_server:
       sorting_group_id: sorting_group_settings
 
-  # Pipe settings (shared by all zones)
+  # Ecodan / Asgard reference setpoint (must match Asgard virtual thermostat target)
   - platform: template
-    name: "Pipe Spacing"
-    id: ${id_prefix}pipe_spacing
-    icon: "mdi:arrow-expand-horizontal"
-    unit_of_measurement: "mm"
-    entity_category: config
+    name: "Asgard Reference Setpoint"
+    id: ${id_prefix}asgard_reference_setpoint
+    icon: "mdi:thermostat"
+    unit_of_measurement: "°C"
     optimistic: true
-    min_value: 100
-    max_value: 300
-    step: 50
+    min_value: 15
+    max_value: 28
+    step: 0.5
     restore_value: true
-    initial_value: 150
-    web_server:
-      sorting_group_id: sorting_group_settings
-
-  - platform: template
-    name: "Floor Cover Thickness"
-    id: ${id_prefix}floor_cover_thickness
-    icon: "mdi:layers"
-    unit_of_measurement: "mm"
-    optimistic: true
-    min_value: 5
-    max_value: 40
-    step: 1
-    restore_value: true
-    initial_value: 15
+    initial_value: 21.0
     entity_category: config
-    web_server:
-      sorting_group_id: sorting_group_settings
-    
-  - platform: template
-    name: "Pipe Volume per Meter"
-    id: ${id_prefix}pipe_volume_per_meter
-    icon: "mdi:pipe"
-    unit_of_measurement: "L/m"
-    optimistic: true
-    min_value: 0.05
-    max_value: 0.25
-    step: 0.001
-    restore_value: true
-    initial_value: 0.113
-    entity_category: config
-    web_server:
-      sorting_group_id: sorting_group_settings
-
-# ============================================
-# Pipe Type Selector
-# ============================================
-select:
-  - platform: template
-    name: "Pipe Type"
-    id: ${id_prefix}pipe_type
-    icon: "mdi:pipe"
-    optimistic: true
-    restore_value: true
-    entity_category: config
-    options:
-      - "PEX 12x2"
-      - "PEX 14x2"
-      - "PEX 16x2"
-      - "PEX 17x2"
-      - "PEX 18x2"
-      - "PEX 20x2"
-      - "AluPEX 16x2"
-      - "AluPEX 20x2"
-    initial_option: "PEX 16x2"
-    on_value:
-      then:
-        - lambda: |-
-            float volume = 0.113;
-            if (x == "PEX 12x2") volume = 0.050;
-            else if (x == "PEX 14x2") volume = 0.079;
-            else if (x == "PEX 16x2") volume = 0.113;
-            else if (x == "PEX 17x2") volume = 0.133;
-            else if (x == "PEX 18x2") volume = 0.154;
-            else if (x == "PEX 20x2") volume = 0.201;
-            else if (x == "AluPEX 16x2") volume = 0.113;
-            else if (x == "AluPEX 20x2") volume = 0.201;
-            auto call = id(${id_prefix}pipe_volume_per_meter).make_call();
-            call.set_value(volume);
-            call.perform();
-    web_server:
-      sorting_group_id: sorting_group_settings
-
-  - platform: template
-    name: "Floor Type"
-    id: ${id_prefix}floor_type
-    icon: "mdi:floor-plan"
-    optimistic: true
-    restore_value: true
-    entity_category: config
-    options:
-      - "Tile"
-      - "Parquet"
-      - "Oak/Beech"
-      - "Carpet"
-    initial_option: "Tile"
     web_server:
       sorting_group_id: sorting_group_settings
 
@@ -219,6 +134,92 @@ switch:
     icon: "mdi:lan-disconnect"
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
+
+  - platform: template
+    name: "Ecodan Coordinator"
+    id: ${id_prefix}ecodan_coordinator
+    icon: "mdi:crown"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
+
+  # Per-zone enable switches
+  - platform: template
+    name: "Zone 1 Enabled"
+    id: ${id_prefix}zone_1_enabled
+    icon: "mdi:toggle-switch"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
+
+  - platform: template
+    name: "Zone 2 Enabled"
+    id: ${id_prefix}zone_2_enabled
+    icon: "mdi:toggle-switch"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
+
+  - platform: template
+    name: "Zone 3 Enabled"
+    id: ${id_prefix}zone_3_enabled
+    icon: "mdi:toggle-switch"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
+
+  - platform: template
+    name: "Zone 4 Enabled"
+    id: ${id_prefix}zone_4_enabled
+    icon: "mdi:toggle-switch"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
+
+  - platform: template
+    name: "Zone 5 Enabled"
+    id: ${id_prefix}zone_5_enabled
+    icon: "mdi:toggle-switch"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
+
+  - platform: template
+    name: "Zone 6 Enabled"
+    id: ${id_prefix}zone_6_enabled
+    icon: "mdi:toggle-switch"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    web_server:
+      sorting_group_id: sorting_group_settings
+
+text:
+  - platform: template
+    name: "Asgard Host"
+    id: ${id_prefix}asgard_host
+    icon: "mdi:server-network"
+    optimistic: true
+    min_length: 0
+    max_length: 64
+    mode: text
+    restore_value: true
+    initial_value: "${asgard_host}"
     entity_category: config
     web_server:
       sorting_group_id: sorting_group_settings

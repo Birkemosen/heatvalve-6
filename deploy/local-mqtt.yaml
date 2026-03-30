@@ -45,6 +45,7 @@ packages:
   ha_sensors: !include ../core/ha_sensors.yaml
   mqtt_sensors: !include ../core/mqtt_sensor_overrides.yaml
   ble_sensors: !include ../optional/ble_sensors.yaml
+  ecodan_bridge: !include ../optional/ecodan_asgard_bridge.yaml
 
 # ============================================
 # MQTT Topic Configuration

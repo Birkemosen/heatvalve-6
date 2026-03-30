@@ -153,9 +153,24 @@ sensor:
     update_interval: 5s
     lambda: |-
       auto source = id(${id_prefix}zone_1_temp_source).current_option();
-      if (source == "MQTT") return id(${id_prefix}zone_1_temp_mqtt);
-      if (source == "BLE") return id(${id_prefix}zone_1_temp_ble);
-      return id(${id_prefix}zone_1_temp_ha);
+      float own = NAN;
+      if (source == "MQTT") own = id(${id_prefix}zone_1_temp_mqtt);
+      else if (source == "BLE") own = id(${id_prefix}zone_1_temp_ble);
+      else own = id(${id_prefix}zone_1_temp_ha);
+      // Link group averaging
+      auto grp = id(${id_prefix}zone_1_link_group).active_index();
+      if (grp.has_value() && grp.value() > 0) {
+        float sum = 0; int cnt = 0;
+        auto add = [&](float v) { if (!std::isnan(v)) { sum += v; cnt++; } };
+        add(own);
+        if (id(${id_prefix}zone_2_link_group).active_index().has_value() && id(${id_prefix}zone_2_link_group).active_index().value() == grp.value()) { auto s2 = id(${id_prefix}zone_2_temp_source).current_option(); add(s2 == "MQTT" ? id(${id_prefix}zone_2_temp_mqtt) : s2 == "BLE" ? id(${id_prefix}zone_2_temp_ble) : id(${id_prefix}zone_2_temp_ha)); }
+        if (id(${id_prefix}zone_3_link_group).active_index().has_value() && id(${id_prefix}zone_3_link_group).active_index().value() == grp.value()) { auto s3 = id(${id_prefix}zone_3_temp_source).current_option(); add(s3 == "MQTT" ? id(${id_prefix}zone_3_temp_mqtt) : s3 == "BLE" ? id(${id_prefix}zone_3_temp_ble) : id(${id_prefix}zone_3_temp_ha)); }
+        if (id(${id_prefix}zone_4_link_group).active_index().has_value() && id(${id_prefix}zone_4_link_group).active_index().value() == grp.value()) { auto s4 = id(${id_prefix}zone_4_temp_source).current_option(); add(s4 == "MQTT" ? id(${id_prefix}zone_4_temp_mqtt) : s4 == "BLE" ? id(${id_prefix}zone_4_temp_ble) : id(${id_prefix}zone_4_temp_ha)); }
+        if (id(${id_prefix}zone_5_link_group).active_index().has_value() && id(${id_prefix}zone_5_link_group).active_index().value() == grp.value()) { auto s5 = id(${id_prefix}zone_5_temp_source).current_option(); add(s5 == "MQTT" ? id(${id_prefix}zone_5_temp_mqtt) : s5 == "BLE" ? id(${id_prefix}zone_5_temp_ble) : id(${id_prefix}zone_5_temp_ha)); }
+        if (id(${id_prefix}zone_6_link_group).active_index().has_value() && id(${id_prefix}zone_6_link_group).active_index().value() == grp.value()) { auto s6 = id(${id_prefix}zone_6_temp_source).current_option(); add(s6 == "MQTT" ? id(${id_prefix}zone_6_temp_mqtt) : s6 == "BLE" ? id(${id_prefix}zone_6_temp_ble) : id(${id_prefix}zone_6_temp_ha)); }
+        if (cnt > 0) return sum / cnt;
+      }
+      return own;
     web_server:
       sorting_group_id: sorting_group_zone_1
 
@@ -169,9 +184,23 @@ sensor:
     update_interval: 5s
     lambda: |-
       auto source = id(${id_prefix}zone_2_temp_source).current_option();
-      if (source == "MQTT") return id(${id_prefix}zone_2_temp_mqtt);
-      if (source == "BLE") return id(${id_prefix}zone_2_temp_ble);
-      return id(${id_prefix}zone_2_temp_ha);
+      float own = NAN;
+      if (source == "MQTT") own = id(${id_prefix}zone_2_temp_mqtt);
+      else if (source == "BLE") own = id(${id_prefix}zone_2_temp_ble);
+      else own = id(${id_prefix}zone_2_temp_ha);
+      auto grp = id(${id_prefix}zone_2_link_group).active_index();
+      if (grp.has_value() && grp.value() > 0) {
+        float sum = 0; int cnt = 0;
+        auto add = [&](float v) { if (!std::isnan(v)) { sum += v; cnt++; } };
+        add(own);
+        if (id(${id_prefix}zone_1_link_group).active_index().has_value() && id(${id_prefix}zone_1_link_group).active_index().value() == grp.value()) { auto s1 = id(${id_prefix}zone_1_temp_source).current_option(); add(s1 == "MQTT" ? id(${id_prefix}zone_1_temp_mqtt) : s1 == "BLE" ? id(${id_prefix}zone_1_temp_ble) : id(${id_prefix}zone_1_temp_ha)); }
+        if (id(${id_prefix}zone_3_link_group).active_index().has_value() && id(${id_prefix}zone_3_link_group).active_index().value() == grp.value()) { auto s3 = id(${id_prefix}zone_3_temp_source).current_option(); add(s3 == "MQTT" ? id(${id_prefix}zone_3_temp_mqtt) : s3 == "BLE" ? id(${id_prefix}zone_3_temp_ble) : id(${id_prefix}zone_3_temp_ha)); }
+        if (id(${id_prefix}zone_4_link_group).active_index().has_value() && id(${id_prefix}zone_4_link_group).active_index().value() == grp.value()) { auto s4 = id(${id_prefix}zone_4_temp_source).current_option(); add(s4 == "MQTT" ? id(${id_prefix}zone_4_temp_mqtt) : s4 == "BLE" ? id(${id_prefix}zone_4_temp_ble) : id(${id_prefix}zone_4_temp_ha)); }
+        if (id(${id_prefix}zone_5_link_group).active_index().has_value() && id(${id_prefix}zone_5_link_group).active_index().value() == grp.value()) { auto s5 = id(${id_prefix}zone_5_temp_source).current_option(); add(s5 == "MQTT" ? id(${id_prefix}zone_5_temp_mqtt) : s5 == "BLE" ? id(${id_prefix}zone_5_temp_ble) : id(${id_prefix}zone_5_temp_ha)); }
+        if (id(${id_prefix}zone_6_link_group).active_index().has_value() && id(${id_prefix}zone_6_link_group).active_index().value() == grp.value()) { auto s6 = id(${id_prefix}zone_6_temp_source).current_option(); add(s6 == "MQTT" ? id(${id_prefix}zone_6_temp_mqtt) : s6 == "BLE" ? id(${id_prefix}zone_6_temp_ble) : id(${id_prefix}zone_6_temp_ha)); }
+        if (cnt > 0) return sum / cnt;
+      }
+      return own;
     web_server:
       sorting_group_id: sorting_group_zone_2
 
@@ -185,9 +214,23 @@ sensor:
     update_interval: 5s
     lambda: |-
       auto source = id(${id_prefix}zone_3_temp_source).current_option();
-      if (source == "MQTT") return id(${id_prefix}zone_3_temp_mqtt);
-      if (source == "BLE") return id(${id_prefix}zone_3_temp_ble);
-      return id(${id_prefix}zone_3_temp_ha);
+      float own = NAN;
+      if (source == "MQTT") own = id(${id_prefix}zone_3_temp_mqtt);
+      else if (source == "BLE") own = id(${id_prefix}zone_3_temp_ble);
+      else own = id(${id_prefix}zone_3_temp_ha);
+      auto grp = id(${id_prefix}zone_3_link_group).active_index();
+      if (grp.has_value() && grp.value() > 0) {
+        float sum = 0; int cnt = 0;
+        auto add = [&](float v) { if (!std::isnan(v)) { sum += v; cnt++; } };
+        add(own);
+        if (id(${id_prefix}zone_1_link_group).active_index().has_value() && id(${id_prefix}zone_1_link_group).active_index().value() == grp.value()) { auto s1 = id(${id_prefix}zone_1_temp_source).current_option(); add(s1 == "MQTT" ? id(${id_prefix}zone_1_temp_mqtt) : s1 == "BLE" ? id(${id_prefix}zone_1_temp_ble) : id(${id_prefix}zone_1_temp_ha)); }
+        if (id(${id_prefix}zone_2_link_group).active_index().has_value() && id(${id_prefix}zone_2_link_group).active_index().value() == grp.value()) { auto s2 = id(${id_prefix}zone_2_temp_source).current_option(); add(s2 == "MQTT" ? id(${id_prefix}zone_2_temp_mqtt) : s2 == "BLE" ? id(${id_prefix}zone_2_temp_ble) : id(${id_prefix}zone_2_temp_ha)); }
+        if (id(${id_prefix}zone_4_link_group).active_index().has_value() && id(${id_prefix}zone_4_link_group).active_index().value() == grp.value()) { auto s4 = id(${id_prefix}zone_4_temp_source).current_option(); add(s4 == "MQTT" ? id(${id_prefix}zone_4_temp_mqtt) : s4 == "BLE" ? id(${id_prefix}zone_4_temp_ble) : id(${id_prefix}zone_4_temp_ha)); }
+        if (id(${id_prefix}zone_5_link_group).active_index().has_value() && id(${id_prefix}zone_5_link_group).active_index().value() == grp.value()) { auto s5 = id(${id_prefix}zone_5_temp_source).current_option(); add(s5 == "MQTT" ? id(${id_prefix}zone_5_temp_mqtt) : s5 == "BLE" ? id(${id_prefix}zone_5_temp_ble) : id(${id_prefix}zone_5_temp_ha)); }
+        if (id(${id_prefix}zone_6_link_group).active_index().has_value() && id(${id_prefix}zone_6_link_group).active_index().value() == grp.value()) { auto s6 = id(${id_prefix}zone_6_temp_source).current_option(); add(s6 == "MQTT" ? id(${id_prefix}zone_6_temp_mqtt) : s6 == "BLE" ? id(${id_prefix}zone_6_temp_ble) : id(${id_prefix}zone_6_temp_ha)); }
+        if (cnt > 0) return sum / cnt;
+      }
+      return own;
     web_server:
       sorting_group_id: sorting_group_zone_3
 
@@ -201,9 +244,23 @@ sensor:
     update_interval: 5s
     lambda: |-
       auto source = id(${id_prefix}zone_4_temp_source).current_option();
-      if (source == "MQTT") return id(${id_prefix}zone_4_temp_mqtt);
-      if (source == "BLE") return id(${id_prefix}zone_4_temp_ble);
-      return id(${id_prefix}zone_4_temp_ha);
+      float own = NAN;
+      if (source == "MQTT") own = id(${id_prefix}zone_4_temp_mqtt);
+      else if (source == "BLE") own = id(${id_prefix}zone_4_temp_ble);
+      else own = id(${id_prefix}zone_4_temp_ha);
+      auto grp = id(${id_prefix}zone_4_link_group).active_index();
+      if (grp.has_value() && grp.value() > 0) {
+        float sum = 0; int cnt = 0;
+        auto add = [&](float v) { if (!std::isnan(v)) { sum += v; cnt++; } };
+        add(own);
+        if (id(${id_prefix}zone_1_link_group).active_index().has_value() && id(${id_prefix}zone_1_link_group).active_index().value() == grp.value()) { auto s1 = id(${id_prefix}zone_1_temp_source).current_option(); add(s1 == "MQTT" ? id(${id_prefix}zone_1_temp_mqtt) : s1 == "BLE" ? id(${id_prefix}zone_1_temp_ble) : id(${id_prefix}zone_1_temp_ha)); }
+        if (id(${id_prefix}zone_2_link_group).active_index().has_value() && id(${id_prefix}zone_2_link_group).active_index().value() == grp.value()) { auto s2 = id(${id_prefix}zone_2_temp_source).current_option(); add(s2 == "MQTT" ? id(${id_prefix}zone_2_temp_mqtt) : s2 == "BLE" ? id(${id_prefix}zone_2_temp_ble) : id(${id_prefix}zone_2_temp_ha)); }
+        if (id(${id_prefix}zone_3_link_group).active_index().has_value() && id(${id_prefix}zone_3_link_group).active_index().value() == grp.value()) { auto s3 = id(${id_prefix}zone_3_temp_source).current_option(); add(s3 == "MQTT" ? id(${id_prefix}zone_3_temp_mqtt) : s3 == "BLE" ? id(${id_prefix}zone_3_temp_ble) : id(${id_prefix}zone_3_temp_ha)); }
+        if (id(${id_prefix}zone_5_link_group).active_index().has_value() && id(${id_prefix}zone_5_link_group).active_index().value() == grp.value()) { auto s5 = id(${id_prefix}zone_5_temp_source).current_option(); add(s5 == "MQTT" ? id(${id_prefix}zone_5_temp_mqtt) : s5 == "BLE" ? id(${id_prefix}zone_5_temp_ble) : id(${id_prefix}zone_5_temp_ha)); }
+        if (id(${id_prefix}zone_6_link_group).active_index().has_value() && id(${id_prefix}zone_6_link_group).active_index().value() == grp.value()) { auto s6 = id(${id_prefix}zone_6_temp_source).current_option(); add(s6 == "MQTT" ? id(${id_prefix}zone_6_temp_mqtt) : s6 == "BLE" ? id(${id_prefix}zone_6_temp_ble) : id(${id_prefix}zone_6_temp_ha)); }
+        if (cnt > 0) return sum / cnt;
+      }
+      return own;
     web_server:
       sorting_group_id: sorting_group_zone_4
 
@@ -217,9 +274,23 @@ sensor:
     update_interval: 5s
     lambda: |-
       auto source = id(${id_prefix}zone_5_temp_source).current_option();
-      if (source == "MQTT") return id(${id_prefix}zone_5_temp_mqtt);
-      if (source == "BLE") return id(${id_prefix}zone_5_temp_ble);
-      return id(${id_prefix}zone_5_temp_ha);
+      float own = NAN;
+      if (source == "MQTT") own = id(${id_prefix}zone_5_temp_mqtt);
+      else if (source == "BLE") own = id(${id_prefix}zone_5_temp_ble);
+      else own = id(${id_prefix}zone_5_temp_ha);
+      auto grp = id(${id_prefix}zone_5_link_group).active_index();
+      if (grp.has_value() && grp.value() > 0) {
+        float sum = 0; int cnt = 0;
+        auto add = [&](float v) { if (!std::isnan(v)) { sum += v; cnt++; } };
+        add(own);
+        if (id(${id_prefix}zone_1_link_group).active_index().has_value() && id(${id_prefix}zone_1_link_group).active_index().value() == grp.value()) { auto s1 = id(${id_prefix}zone_1_temp_source).current_option(); add(s1 == "MQTT" ? id(${id_prefix}zone_1_temp_mqtt) : s1 == "BLE" ? id(${id_prefix}zone_1_temp_ble) : id(${id_prefix}zone_1_temp_ha)); }
+        if (id(${id_prefix}zone_2_link_group).active_index().has_value() && id(${id_prefix}zone_2_link_group).active_index().value() == grp.value()) { auto s2 = id(${id_prefix}zone_2_temp_source).current_option(); add(s2 == "MQTT" ? id(${id_prefix}zone_2_temp_mqtt) : s2 == "BLE" ? id(${id_prefix}zone_2_temp_ble) : id(${id_prefix}zone_2_temp_ha)); }
+        if (id(${id_prefix}zone_3_link_group).active_index().has_value() && id(${id_prefix}zone_3_link_group).active_index().value() == grp.value()) { auto s3 = id(${id_prefix}zone_3_temp_source).current_option(); add(s3 == "MQTT" ? id(${id_prefix}zone_3_temp_mqtt) : s3 == "BLE" ? id(${id_prefix}zone_3_temp_ble) : id(${id_prefix}zone_3_temp_ha)); }
+        if (id(${id_prefix}zone_4_link_group).active_index().has_value() && id(${id_prefix}zone_4_link_group).active_index().value() == grp.value()) { auto s4 = id(${id_prefix}zone_4_temp_source).current_option(); add(s4 == "MQTT" ? id(${id_prefix}zone_4_temp_mqtt) : s4 == "BLE" ? id(${id_prefix}zone_4_temp_ble) : id(${id_prefix}zone_4_temp_ha)); }
+        if (id(${id_prefix}zone_6_link_group).active_index().has_value() && id(${id_prefix}zone_6_link_group).active_index().value() == grp.value()) { auto s6 = id(${id_prefix}zone_6_temp_source).current_option(); add(s6 == "MQTT" ? id(${id_prefix}zone_6_temp_mqtt) : s6 == "BLE" ? id(${id_prefix}zone_6_temp_ble) : id(${id_prefix}zone_6_temp_ha)); }
+        if (cnt > 0) return sum / cnt;
+      }
+      return own;
     web_server:
       sorting_group_id: sorting_group_zone_5
 
@@ -233,8 +304,22 @@ sensor:
     update_interval: 5s
     lambda: |-
       auto source = id(${id_prefix}zone_6_temp_source).current_option();
-      if (source == "MQTT") return id(${id_prefix}zone_6_temp_mqtt);
-      if (source == "BLE") return id(${id_prefix}zone_6_temp_ble);
-      return id(${id_prefix}zone_6_temp_ha);
+      float own = NAN;
+      if (source == "MQTT") own = id(${id_prefix}zone_6_temp_mqtt);
+      else if (source == "BLE") own = id(${id_prefix}zone_6_temp_ble);
+      else own = id(${id_prefix}zone_6_temp_ha);
+      auto grp = id(${id_prefix}zone_6_link_group).active_index();
+      if (grp.has_value() && grp.value() > 0) {
+        float sum = 0; int cnt = 0;
+        auto add = [&](float v) { if (!std::isnan(v)) { sum += v; cnt++; } };
+        add(own);
+        if (id(${id_prefix}zone_1_link_group).active_index().has_value() && id(${id_prefix}zone_1_link_group).active_index().value() == grp.value()) { auto s1 = id(${id_prefix}zone_1_temp_source).current_option(); add(s1 == "MQTT" ? id(${id_prefix}zone_1_temp_mqtt) : s1 == "BLE" ? id(${id_prefix}zone_1_temp_ble) : id(${id_prefix}zone_1_temp_ha)); }
+        if (id(${id_prefix}zone_2_link_group).active_index().has_value() && id(${id_prefix}zone_2_link_group).active_index().value() == grp.value()) { auto s2 = id(${id_prefix}zone_2_temp_source).current_option(); add(s2 == "MQTT" ? id(${id_prefix}zone_2_temp_mqtt) : s2 == "BLE" ? id(${id_prefix}zone_2_temp_ble) : id(${id_prefix}zone_2_temp_ha)); }
+        if (id(${id_prefix}zone_3_link_group).active_index().has_value() && id(${id_prefix}zone_3_link_group).active_index().value() == grp.value()) { auto s3 = id(${id_prefix}zone_3_temp_source).current_option(); add(s3 == "MQTT" ? id(${id_prefix}zone_3_temp_mqtt) : s3 == "BLE" ? id(${id_prefix}zone_3_temp_ble) : id(${id_prefix}zone_3_temp_ha)); }
+        if (id(${id_prefix}zone_4_link_group).active_index().has_value() && id(${id_prefix}zone_4_link_group).active_index().value() == grp.value()) { auto s4 = id(${id_prefix}zone_4_temp_source).current_option(); add(s4 == "MQTT" ? id(${id_prefix}zone_4_temp_mqtt) : s4 == "BLE" ? id(${id_prefix}zone_4_temp_ble) : id(${id_prefix}zone_4_temp_ha)); }
+        if (id(${id_prefix}zone_5_link_group).active_index().has_value() && id(${id_prefix}zone_5_link_group).active_index().value() == grp.value()) { auto s5 = id(${id_prefix}zone_5_temp_source).current_option(); add(s5 == "MQTT" ? id(${id_prefix}zone_5_temp_mqtt) : s5 == "BLE" ? id(${id_prefix}zone_5_temp_ble) : id(${id_prefix}zone_5_temp_ha)); }
+        if (cnt > 0) return sum / cnt;
+      }
+      return own;
     web_server:
       sorting_group_id: sorting_group_zone_6

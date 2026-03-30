@@ -9,9 +9,8 @@
 # CH1116 is compatible with SH1106 command set.
 # rotation: 270  →  portrait 64px-wide × 128px-tall, rotated 180° vs. 90.
 #
-# Layout: 2 columns × 3 rows. Each zone shows a zone label
-# and 5 stacked bars (each bar = 20% valve opening).
-# Fault mode rotates pages (fault details + WiFi/MQTT/BLE status).
+# Layout: Display alternates between a 2-column zone overview
+# and a status page with stacked WiFi/BLE plus detailed errors below.
 # Display on/off controlled by switch "heating_oled_enabled".
 
 font:
@@ -21,6 +20,9 @@ font:
   - file: "gfonts://Roboto+Mono"
     id: font_xs
     size: 10
+  - file: "gfonts://Roboto+Mono"
+    id: font_xxs
+    size: 9
 
 display:
   - platform: ssd1306_i2c
@@ -28,7 +30,7 @@ display:
     model: "SH1106 128x64"
     address: ${oled_address}
     rotation: 270        # portrait, 180° flipped vs. previous 90°
-    update_interval: 3s
+    update_interval: 5s
     lambda: |-
       // Blank when disabled
       if (!id(heating_oled_enabled).state) {
@@ -39,29 +41,32 @@ display:
       // Always clear frame so old bar outlines/pixels never linger.
       it.fill(COLOR_OFF);
 
-      // ── Fault pages (rotating) ──
-      if (id(motor_supervisor_ctrl).fault_event()) {
-        const bool wifi_ok = wifi::global_wifi_component != nullptr &&
-                             wifi::global_wifi_component->is_connected();
+      const bool wifi_ok = wifi::global_wifi_component != nullptr &&
+                           wifi::global_wifi_component->is_connected();
 
-        const bool ble_ok = id(heating_ble_scan_results).has_state() &&
-                            id(heating_ble_scan_results).state != "[]";
+      const bool ble_ok = id(heating_ble_scan_results).has_state() &&
+                          id(heating_ble_scan_results).state != "[]";
 
-        const uint32_t page_seconds = 3;
-        const uint32_t page = (millis() / (page_seconds * 1000UL)) % 4;
+      const bool fault_active = id(motor_supervisor_ctrl).fault_event();
+      const uint32_t page_seconds = 4;
+      const uint32_t page = (millis() / (page_seconds * 1000UL)) % 2;
 
-        if (page == 0) {
-          it.printf(3,  8, id(font_sm), "!! FAULT");
-          it.printf(3, 26, id(font_sm), "Motor %d",
+      // ── Status page ──
+      if (page == 1) {
+        it.printf(2,  4, id(font_xxs), "WiFi: %s", wifi_ok ? "OK" : "DOWN");
+        it.printf(2, 16, id(font_xxs), "BLE : %s", ble_ok ? "ON" : "OFF");
+        it.horizontal_line(0, 30, 64);
+
+        if (fault_active) {
+          it.printf(2, 36, id(font_xxs), "ERR ACTIVE");
+          it.printf(2, 48, id(font_xxs), "Motor: %d",
             id(motor_supervisor_ctrl).get_current_motor());
-          it.printf(3, 44, id(font_xs), "%.0f mA",
+          it.printf(2, 60, id(font_xxs), "Current: %.0f mA",
             id(motor_supervisor_ctrl).get_current_filtered());
-        } else if (page == 1) {
-          it.printf(3, 10, id(font_sm), "WiFi");
-          it.printf(3, 30, id(font_sm), "%s", wifi_ok ? "OK" : "DOWN");
+          it.printf(2, 72, id(font_xxs), "%s",
+            id(motor_supervisor_ctrl).get_current_fault_name());
         } else {
-          it.printf(3, 10, id(font_sm), "BLE");
-          it.printf(3, 30, id(font_sm), "%s", ble_ok ? "ON" : "OFF");
+          it.printf(2, 44, id(font_xxs), "No active errors");
         }
         return;
       }
@@ -109,8 +114,8 @@ display:
       };
 
       draw_zone(0, 0, id(CH1_cover), "Z1");
-      draw_zone(0, 1, id(CH2_cover), "Z2");
-      draw_zone(0, 2, id(CH3_cover), "Z3");
-      draw_zone(1, 0, id(CH4_cover), "Z4");
-      draw_zone(1, 1, id(CH5_cover), "Z5");
+      draw_zone(0, 1, id(CH3_cover), "Z3");
+      draw_zone(0, 2, id(CH5_cover), "Z5");
+      draw_zone(1, 0, id(CH2_cover), "Z2");
+      draw_zone(1, 1, id(CH4_cover), "Z4");
       draw_zone(1, 2, id(CH6_cover), "Z6");

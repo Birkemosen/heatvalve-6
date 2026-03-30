@@ -19,16 +19,51 @@ esphome:
     - ../optional/parsers/bthome_parser.h
     - ../optional/ble_queue_parser.h
 
+globals:
+  - id: ${id_prefix}ble_scan_allowed
+    type: bool
+    restore_value: no
+    initial_value: 'true'
+
 # Start BLE scan when API connects (WiFi is stable at this point)
 api:
   on_client_connected:
     then:
+      - if:
+          condition:
+            lambda: 'return id(${id_prefix}ble_scan_allowed);'
+          then:
+            - logger.log:
+                level: INFO
+                format: "API connected - starting BLE scan"
+            - esp32_ble_tracker.start_scan:
+                id: ${id_prefix}ble_tracker
+                continuous: false
+
+ota:
+  on_begin:
+    then:
+      - lambda: |-
+          id(${id_prefix}ble_scan_allowed) = false;
+      - esp32_ble_tracker.stop_scan:
+          id: ${id_prefix}ble_tracker
+      - logger.log:
+          level: WARN
+          format: "OTA begin - BLE scan paused"
+  on_end:
+    then:
+      - lambda: |-
+          id(${id_prefix}ble_scan_allowed) = true;
       - logger.log:
           level: INFO
-          format: "API connected - starting BLE scan"
-      - esp32_ble_tracker.start_scan:
-          id: ${id_prefix}ble_tracker
-          continuous: false
+          format: "OTA end - BLE scan re-enabled"
+  on_error:
+    then:
+      - lambda: |-
+          id(${id_prefix}ble_scan_allowed) = true;
+      - logger.log:
+          level: WARN
+          format: "OTA error - BLE scan re-enabled"
 
 
 # ============================================
@@ -38,9 +73,9 @@ api:
 esp32_ble_tracker:
   id: ${id_prefix}ble_tracker
   scan_parameters:
-    active: true      # Send scan requests - can wake some passive devices
-    interval: 320ms   # How often to start a scan
-    window: 110ms     # How long each scan lasts - longer catches more periodic ads
+    active: false     # Passive scan is enough for BTHome beacons and is friendlier to WiFi
+    interval: 320ms   # Keep discovery cadence responsive
+    window: 80ms      # Lower scan duty cycle to improve WiFi/BLE coexistence
   #    continuous: false  # CRITICAL: don't continuously scan
   
   on_ble_advertise:
@@ -91,7 +126,7 @@ interval:
     then:
       - if:
           condition:
-            api.connected:
+            lambda: 'return api::global_api_server->is_connected() && id(${id_prefix}ble_scan_allowed);'
           then:
             - esp32_ble_tracker.start_scan:
                 id: ${id_prefix}ble_tracker
@@ -145,12 +180,20 @@ button:
     entity_category: config
     on_press:
       then:
-        - logger.log:
-            level: INFO
-            format: "Manual BLE scan triggered"
-        - esp32_ble_tracker.start_scan:
-            id: ${id_prefix}ble_tracker
-            continuous: false
+        - if:
+            condition:
+              lambda: 'return id(${id_prefix}ble_scan_allowed);'
+            then:
+              - logger.log:
+                  level: INFO
+                  format: "Manual BLE scan triggered"
+              - esp32_ble_tracker.start_scan:
+                  id: ${id_prefix}ble_tracker
+                  continuous: false
+            else:
+              - logger.log:
+                  level: WARN
+                  format: "Manual BLE scan ignored during OTA"
 
 # ============================================
 # Zone BLE MAC Assignment (persisted)

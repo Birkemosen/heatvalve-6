@@ -47,6 +47,17 @@ substitutions:
   # Multi-controller configuration
   controller_id: "1"  # Change to "2" for second controller
   total_controllers: "2"  # Total number of controllers in the system
+  
+  # Zone climate entity IDs (must match zone include 'id' parameter + _thermostat)
+  zone_1_climate_id: "wc_thermostat"
+  zone_2_climate_id: "storage_thermostat"
+  zone_3_climate_id: "living_thermostat"
+  zone_4_climate_id: "dining_thermostat"
+  zone_5_climate_id: "kitchen_thermostat"
+  zone_6_climate_id: "office_thermostat"
+  
+  # Ecodan / Asgard bridge
+  asgard_host: "ecodan-heatpump.local"
     
   #time
   TZ: "Europe/Zurich" #timezone
@@ -169,9 +180,14 @@ heatvalve_dashboard:
   sw_balancing_id: heating_balancing_enabled
   sw_standalone_id: heating_standalone_mode
   sw_display_id: heating_oled_enabled
-  # Select
-  sel_pipe_type_id: heating_pipe_type
-  sel_floor_type_id: heating_floor_type
+  sw_ecodan_coordinator_id: heating_ecodan_coordinator
+  # Zone enable switches
+  sw_zone_1_enabled_id: heating_zone_1_enabled
+  sw_zone_2_enabled_id: heating_zone_2_enabled
+  sw_zone_3_enabled_id: heating_zone_3_enabled
+  sw_zone_4_enabled_id: heating_zone_4_enabled
+  sw_zone_5_enabled_id: heating_zone_5_enabled
+  sw_zone_6_enabled_id: heating_zone_6_enabled
   # Settings numbers
   num_min_valve_opening_id: heating_minimum_valve_opening
   num_comfort_band_id: heating_comfort_band
@@ -179,8 +195,9 @@ heatvalve_dashboard:
   num_demand_boost_id: heating_demand_boost
   num_boost_factor_id: heating_boost_factor
   num_min_movement_id: heating_min_movement
-  num_pipe_spacing_id: heating_pipe_spacing
-  num_floor_cover_thickness_id: heating_floor_cover_thickness
+  # Ecodan / Asgard settings
+  num_asgard_reference_setpoint_id: heating_asgard_reference_setpoint
+  text_asgard_host_id: heating_asgard_host
   # Zone area/max opening numbers
   num_zone_1_area_id: heating_zone_1_area
   num_zone_2_area_id: heating_zone_2_area
@@ -229,6 +246,13 @@ heatvalve_dashboard:
   sel_zone_4_profile_id: heating_zone_4_profile
   sel_zone_5_profile_id: heating_zone_5_profile
   sel_zone_6_profile_id: heating_zone_6_profile
+  # Per-zone link group selects
+  sel_zone_1_link_group_id: heating_zone_1_link_group
+  sel_zone_2_link_group_id: heating_zone_2_link_group
+  sel_zone_3_link_group_id: heating_zone_3_link_group
+  sel_zone_4_link_group_id: heating_zone_4_link_group
+  sel_zone_5_link_group_id: heating_zone_5_link_group
+  sel_zone_6_link_group_id: heating_zone_6_link_group
   # Per-zone BLE MAC text entities (optional: only when including optional/ble_sensors.yaml)
   # Uncomment when enabling BLE sensor management:
   text_zone_1_ble_mac_id: heating_zone_1_ble_mac

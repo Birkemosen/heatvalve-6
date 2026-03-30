@@ -62,9 +62,14 @@ _SCHEMA_DICT = {
         cv.Optional("sw_balancing_id"): cv.use_id(switch.Switch),
         cv.Optional("sw_standalone_id"): cv.use_id(switch.Switch),
         cv.Optional("sw_display_id"): cv.use_id(switch.Switch),
-        # Select
-        cv.Optional("sel_pipe_type_id"): cv.use_id(select.Select),
-        cv.Optional("sel_floor_type_id"): cv.use_id(select.Select),
+        cv.Optional("sw_ecodan_coordinator_id"): cv.use_id(switch.Switch),
+        # Zone enable switches
+        cv.Optional("sw_zone_1_enabled_id"): cv.use_id(switch.Switch),
+        cv.Optional("sw_zone_2_enabled_id"): cv.use_id(switch.Switch),
+        cv.Optional("sw_zone_3_enabled_id"): cv.use_id(switch.Switch),
+        cv.Optional("sw_zone_4_enabled_id"): cv.use_id(switch.Switch),
+        cv.Optional("sw_zone_5_enabled_id"): cv.use_id(switch.Switch),
+        cv.Optional("sw_zone_6_enabled_id"): cv.use_id(switch.Switch),
         # Numbers (settings)
         cv.Optional("num_min_valve_opening_id"): cv.use_id(number.Number),
         cv.Optional("num_comfort_band_id"): cv.use_id(number.Number),
@@ -72,8 +77,11 @@ _SCHEMA_DICT = {
         cv.Optional("num_demand_boost_id"): cv.use_id(number.Number),
         cv.Optional("num_boost_factor_id"): cv.use_id(number.Number),
         cv.Optional("num_min_movement_id"): cv.use_id(number.Number),
-        cv.Optional("num_pipe_spacing_id"): cv.use_id(number.Number),
-        cv.Optional("num_floor_cover_thickness_id"): cv.use_id(number.Number),
+        # Asgard integration
+        cv.Optional("num_asgard_reference_setpoint_id"): cv.use_id(number.Number),
+        cv.Optional("text_asgard_host_id"): cv.use_id(text.Text),
+        # Helios/Threyr integration (optional)
+        cv.Optional("helios_status_id"): cv.use_id(text_sensor.TextSensor),
         # Zone numbers
         cv.Optional("num_zone_1_area_id"): cv.use_id(number.Number),
         cv.Optional("num_zone_2_area_id"): cv.use_id(number.Number),
@@ -122,6 +130,13 @@ _SCHEMA_DICT = {
         cv.Optional("sel_zone_4_profile_id"): cv.use_id(select.Select),
         cv.Optional("sel_zone_5_profile_id"): cv.use_id(select.Select),
         cv.Optional("sel_zone_6_profile_id"): cv.use_id(select.Select),
+        # Zone link group selects
+        cv.Optional("sel_zone_1_link_group_id"): cv.use_id(select.Select),
+        cv.Optional("sel_zone_2_link_group_id"): cv.use_id(select.Select),
+        cv.Optional("sel_zone_3_link_group_id"): cv.use_id(select.Select),
+        cv.Optional("sel_zone_4_link_group_id"): cv.use_id(select.Select),
+        cv.Optional("sel_zone_5_link_group_id"): cv.use_id(select.Select),
+        cv.Optional("sel_zone_6_link_group_id"): cv.use_id(select.Select),
         # Zone BLE MAC text entities
         cv.Optional("text_zone_1_ble_mac_id"): cv.use_id(text.Text),
         cv.Optional("text_zone_2_ble_mac_id"): cv.use_id(text.Text),
@@ -193,9 +208,14 @@ async def to_code(config):
         ("sw_balancing_id", "set_sw_balancing"),
         ("sw_standalone_id", "set_sw_standalone"),
         ("sw_display_id", "set_sw_display"),
-        # Select
-        ("sel_pipe_type_id", "set_sel_pipe_type"),
-        ("sel_floor_type_id", "set_sel_floor_type"),
+        ("sw_ecodan_coordinator_id", "set_sw_ecodan_coordinator"),
+        # Zone enable switches
+        ("sw_zone_1_enabled_id", "set_sw_zone_1_enabled"),
+        ("sw_zone_2_enabled_id", "set_sw_zone_2_enabled"),
+        ("sw_zone_3_enabled_id", "set_sw_zone_3_enabled"),
+        ("sw_zone_4_enabled_id", "set_sw_zone_4_enabled"),
+        ("sw_zone_5_enabled_id", "set_sw_zone_5_enabled"),
+        ("sw_zone_6_enabled_id", "set_sw_zone_6_enabled"),
         # Numbers
         ("num_min_valve_opening_id", "set_num_min_valve_opening"),
         ("num_comfort_band_id", "set_num_comfort_band"),
@@ -203,8 +223,11 @@ async def to_code(config):
         ("num_demand_boost_id", "set_num_demand_boost"),
         ("num_boost_factor_id", "set_num_boost_factor"),
         ("num_min_movement_id", "set_num_min_movement"),
-        ("num_pipe_spacing_id", "set_num_pipe_spacing"),
-        ("num_floor_cover_thickness_id", "set_num_floor_cover_thickness"),
+        # Asgard integration
+        ("num_asgard_reference_setpoint_id", "set_num_asgard_reference_setpoint"),
+        ("text_asgard_host_id", "set_text_asgard_host"),
+        # Helios/Threyr integration (optional)
+        ("helios_status_id", "set_helios_status"),
         # Zone numbers
         ("num_zone_1_area_id", "set_num_zone_1_area"),
         ("num_zone_2_area_id", "set_num_zone_2_area"),
@@ -253,6 +276,13 @@ async def to_code(config):
         ("sel_zone_4_profile_id", "set_sel_zone_4_profile"),
         ("sel_zone_5_profile_id", "set_sel_zone_5_profile"),
         ("sel_zone_6_profile_id", "set_sel_zone_6_profile"),
+        # Zone link group selects
+        ("sel_zone_1_link_group_id", "set_sel_zone_1_link_group"),
+        ("sel_zone_2_link_group_id", "set_sel_zone_2_link_group"),
+        ("sel_zone_3_link_group_id", "set_sel_zone_3_link_group"),
+        ("sel_zone_4_link_group_id", "set_sel_zone_4_link_group"),
+        ("sel_zone_5_link_group_id", "set_sel_zone_5_link_group"),
+        ("sel_zone_6_link_group_id", "set_sel_zone_6_link_group"),
         # Zone BLE MAC text entities
         ("text_zone_1_ble_mac_id", "set_text_zone_1_ble_mac"),
         ("text_zone_2_ble_mac_id", "set_text_zone_2_ble_mac"),
