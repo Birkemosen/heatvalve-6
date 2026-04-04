@@ -1,0 +1,48 @@
+# System sensors — motor current (published by valve controller), WiFi signal, device uptime
+sensor:
+  - platform: template
+    name: "Motor Current"
+    id: motor_current_adc
+    unit_of_measurement: "mA"
+    accuracy_decimals: 1
+    entity_category: diagnostic
+    update_interval: never
+
+  - platform: template
+    name: "Motor 1 Ripple Count"
+    id: motor_1_ripple_count
+    unit_of_measurement: "ripples"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: 500ms
+    lambda: |-
+      return static_cast<float>(id(hv6_valves).get_live_ripple_count());
+
+  - platform: template
+    name: "Motor 1 Learned Open Ripples"
+    id: motor_1_learned_open_ripples
+    unit_of_measurement: "ripples"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return static_cast<float>(id(hv6_valves).get_telemetry(0).learned_open_ripples);
+
+  - platform: template
+    name: "Motor 1 Learned Close Ripples"
+    id: motor_1_learned_close_ripples
+    unit_of_measurement: "ripples"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return static_cast<float>(id(hv6_valves).get_telemetry(0).learned_close_ripples);
+
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    id: wifi_signal_dbm
+    update_interval: 30s
+
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 60s

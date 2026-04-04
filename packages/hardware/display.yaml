@@ -1,0 +1,79 @@
+# =============================================================================
+# Hardware Display — CH1115 128×64 OLED (I2C, shared i2c_bus)
+# CH1115 uses SH1106-compatible page-addressing mode.
+# Physical mounting: 90° counter-clockwise → rotation: 90° in ESPHome
+# Logical canvas after rotation: 64px wide × 128px tall (portrait)
+#
+# Layout:
+#   [  0..10 ]  Header: WiFi status + RSSI
+#   [    11  ]  Horizontal separator
+#   [ 12..127]  Two columns, three zones each (38px per slot)
+#               Left  col (x= 0..30): Z1, Z2, Z3
+#               Right col (x=33..63): Z4, Z5, Z6
+#               Each slot: label "Zn" + 5-segment bar
+#               Segments: ░=empty, █=filled (5px×6px, 1px gap)
+#               Interval map: 1..20%→1, 21..40%→2, ..., 81..100%→5
+# =============================================================================
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 11
+  - file: "gfonts://Roboto"
+    id: font_tiny
+    size: 9
+
+display:
+  - platform: ssd1306_i2c
+    model: "SH1106 128x64"
+    address: 0x3C
+    i2c_id: i2c_bus
+    # rotation: 90°  ← compensates for 90° CCW physical mounting
+    # If display appears mirrored/upside-down, change to 270°
+    rotation: 270°
+    update_interval: 1s
+    lambda: |-
+      // ── Header ─────────────────────────────────────────────────────────
+      bool wifi_ok = id(wifi_signal_dbm).has_state() &&
+                     !std::isnan(id(wifi_signal_dbm).state);
+      if (wifi_ok) {
+        it.printf(0, 0, id(font_tiny), "WiFi %ddBm", (int)id(wifi_signal_dbm).state);
+      } else {
+        it.printf(0, 0, id(font_tiny), "WiFi: ---");
+      }
+      it.horizontal_line(0, 11, 64);   // full-width separator
+      it.vertical_line(31, 12, 116);   // column divider
+
+      // ── Zone bars ──────────────────────────────────────────────────────
+      // Row pairing: (Z1,Z2), (Z3,Z4), (Z5,Z6)
+      // col 0: odd zones (Z1,Z3,Z5), col 1: even zones (Z2,Z4,Z6)
+      // 3 rows, 38px each, starting at y=13
+      for (int z = 0; z < 6; z++) {
+        int col = z % 2;                      // 0=left, 1=right
+        int row = z / 2;
+        int cx  = (col == 0) ? 0 : 33;
+        int cy  = 13 + row * 38;
+
+        // Zone label
+        it.printf(cx + 15, cy, id(font_tiny), TextAlign::TOP_CENTER, "Z%d", z + 1);
+
+        // Map valve position to filled segment count
+        float pos = id(hv6_zones).get_valve_position(z);
+        if (std::isnan(pos)) pos = 0.0f;
+        int filled = 0;
+        if      (pos > 80.0f) filled = 5;
+        else if (pos > 60.0f) filled = 4;
+        else if (pos > 40.0f) filled = 3;
+        else if (pos > 20.0f) filled = 2;
+        else if (pos >  0.0f) filled = 1;
+
+        // Draw 5 segments (5px wide, 6px tall, 1px gap = 6px stride)
+        int bar_y = cy + 12;
+        for (int s = 0; s < 5; s++) {
+          int sx = cx + s * 6;
+          if (s < filled)
+            it.filled_rectangle(sx, bar_y, 5, 6);
+          else
+            it.rectangle(sx, bar_y, 5, 6);
+        }
+      }

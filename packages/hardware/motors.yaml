@@ -1,0 +1,16 @@
+# Motor control GPIO — nSLEEP (shared enable) and nFAULT (wired-OR fault)
+output:
+  - platform: gpio
+    pin: ${pin_nsleep}
+    id: motor_nsleep
+    inverted: false
+
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: ${pin_nfault}
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "Motor Fault"
+    id: motor_nfault
+    device_class: problem

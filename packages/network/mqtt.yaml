@@ -1,0 +1,20 @@
+mqtt:
+  broker: !secret mqtt_broker
+  port: !secret mqtt_port
+  username: !secret mqtt_username
+  password: !secret mqtt_password
+  discovery: true
+  discovery_prefix: homeassistant
+  topic_prefix: heatvalve-6
+  birth_message:
+    topic: heatvalve-6/status
+    payload: online
+  will_message:
+    topic: heatvalve-6/status
+    payload: offline
+  on_message:
+    - topic: heatvalve-6/zone/+/setpoint/set
+      then:
+        - lambda: |-
+            // Setpoint changes are handled by the hv6_zone_controller component
+            std::string topic_str(x.c_str());

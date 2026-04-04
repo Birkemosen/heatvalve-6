@@ -4,11 +4,6 @@
 # ESPHome build artifacts
 .esphome/
 
-# PlatformIO
-.pio/
-.pioenvs/
-.piolibdeps/
-
 # IDE
 .vscode/
 .idea/

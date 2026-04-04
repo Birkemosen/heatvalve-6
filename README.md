@@ -1,166 +1,111 @@
-# HeatValve-6 (CURRENTLY UNTESTED)
+# HeatValve-6
 
-ESPHome firmware for HeatValve-6 floor heating valve controller using ESP32-S3 Super Mini with 6x DRV8215 I2C motor drivers.
+ESPHome firmware for the HeatValve-6 underfloor heating controller on ESP32-S3 with 6 DRV8215 I2C motor drivers.
 
-## Features
+This repository is now ESPHome-only. The legacy PlatformIO and ESP-IDF source tree has been removed.
 
-- **Hardware**: ESP32-S3 Super Mini + 6x DRV8215 I2C motor drivers
-- **6 motor channels** with current-based endstop detection
-- **Modular architecture**: Separate files for zones, control profiles, and optional integrations
-- **4 control profiles**: Tanh (recommended), Linear, PID, Remote
-- **Multiple temperature sources**: Home Assistant, Dallas/OneWire, DHT, BLE
-- **Standalone dashboard**: Built-in web UI at `/dashboard`
+## Repository Layout
 
-## Hardware
-
-### GPIO Pinout (ESP32-S3 Super Mini)
-
-| GPIO | Function | Description |
-|------|----------|-------------|
-| GPIO1 | IPROPI ADC | Shared motor current sensing |
-| GPIO2 | nSLEEP | Shared nSLEEP for all 6x DRV8215 |
-| GPIO3-6 | *Spare* | Available for expansion |
-| GPIO7 | nFAULT | Wired-OR fault from all DRV8215 |
-| GPIO8 | I2C SDA | I2C Data (DRV8215 x6, expansion) |
-| GPIO9 | I2C SCL | I2C Clock (DRV8215 x6, expansion) |
-| GPIO10 | 1-Wire | Dallas temperature sensors |
-| GPIO11-13 | *Spare* | Available for expansion |
-| GPIO43 | UART TX | UART0 Transmit |
-| GPIO44 | UART RX | UART0 Receive |
-| GPIO48 | Status LED | WS2812 RGB |
-
-### Motor Mapping (DRV8215 I2C)
-
-| Motor | I2C Address | A1 | A0 |
-|-------|------------|-----|-----|
-| 1 | 0x30 | GND | GND |
-| 2 | 0x31 | GND | Hi-Z |
-| 3 | 0x32 | GND | VCC |
-| 4 | 0x33 | Hi-Z | GND |
-| 5 | 0x34 | Hi-Z | Hi-Z |
-| 6 | 0x35 | Hi-Z | VCC |
-
-**Note**: Only ONE motor can run at a time (shared IPROPI current sensing).
-
-### Status LED Color Codes (WS2812)
-
-| Color | Effect | Status |
-|-------|--------|--------|
-| 🟢 Green | Solid | Normal, connected to Home Assistant |
-| 🟢 Green | Breathing | Normal, standalone mode |
-| 🔵 Blue | Flashing | Booting / WiFi connecting |
-| 🔵 Cyan | Solid | Motor running |
-| 🟡 Yellow | Solid | Warning (sensor offline) |
-| 🟠 Orange | Flashing | No 1-Wire sensors found |
-| 🔴 Red | Solid | Error (API disconnected, standalone OFF) |
-| 🔴 Red | Flashing | Critical error (motor stall) |
-| 🟣 Purple | Solid | Calibration in progress |
-| ⚪ White | Flash | Command received |
-
-## Folder Structure
-
-```
+```text
 heatvalve-6/
-├── boards/          # ESP32-S3 Super Mini only
-├── core/            # Core infrastructure
-│   ├── motor_driver.yaml  # DRV8215 I2C motor control
-│   ├── settings.yaml
-│   └── ...
-├── zones/           # Zone templates (base + control combined)
-│   ├── tanh.yaml    # Tanh control (recommended for UFH)
-│   ├── linear.yaml  # Linear control
-│   ├── pid.yaml     # PID control
-│   └── remote.yaml  # External/Home Assistant control
-├── control/         # Control profiles (used internally)
-├── sensors/         # Sensor templates
-├── optional/        # Pump control, MQTT integration
-├── components/      # Custom ESPHome components
-│   └── heatvalve_dashboard/  # Standalone web UI
-├── heatvalve-6.yaml             # Single root template (shared by all deployments)
-├── deploy/
-│   ├── local-prod.yaml          # Repo-local production entrypoint
-│   ├── local-dev.yaml           # Repo-local development entrypoint
-│   └── esphome-remote.yaml      # ESPHome server entrypoint (no clone)
-└── docs/            # Documentation
+├── heatvalve-6.yaml   # Main ESPHome firmware config
+├── secrets.yaml       # Local secrets template (gitignored)
+├── components/        # Custom ESPHome external components
+│   ├── hv6_config_store/
+│   ├── hv6_valve_controller/
+│   └── hv6_zone_controller/
+├── docs/
+├── README.md
+└── changelog.md
 ```
 
-## Lokalt udviklingsmiljø (test uden commit/pull)
+## What Is In The Firmware
 
-Byg og upload direkte fra repo-roden:
+- ESPHome on ESP-IDF
+- 6-zone valve control with DRV8215 over I2C
+- Custom C++ external components for config storage, valve control, and zone control
+- Native ESPHome WiFi, API, OTA, web server, display, and climate entities
+- DS18B20 1-Wire temperature sensors
+- SSD1306 OLED support
+- WS2812 status LED
+
+## Hardware Mapping
+
+| GPIO | Function |
+|------|----------|
+| GPIO1 | Motor current sense ADC |
+| GPIO2 | DRV8215 nSLEEP |
+| GPIO7 | DRV8215 nFAULT |
+| GPIO8 | I2C SDA |
+| GPIO9 | I2C SCL |
+| GPIO12 | 1-Wire bus |
+| GPIO48 | WS2812 status LED |
+
+### DRV8215 Addresses
+
+| Zone | Address |
+|------|---------|
+| 1 | 0x30 |
+| 2 | 0x31 |
+| 3 | 0x32 |
+| 4 | 0x35 |
+| 5 | 0x33 |
+| 6 | 0x34 |
+
+Only one motor should run at a time because current sensing is shared.
+
+## Quick Start
+
+1. Edit `secrets.yaml` with your WiFi, API, OTA, and optional MQTT values.
+2. Replace the placeholder DS18B20 addresses in `heatvalve-6.yaml` after first discovery.
+3. Build or deploy from the repo root.
+
+Preferred workflow:
 
 ```bash
-cd heatvalve-6
-make run            # Basic control
+make build
+make deploy
+make logs
 ```
 
-Device-navn er `heatvalve-6-dev` så OTA ikke overskriver produktions-enhed. Se [docs/LOCAL_DEV.md](docs/LOCAL_DEV.md).
+If you want USB flashing explicitly:
 
----
-
-## Quick Start (produktion / Home Assistant)
-
-### Option A (recommended): No local clone, use remote package
-
-1. Download entrypoint config:
-   ```bash
-   curl -L -o /config/heatvalve-6-stue.yaml https://raw.githubusercontent.com/birkemosen/heatvalve-6/main/deploy/esphome-remote.yaml
-   ```
-2. Add secrets in `/config/secrets.yaml`: `wifi_ssid`, `wifi_password`, `fallback_password`, `ota_password`.
-3. Optional: override `name` and `friendly_name` in substitutions.
-4. Compile & upload:
-   ```bash
-   esphome run /config/heatvalve-6-stue.yaml
-   ```
-
-### Option B: Repo-local workflow
-
-1. Clone repository into ESPHome config directory:
-   ```bash
-   cd /mnt/data/esphome/config
-   git clone https://github.com/birkemosen/heatvalve-6.git heatvalve-6
-   ```
-2. Use `heatvalve-6/deploy/local-prod.yaml` (or `heatvalve-6/deploy/local-dev.yaml`).
-
-## Configuration
-
-### Control Profiles
-
-| Profile | Algorithm | Best For |
-|---------|-----------|----------|
-| `zones/tanh.yaml` | Non-linear S-curve | UFH (recommended) |
-| `zones/linear.yaml` | Linear interpolation | Simple systems |
-| `zones/pid.yaml` | PID controller | Precise control |
-| `zones/remote.yaml` | External control | Home Assistant |
-
-### Zone Configuration
-
-```yaml
-zone_1: !include
-  file: heatvalve-6/zones/tanh.yaml
-  vars:
-    zone_number: "1"
-    motor_number: "1"          # Physical motor (1-6)
-    id: living
-    friendly_name: "Living Room"
-    temperature_sensor: living_temp
-    current_factor: "1.7"      # Endstop detection sensitivity
-    zone_area_default: "25"
-    zone_max_opening_default: "90"
-    # ... temperature presets ...
+```bash
+make deploy PORT=/dev/cu.usbmodemXXXX
 ```
 
-## First Time Upload
+If you want OTA to a specific host/IP:
 
-1. Connect ESP32-S3 via USB
-2. Press BOOT button for 2-3 seconds before flashing
-3. After OTA update, press EN (reset) button
-4. Future uploads will be wireless (OTA)
+```bash
+make ota HOST=192.168.1.50
+```
+
+The `Makefile` automatically uses `.venv/bin/esphome` when present.
+
+Direct ESPHome commands still work:
+
+```bash
+esphome run heatvalve-6.yaml
+```
+
+For config validation only:
+
+```bash
+esphome config heatvalve-6.yaml
+```
+
+## Notes
+
+- The current firmware layout assumes the ESPHome config lives at the repository root.
+- `secrets.yaml` is kept as a local template and remains gitignored.
+- The repository has not been fully compile-tested yet after the migration.
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md) – system design
-- [Lokalt udviklingsmiljø](docs/LOCAL_DEV.md) – test uden commit/pull
-- [Quick Start Guide](docs/quick_start.md)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [docs/ecodan_integration.md](docs/ecodan_integration.md)
+- [docs/esp32-s3_ufh_pcb_solution.md](docs/esp32-s3_ufh_pcb_solution.md)
+- [docs/schematics/rev3_wroom1/esp32_s3_wroom1_n16r8_controller.md](docs/schematics/rev3_wroom1/esp32_s3_wroom1_n16r8_controller.md)
 
 ## Inspiration & Credits
 

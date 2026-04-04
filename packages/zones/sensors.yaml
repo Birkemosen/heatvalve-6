@@ -1,0 +1,162 @@
+# 8 physical 1-Wire probe slots plus logical role sensors derived from runtime mapping.
+# Probes are autodiscovered by bus index in the order ESPHome finds them.
+sensor:
+  - platform: dallas_temp
+    one_wire_id: onewire_bus
+    index: 0
+    name: "Probe 1 Temperature"
+    id: probe_temp_1
+    entity_category: diagnostic
+    update_interval: 2s
+    filters:
+      - sliding_window_moving_average:
+          window_size: 3
+          send_every: 1
+
+  - platform: dallas_temp
+    one_wire_id: onewire_bus
+    index: 1
+    name: "Probe 2 Temperature"
+    id: probe_temp_2
+    entity_category: diagnostic
+    update_interval: 2s
+    filters:
+      - sliding_window_moving_average:
+          window_size: 3
+          send_every: 1
+
+  - platform: dallas_temp
+    one_wire_id: onewire_bus
+    index: 2
+    name: "Probe 3 Temperature"
+    id: probe_temp_3
+    entity_category: diagnostic
+    update_interval: 2s
+    filters:
+      - sliding_window_moving_average:
+          window_size: 3
+          send_every: 1
+
+  - platform: dallas_temp
+    one_wire_id: onewire_bus
+    index: 3
+    name: "Probe 4 Temperature"
+    id: probe_temp_4
+    entity_category: diagnostic
+    update_interval: 2s
+    filters:
+      - sliding_window_moving_average:
+          window_size: 3
+          send_every: 1
+
+  - platform: dallas_temp
+    one_wire_id: onewire_bus
+    index: 4
+    name: "Probe 5 Temperature"
+    id: probe_temp_5
+    entity_category: diagnostic
+    update_interval: 2s
+    filters:
+      - sliding_window_moving_average:
+          window_size: 3
+          send_every: 1
+
+  - platform: dallas_temp
+    one_wire_id: onewire_bus
+    index: 5
+    name: "Probe 6 Temperature"
+    id: probe_temp_6
+    entity_category: diagnostic
+    update_interval: 2s
+    filters:
+      - sliding_window_moving_average:
+          window_size: 3
+          send_every: 1
+
+  - platform: dallas_temp
+    one_wire_id: onewire_bus
+    index: 6
+    name: "Probe 7 Temperature"
+    id: probe_temp_7
+    entity_category: diagnostic
+    update_interval: 2s
+    filters:
+      - sliding_window_moving_average:
+          window_size: 3
+          send_every: 1
+
+  - platform: dallas_temp
+    one_wire_id: onewire_bus
+    index: 7
+    name: "Probe 8 Temperature"
+    id: probe_temp_8
+    entity_category: diagnostic
+    update_interval: 2s
+    filters:
+      - sliding_window_moving_average:
+          window_size: 3
+          send_every: 1
+
+  - platform: template
+    name: "Zone 1 Temperature"
+    id: temp_zone_1
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: 2s
+    lambda: return id(hv6_zones).get_zone_temperature(0);
+
+  - platform: template
+    name: "Zone 2 Temperature"
+    id: temp_zone_2
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: 2s
+    lambda: return id(hv6_zones).get_zone_temperature(1);
+
+  - platform: template
+    name: "Zone 3 Temperature"
+    id: temp_zone_3
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: 2s
+    lambda: return id(hv6_zones).get_zone_temperature(2);
+
+  - platform: template
+    name: "Zone 4 Temperature"
+    id: temp_zone_4
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: 2s
+    lambda: return id(hv6_zones).get_zone_temperature(3);
+
+  - platform: template
+    name: "Zone 5 Temperature"
+    id: temp_zone_5
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: 2s
+    lambda: return id(hv6_zones).get_zone_temperature(4);
+
+  - platform: template
+    name: "Zone 6 Temperature"
+    id: temp_zone_6
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: 2s
+    lambda: return id(hv6_zones).get_zone_temperature(5);
+
+  - platform: template
+    name: "Manifold Flow Temperature"
+    id: temp_manifold_flow
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: 2s
+    lambda: return id(hv6_zones).get_manifold_flow_temperature();
+
+  - platform: template
+    name: "Manifold Return Temperature"
+    id: temp_manifold_return
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: 2s
+    lambda: return id(hv6_zones).get_manifold_return_temperature();

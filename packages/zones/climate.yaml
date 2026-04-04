@@ -1,0 +1,147 @@
+# Zone thermostat climate entities (one per zone)
+# set_zone_setpoint(zone_index, temperature) propagates to the zone controller
+# so Home Assistant climate entities, MQTT, and the hardware stay in sync.
+climate:
+  - platform: thermostat
+    name: "Zone 1"
+    id: climate_zone_1
+    sensor: temp_zone_1
+    min_heating_off_time: 0s
+    min_heating_run_time: 0s
+    min_idle_time: 0s
+    default_preset: Home
+    preset:
+      - name: Home
+        default_target_temperature_low: 21.0
+      - name: Away
+        default_target_temperature_low: 18.0
+      - name: Sleep
+        default_target_temperature_low: 19.0
+    heat_action:
+      - lambda: id(hv6_zones).set_zone_setpoint(0, id(climate_zone_1).target_temperature);
+    idle_action:
+      - lambda: id(hv6_zones).set_zone_setpoint(0, id(climate_zone_1).target_temperature);
+    visual:
+      min_temperature: 15
+      max_temperature: 30
+      temperature_step: 0.5
+
+  - platform: thermostat
+    name: "Zone 2"
+    id: climate_zone_2
+    sensor: temp_zone_2
+    min_heating_off_time: 0s
+    min_heating_run_time: 0s
+    min_idle_time: 0s
+    default_preset: Home
+    preset:
+      - name: Home
+        default_target_temperature_low: 21.0
+      - name: Away
+        default_target_temperature_low: 18.0
+      - name: Sleep
+        default_target_temperature_low: 19.0
+    heat_action:
+      - lambda: id(hv6_zones).set_zone_setpoint(1, id(climate_zone_2).target_temperature);
+    idle_action:
+      - lambda: id(hv6_zones).set_zone_setpoint(1, id(climate_zone_2).target_temperature);
+    visual:
+      min_temperature: 15
+      max_temperature: 30
+      temperature_step: 0.5
+
+  - platform: thermostat
+    name: "Zone 3"
+    id: climate_zone_3
+    sensor: temp_zone_3
+    min_heating_off_time: 0s
+    min_heating_run_time: 0s
+    min_idle_time: 0s
+    default_preset: Home
+    preset:
+      - name: Home
+        default_target_temperature_low: 21.0
+      - name: Away
+        default_target_temperature_low: 18.0
+      - name: Sleep
+        default_target_temperature_low: 19.0
+    heat_action:
+      - lambda: id(hv6_zones).set_zone_setpoint(2, id(climate_zone_3).target_temperature);
+    idle_action:
+      - lambda: id(hv6_zones).set_zone_setpoint(2, id(climate_zone_3).target_temperature);
+    visual:
+      min_temperature: 15
+      max_temperature: 30
+      temperature_step: 0.5
+
+  - platform: thermostat
+    name: "Zone 4"
+    id: climate_zone_4
+    sensor: temp_zone_4
+    min_heating_off_time: 0s
+    min_heating_run_time: 0s
+    min_idle_time: 0s
+    default_preset: Home
+    preset:
+      - name: Home
+        default_target_temperature_low: 21.0
+      - name: Away
+        default_target_temperature_low: 18.0
+      - name: Sleep
+        default_target_temperature_low: 19.0
+    heat_action:
+      - lambda: id(hv6_zones).set_zone_setpoint(3, id(climate_zone_4).target_temperature);
+    idle_action:
+      - lambda: id(hv6_zones).set_zone_setpoint(3, id(climate_zone_4).target_temperature);
+    visual:
+      min_temperature: 15
+      max_temperature: 30
+      temperature_step: 0.5
+
+  - platform: thermostat
+    name: "Zone 5"
+    id: climate_zone_5
+    sensor: temp_zone_5
+    min_heating_off_time: 0s
+    min_heating_run_time: 0s
+    min_idle_time: 0s
+    default_preset: Home
+    preset:
+      - name: Home
+        default_target_temperature_low: 21.0
+      - name: Away
+        default_target_temperature_low: 18.0
+      - name: Sleep
+        default_target_temperature_low: 19.0
+    heat_action:
+      - lambda: id(hv6_zones).set_zone_setpoint(4, id(climate_zone_5).target_temperature);
+    idle_action:
+      - lambda: id(hv6_zones).set_zone_setpoint(4, id(climate_zone_5).target_temperature);
+    visual:
+      min_temperature: 15
+      max_temperature: 30
+      temperature_step: 0.5
+
+  - platform: thermostat
+    name: "Zone 6"
+    id: climate_zone_6
+    sensor: temp_zone_6
+    min_heating_off_time: 0s
+    min_heating_run_time: 0s
+    min_idle_time: 0s
+    default_preset: Home
+    preset:
+      - name: Home
+        default_target_temperature_low: 21.0
+      - name: Away
+        default_target_temperature_low: 18.0
+      - name: Sleep
+        default_target_temperature_low: 19.0
+    heat_action:
+      - lambda: id(hv6_zones).set_zone_setpoint(5, id(climate_zone_6).target_temperature);
+    idle_action:
+      - lambda: id(hv6_zones).set_zone_setpoint(5, id(climate_zone_6).target_temperature);
+    visual:
+      min_temperature: 15
+      max_temperature: 30
+      temperature_step: 0.5

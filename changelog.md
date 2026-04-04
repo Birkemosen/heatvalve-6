@@ -1,5 +1,44 @@
 # Changelog
 
+## v2.0.0 — ESP-IDF Rewrite (2025-07-09)
+
+Complete rewrite from ESPHome YAML to pure ESP-IDF C++ with PlatformIO.
+
+### Breaking Changes
+- All ESPHome YAML configuration removed — firmware is now native C++
+- Build system changed from ESPHome to PlatformIO (`make build` / `make flash`)
+- Configuration via NVS + web dashboard instead of YAML substitutions
+
+### Hardware (v2 PCB)
+- Switched from legacy H-bridge + MUX to **6× DRV8215 I2C motor drivers**
+- Removed INA219 + LMV358 tacho stage — current sensing via shared IPROPI (GPIO1)
+- Added shared nSLEEP (GPIO2) and wired-OR nFAULT (GPIO7)
+- Motor addresses: 0x30–0x35 via A1/A0 pin strapping
+
+### Firmware
+- **Pure ESP-IDF v5.x** with FreeRTOS tasks (no Arduino, no ESPHome runtime)
+- 8 modular libraries: config_store, wifi_manager, valve_controller, sensor_manager, zone_controller, mqtt_handler, web_dashboard, ota_updater
+- System manager with task watchdog (5s heartbeat) and coordinated startup
+- Dual-core task layout: valve control on Core 1 (10ms), zone/sensor/mqtt on Core 0
+
+### Control
+- 4 algorithms retained: Tanh, Linear, PID, Adaptive (runtime-switchable)
+- Hydraulic balancing with pipe length, spacing, and floor cover correction
+- Failsafe: temperature timeout (5min → maintenance position), MQTT timeout (30min → clear offsets)
+- Minimum flow enforcement (10% valve opening)
+
+### Connectivity
+- MQTT with Home Assistant auto-discovery (climate + sensor entities)
+- Compatible with helios-6 Go service for multi-controller optimization
+- Built-in web dashboard (responsive SPA, no external dependencies)
+- OTA via HTTP POST to `/api/ota` with dual-partition rollback
+
+### Documentation
+- Rewrote ARCHITECTURE.md for ESP-IDF task model and data flow
+- Rewrote README.md with PlatformIO build instructions and REST API reference
+
+---
+
 ## v1.0.1 — Power & Docs Update (2026-02-13)
 
 ### Hardware

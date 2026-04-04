@@ -1,0 +1,4 @@
+one_wire:
+  - platform: gpio
+    pin: ${pin_onewire}
+    id: onewire_bus

@@ -1,0 +1,305 @@
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "IP Address"
+    ssid:
+      name: "Connected SSID"
+    mac_address:
+      name: "MAC Address"
+
+button:
+  - platform: restart
+    name: "Restart"
+
+  - platform: template
+    name: "Calibrate All Motors"
+    on_press:
+      - lambda: |-
+          for (int z = 0; z < 6; z++) {
+            id(hv6_valves).request_calibration(z);
+          }
+
+  - platform: template
+    name: "Motor 1 Open (100%)"
+    icon: "mdi:valve-open"
+    entity_category: config
+    on_press:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) {
+            ESP_LOGW("hv6_ui", "Motor 1 OPEN ignored: drivers are disabled");
+            return;
+          }
+          id(hv6_valves).request_position(0, 100.0f);
+
+  - platform: template
+    name: "Motor 1 Close (0%)"
+    icon: "mdi:valve-closed"
+    entity_category: config
+    on_press:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) {
+            ESP_LOGW("hv6_ui", "Motor 1 CLOSE ignored: drivers are disabled");
+            return;
+          }
+          id(hv6_valves).request_position(0, 0.0f);
+
+  - platform: template
+    name: "Motor 1 Stop Now"
+    icon: "mdi:hand-back-right-off"
+    entity_category: config
+    on_press:
+      - lambda: id(hv6_valves).set_drivers_enabled(false);
+
+  - platform: template
+    name: "Motor 1 Self-Learn"
+    icon: "mdi:brain"
+    entity_category: config
+    on_press:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) {
+            ESP_LOGW("hv6_ui", "Motor 1 self-learn ignored: drivers are disabled");
+            return;
+          }
+          id(hv6_valves).request_calibration(0);
+
+switch:
+  - platform: template
+    name: "Motor Drivers Enabled"
+    id: motor_drivers_enabled
+    icon: "mdi:engine"
+    entity_category: config
+    optimistic: false
+    lambda: |-
+      return id(hv6_valves).are_drivers_enabled();
+    turn_on_action:
+      - lambda: id(hv6_valves).set_drivers_enabled(true);
+    turn_off_action:
+      - lambda: id(hv6_valves).set_drivers_enabled(false);
+
+  - platform: template
+    name: "Zone 1 Enabled"
+    id: zone_1_enabled
+    icon: "mdi:radiator"
+    entity_category: config
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).is_zone_enabled(0);
+    turn_on_action:
+      - lambda: id(hv6_zones).set_zone_enabled(0, true);
+    turn_off_action:
+      - lambda: id(hv6_zones).set_zone_enabled(0, false);
+
+  - platform: template
+    name: "Zone 2 Enabled"
+    id: zone_2_enabled
+    icon: "mdi:radiator"
+    entity_category: config
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).is_zone_enabled(1);
+    turn_on_action:
+      - lambda: id(hv6_zones).set_zone_enabled(1, true);
+    turn_off_action:
+      - lambda: id(hv6_zones).set_zone_enabled(1, false);
+
+  - platform: template
+    name: "Zone 3 Enabled"
+    id: zone_3_enabled
+    icon: "mdi:radiator"
+    entity_category: config
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).is_zone_enabled(2);
+    turn_on_action:
+      - lambda: id(hv6_zones).set_zone_enabled(2, true);
+    turn_off_action:
+      - lambda: id(hv6_zones).set_zone_enabled(2, false);
+
+  - platform: template
+    name: "Zone 4 Enabled"
+    id: zone_4_enabled
+    icon: "mdi:radiator"
+    entity_category: config
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).is_zone_enabled(3);
+    turn_on_action:
+      - lambda: id(hv6_zones).set_zone_enabled(3, true);
+    turn_off_action:
+      - lambda: id(hv6_zones).set_zone_enabled(3, false);
+
+  - platform: template
+    name: "Zone 5 Enabled"
+    id: zone_5_enabled
+    icon: "mdi:radiator"
+    entity_category: config
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).is_zone_enabled(4);
+    turn_on_action:
+      - lambda: id(hv6_zones).set_zone_enabled(4, true);
+    turn_off_action:
+      - lambda: id(hv6_zones).set_zone_enabled(4, false);
+
+  - platform: template
+    name: "Zone 6 Enabled"
+    id: zone_6_enabled
+    icon: "mdi:radiator"
+    entity_category: config
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).is_zone_enabled(5);
+    turn_on_action:
+      - lambda: id(hv6_zones).set_zone_enabled(5, true);
+    turn_off_action:
+      - lambda: id(hv6_zones).set_zone_enabled(5, false);
+
+number:
+  - platform: template
+    name: "Motor 1 Target Position"
+    id: motor_1_target_position
+    icon: "mdi:tune-vertical"
+    entity_category: config
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 1
+    optimistic: false
+    lambda: |-
+      return id(hv6_valves).get_position(0);
+    set_action:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) {
+            ESP_LOGW("hv6_ui", "Motor 1 target %.1f%% ignored: drivers are disabled", x);
+            return;
+          }
+          id(hv6_valves).request_position(0, x);
+
+select:
+  - platform: template
+    name: "Manifold Flow Probe"
+    id: manifold_flow_probe_select
+    entity_category: config
+    optimistic: false
+    options:
+      - Probe 1
+      - Probe 2
+      - Probe 3
+      - Probe 4
+      - Probe 5
+      - Probe 6
+      - Probe 7
+      - Probe 8
+    lambda: |-
+      int probe = id(hv6_zones).get_manifold_flow_probe();
+      return std::string("Probe ") + std::to_string(probe + 1);
+    set_action:
+      - lambda: |-
+          int probe = static_cast<int>(x[x.size() - 1] - '1');
+          id(hv6_zones).set_manifold_flow_probe(probe);
+
+  - platform: template
+    name: "Manifold Return Probe"
+    id: manifold_return_probe_select
+    entity_category: config
+    optimistic: false
+    options:
+      - Probe 1
+      - Probe 2
+      - Probe 3
+      - Probe 4
+      - Probe 5
+      - Probe 6
+      - Probe 7
+      - Probe 8
+    lambda: |-
+      int probe = id(hv6_zones).get_manifold_return_probe();
+      return std::string("Probe ") + std::to_string(probe + 1);
+    set_action:
+      - lambda: |-
+          int probe = static_cast<int>(x[x.size() - 1] - '1');
+          id(hv6_zones).set_manifold_return_probe(probe);
+
+  - platform: template
+    name: "Zone 1 Probe"
+    id: zone_1_probe_select
+    entity_category: config
+    optimistic: false
+    options: [Probe 1, Probe 2, Probe 3, Probe 4, Probe 5, Probe 6, Probe 7, Probe 8]
+    lambda: |-
+      int probe = id(hv6_zones).get_zone_probe(0);
+      return std::string("Probe ") + std::to_string(probe + 1);
+    set_action:
+      - lambda: |-
+          int probe = static_cast<int>(x[x.size() - 1] - '1');
+          id(hv6_zones).set_zone_probe(0, probe);
+
+  - platform: template
+    name: "Zone 2 Probe"
+    id: zone_2_probe_select
+    entity_category: config
+    optimistic: false
+    options: [Probe 1, Probe 2, Probe 3, Probe 4, Probe 5, Probe 6, Probe 7, Probe 8]
+    lambda: |-
+      int probe = id(hv6_zones).get_zone_probe(1);
+      return std::string("Probe ") + std::to_string(probe + 1);
+    set_action:
+      - lambda: |-
+          int probe = static_cast<int>(x[x.size() - 1] - '1');
+          id(hv6_zones).set_zone_probe(1, probe);
+
+  - platform: template
+    name: "Zone 3 Probe"
+    id: zone_3_probe_select
+    entity_category: config
+    optimistic: false
+    options: [Probe 1, Probe 2, Probe 3, Probe 4, Probe 5, Probe 6, Probe 7, Probe 8]
+    lambda: |-
+      int probe = id(hv6_zones).get_zone_probe(2);
+      return std::string("Probe ") + std::to_string(probe + 1);
+    set_action:
+      - lambda: |-
+          int probe = static_cast<int>(x[x.size() - 1] - '1');
+          id(hv6_zones).set_zone_probe(2, probe);
+
+  - platform: template
+    name: "Zone 4 Probe"
+    id: zone_4_probe_select
+    entity_category: config
+    optimistic: false
+    options: [Probe 1, Probe 2, Probe 3, Probe 4, Probe 5, Probe 6, Probe 7, Probe 8]
+    lambda: |-
+      int probe = id(hv6_zones).get_zone_probe(3);
+      return std::string("Probe ") + std::to_string(probe + 1);
+    set_action:
+      - lambda: |-
+          int probe = static_cast<int>(x[x.size() - 1] - '1');
+          id(hv6_zones).set_zone_probe(3, probe);
+
+  - platform: template
+    name: "Zone 5 Probe"
+    id: zone_5_probe_select
+    entity_category: config
+    optimistic: false
+    options: [Probe 1, Probe 2, Probe 3, Probe 4, Probe 5, Probe 6, Probe 7, Probe 8]
+    lambda: |-
+      int probe = id(hv6_zones).get_zone_probe(4);
+      return std::string("Probe ") + std::to_string(probe + 1);
+    set_action:
+      - lambda: |-
+          int probe = static_cast<int>(x[x.size() - 1] - '1');
+          id(hv6_zones).set_zone_probe(4, probe);
+
+  - platform: template
+    name: "Zone 6 Probe"
+    id: zone_6_probe_select
+    entity_category: config
+    optimistic: false
+    options: [Probe 1, Probe 2, Probe 3, Probe 4, Probe 5, Probe 6, Probe 7, Probe 8]
+    lambda: |-
+      int probe = id(hv6_zones).get_zone_probe(5);
+      return std::string("Probe ") + std::to_string(probe + 1);
+    set_action:
+      - lambda: |-
+          int probe = static_cast<int>(x[x.size() - 1] - '1');
+          id(hv6_zones).set_zone_probe(5, probe);

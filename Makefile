@@ -1,31 +1,88 @@
-# HeatValve-6 – lokalt udviklingsmiljø
-# Kør fra repo-roden. Kræver: pip install esphome (eller esphome i venv)
+CONFIG ?= heatvalve-6.yaml
+ESPHOME ?= $(if $(wildcard .venv313/bin/esphome),.venv313/bin/esphome,$(if $(wildcard .venv/bin/esphome),.venv/bin/esphome,esphome))
+PIO ?= $(if $(wildcard .venv313/bin/platformio),.venv313/bin/platformio,$(if $(wildcard .venv/bin/platformio),.venv/bin/platformio,platformio))
+BUILD_NAME ?= heatvalve-6
+BUILD_ROOT ?= .esphome/build/$(BUILD_NAME)
+PIO_BUILD_DIR ?= $(BUILD_ROOT)/.pio/build/$(BUILD_NAME)
+FIRMWARE_BIN ?= $(PIO_BUILD_DIR)/firmware.bin
+HOST ?= heatvalve-6.local
+PORT ?=
+AUTO_PORT := $(strip $(shell ls /dev/cu.usbmodem* /dev/cu.usbserial* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbserial* 2>/dev/null | head -n 1))
+SERIAL_PORT := $(if $(PORT),$(PORT),$(AUTO_PORT))
 
-CONFIG_DEV = deploy/local-dev.yaml
-PYTHON ?= python3
+.PHONY: help check config build deploy ota logs monitor erase clean
 
-.PHONY: run compile upload log clean
+help:
+	@echo "HeatValve-6 ESPHome tasks"
+	@echo "  make config        Validate YAML"
+	@echo "  make build         Compile firmware only (robust PlatformIO flow)"
+	@echo "  make deploy        Build + upload (USB if PORT is set, otherwise OTA)"
+	@echo "  make ota           Build + upload over network to HOST"
+	@echo "  make logs          Stream logs from HOST"
+	@echo "  make monitor       Open serial monitor on PORT"
+	@echo "  make erase         Erase flash on PORT"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make build"
+	@echo "  make deploy"
+	@echo "  make deploy PORT=/dev/cu.usbmodemXXXX"
+	@echo "  make monitor PORT=/dev/cu.usbmodemXXXX"
+	@echo "  make erase PORT=/dev/cu.usbmodemXXXX"
+	@echo "  make ota HOST=192.168.1.50"
 
-# ============================================
-# Basic Control (default)
-# ============================================
+check:
+	@command -v $(ESPHOME) >/dev/null 2>&1 || { \
+		echo "ESPHome CLI not found."; \
+		echo "Create .venv and install: python3 -m venv .venv && ./.venv/bin/pip install esphome"; \
+		exit 1; \
+	}
+	@command -v $(PIO) >/dev/null 2>&1 || { \
+		echo "PlatformIO CLI not found."; \
+		echo "Install in venv: ./.venv313/bin/pip install platformio"; \
+		exit 1; \
+	}
 
-# Byg og upload OTA (vælg enhed når der køres)
-run:
-	esphome run $(CONFIG_DEV)
+config: check
+	$(ESPHOME) config $(CONFIG)
 
-# Kun kompilér (ingen upload)
-compile:
-	esphome compile $(CONFIG_DEV)
+build: check
+	$(ESPHOME) compile --only-generate $(CONFIG)
+	perl -0pi -e 's/" ".join\(cmd\)/" ".join(map(str, cmd))/g' $(BUILD_ROOT)/post_build.py
+	$(PIO) run -d $(BUILD_ROOT)
 
-# Upload til enhed (efter compile, eller brug run)
-upload:
-	esphome upload $(CONFIG_DEV)
+deploy: check
+	$(MAKE) build
+	@if [ -n "$(PORT)" ]; then \
+		$(PIO) run -d $(BUILD_ROOT) -t upload --upload-port $(PORT); \
+	elif [ -n "$(AUTO_PORT)" ]; then \
+		echo "Auto-detected serial port: $(AUTO_PORT)"; \
+		$(PIO) run -d $(BUILD_ROOT) -t upload --upload-port $(AUTO_PORT); \
+	else \
+		$(ESPHOME) upload $(CONFIG) --file $(FIRMWARE_BIN) --device $(HOST); \
+	fi
 
-# Åbn log fra enhed (vælg IP/hostname)
-log:
-	esphome logs $(CONFIG_DEV)
+ota: check
+	$(MAKE) build
+	$(ESPHOME) upload $(CONFIG) --file $(FIRMWARE_BIN) --device $(HOST)
 
-# Ryd build-cache
+logs: check
+	$(ESPHOME) logs $(CONFIG) --device $(HOST)
+
+monitor: check
+	@if [ -z "$(SERIAL_PORT)" ]; then \
+		echo "No serial port detected. Use PORT=/dev/cu.usbmodemXXXX"; \
+		exit 1; \
+	fi
+	@echo "Using serial port: $(SERIAL_PORT)"
+	$(PIO) device monitor --port $(SERIAL_PORT)
+
+erase: check
+	@if [ -z "$(SERIAL_PORT)" ]; then \
+		echo "No serial port detected. Use PORT=/dev/cu.usbmodemXXXX"; \
+		exit 1; \
+	fi
+	@echo "Using serial port: $(SERIAL_PORT)"
+	$(PIO) run -d $(BUILD_ROOT) -t erase --upload-port $(SERIAL_PORT)
+
 clean:
 	rm -rf .esphome/build

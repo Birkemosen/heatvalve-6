@@ -1,0 +1,21 @@
+esphome:
+  platformio_options:
+    platform: platformio/espressif32@6.12.0
+    platform_packages:
+      - platformio/toolchain-xtensa-esp-elf@14.2.0+20251107
+    board_build.flash_mode: qio
+    board_build.psram_type: qio
+    board_build.extra_flags:
+      - -DBOARD_HAS_PSRAM
+
+esp32:
+  board: esp32-s3-devkitc-1
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+    version: recommended
+    sdkconfig_options:
+      CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: "y"
+      CONFIG_ESPTOOLPY_FLASHSIZE_4MB: "y"
+      CONFIG_SPIRAM: "y"
+      CONFIG_SPIRAM_MODE_QUAD: "y"

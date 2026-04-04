@@ -2,24 +2,31 @@
 
 ## System Overview
 
-HeatValve-6 is a modular underfloor heating (UFH) valve controller built on ESP32-S3 with ESPHome firmware. The architecture separates hardware control from heating algorithms, so zone behavior and control profiles can evolve independently without changing low-level motor/sensor handling.
+HeatValve-6 is a modular underfloor heating (UFH) valve controller built on ESP32-S3 with ESPHome firmware. The architecture separates hardware control from heating algorithms, enabling two independent control systems:
+
+1. **Basic Control** (open-source, this repo) — Simple, reliable valve control with PID/linear/tanh profiles
+2. **Helios-6 Advanced Control** (closed-source, separate repo) — Physics-aware, self-learning thermal management
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    User Configuration                       │
-│     heatvalve-6.yaml + deploy/*.yaml entrypoints           │
+│  config.yaml / config_dev.yaml / config_dev_Helios-6.yaml     │
 └─────────────────────┬───────────────────────────────────────┘
                       │
-                      ▼
-         ┌───────────────────────┐
-         │     Control Layer     │
-         │                       │
-         │  • PID                │
-         │  • Linear             │
-         │  • Tanh               │
-         │  • Remote             │
-         └───────────┬───────────┘
-                     │
+          ┌───────────┴───────────┐
+          ▼                       ▼
+┌─────────────────┐   ┌────────────────────────┐
+│  Basic Control  │   │  Helios-6 Advanced     │
+│  (this repo)    │   │  (external component)  │
+│                 │   │                        │
+│  • PID          │   │  • Hydraulic balancing │
+│  • Linear       │   │  • Weather-aware       │
+│  • Tanh         │   │  • Self-learning       │
+│  • Remote       │   │  • Predictive          │
+│                 │   │  • License required    │
+└────────┬────────┘   └───────────┬────────────┘
+         │                        │
+         └───────────┬────────────┘
                      ▼
          ┌───────────────────────┐
          │   Hardware Layer      │
@@ -57,6 +64,8 @@ heatvalve-6/                    (public, open-source)
 │   ├── linear.yaml             Zone = base + linear control
 │   ├── pid.yaml                Zone = base + PID control
 │   └── remote.yaml             Zone = base + remote control
+├── modes/                      Operating modes (legacy)
+│   └── hydraulic.yaml          Basic hydraulic balancing (replaced by Helios-6)
 ├── optional/                   Optional integrations
 │   ├── pump_control.yaml       ESP-NOW pump relay control
 │   └── mqtt_ecodan.yaml        Multi-controller MQTT bridge
@@ -65,15 +74,16 @@ heatvalve-6/                    (public, open-source)
 ├── components/                 Custom ESPHome components
 │   └── heatvalve_dashboard/    Standalone web dashboard
 ├── docs/                       Documentation
-├── heatvalve-6.yaml            Single root template
-├── deploy/                     Deployment entrypoints
-│   ├── local-prod.yaml         Repo-local production
-│   ├── local-dev.yaml          Repo-local development
-│   └── esphome-remote.yaml     ESPHome server (no clone)
+├── Helios-6.yaml                 Helios-6 integration config
+├── config.yaml                 Production config
+├── config_dev.yaml             Development config (basic)
+├── config_dev_Helios-6.yaml      Development config (Helios-6 enabled)
 └── Makefile                    Build targets
 ```
 
 ## Data Flow
+
+### Basic Control Mode
 
 ```
 Temperature Sensor → Climate Thermostat → Control Algorithm → Valve Position
@@ -82,6 +92,53 @@ Temperature Sensor → Climate Thermostat → Control Algorithm → Valve Positi
                      Presets                                        ↓
                                                               DRV8215 I2C
 ```
+
+### Helios-6 Advanced Mode
+
+```
+Temperature Sensors ──┐
+Weather Data ─────────┤
+Energy Prices ────────┼──→ Helios-6 Engine ──→ Hydraulic Balancer ──→ Valve Positions
+Solar Influx ─────────┤         ↓                                       ↓
+Thermal History ──────┘   Thermal Model                            Cover (motor)
+                          (self-learning)                              ↓
+                               ↓                                 DRV8215 I2C
+                         Predictive Control
+                         (preheating, comfort)
+```
+
+## Integration Between Systems
+
+Helios-6 integrates with HeatValve-6 through ESPHome's `external_components` system:
+
+```yaml
+# In config_dev_Helios-6.yaml
+external_components:
+  - source:
+      type: local
+      path: ../Helios-6/components
+    components:
+      - Helios-6
+```
+
+Helios-6 reads zone state through ESPHome entity references (climates, covers, sensors, numbers) rather than modifying core files. This ensures:
+
+- **No vendor lock-in**: Removing Helios-6 reverts to basic control automatically
+- **Clean separation**: Basic control never depends on Helios-6 code
+- **Graceful fallback**: License expiry → basic control continues working
+- **Independent development**: Both systems can be developed and tested separately
+
+## License System
+
+Helios-6 uses RSA-2048 signed license keys validated on the ESP32 using mbedtls:
+
+| License Type | Duration | Grace Period | Fallback |
+|-------------|----------|-------------|----------|
+| One-Time | Perpetual | N/A | N/A |
+| Subscription | Monthly/Annual | 30 days | Basic control |
+| Trial | 30 days | None | Basic control |
+
+License validation is performed at boot and periodically (every 24h). NVS storage enables offline validation.
 
 ## Hardware Layer
 

@@ -1,0 +1,218 @@
+# ============================================
+# Status LED (WS2812 RGB with status colors)
+# ============================================
+# Color codes:
+#   GREEN (solid)     = Normal, connected to Home Assistant
+#   GREEN (breathing) = Normal, standalone mode
+#   BLUE (flashing)   = Booting / WiFi connecting
+#   CYAN (solid)      = Motor running
+#   YELLOW (solid)    = Warning (temp sensor offline)
+#   ORANGE (flashing) = No 1-Wire sensors found
+#   RED (solid)       = Error (API disconnected + standalone off)
+#   RED (flashing)    = Critical error (motor stall/overcurrent)
+#   PURPLE (solid)    = Calibration in progress
+#   WHITE (flash)     = Command received
+
+status_led:
+  pin:
+    number: GPIO46
+    inverted: true  # Active-low, red LED left of USB-C connector
+
+globals:
+  - id: led_status_code
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+light:
+  - platform: esp32_rmt_led_strip
+    name: "Status LED"
+    id: rgb_status_led
+    internal: true
+    chipset: WS2812
+    rgb_order: GRB
+    pin: ${pin_status_led}
+    num_leds: 1
+    restore_mode: ALWAYS_OFF
+    default_transition_length: 200ms
+    effects:
+      - pulse:
+          name: "Breathing"
+          transition_length: 2s
+          update_interval: 2s
+          min_brightness: 10%
+          max_brightness: 40%
+      - strobe:
+          name: "Fast Blink"
+          colors:
+            - state: true
+              duration: 200ms
+            - state: false
+              duration: 200ms
+      - strobe:
+          name: "Slow Blink"
+          colors:
+            - state: true
+              duration: 500ms
+            - state: false
+              duration: 500ms
+
+script:
+  - id: led_status_boot
+    then:
+      - lambda: id(led_status_code) = 0;
+      - lambda: |-
+          auto call = id(rgb_status_led).turn_on();
+          call.set_brightness(0.4f);
+          call.set_rgb(0.0f, 0.0f, 1.0f);
+          call.set_effect("Fast Blink");
+          call.perform();
+
+  - id: led_status_ok
+    then:
+      - lambda: id(led_status_code) = 1;
+      - lambda: |-
+          auto call = id(rgb_status_led).turn_on();
+          call.set_brightness(0.3f);
+          call.set_rgb(0.0f, 1.0f, 0.0f);
+          call.set_effect("None");
+          call.perform();
+
+  - id: led_status_standalone
+    then:
+      - lambda: id(led_status_code) = 2;
+      - lambda: |-
+          auto call = id(rgb_status_led).turn_on();
+          call.set_brightness(0.3f);
+          call.set_rgb(0.0f, 1.0f, 0.0f);
+          call.set_effect("Breathing");
+          call.perform();
+
+  - id: led_status_motor
+    then:
+      - lambda: id(led_status_code) = 3;
+      - lambda: |-
+          auto call = id(rgb_status_led).turn_on();
+          call.set_brightness(0.5f);
+          call.set_rgb(0.0f, 1.0f, 1.0f);
+          call.set_effect("None");
+          call.perform();
+
+  - id: led_status_warning
+    then:
+      - lambda: id(led_status_code) = 4;
+      - lambda: |-
+          auto call = id(rgb_status_led).turn_on();
+          call.set_brightness(0.4f);
+          call.set_rgb(1.0f, 0.7f, 0.0f);
+          call.set_effect("None");
+          call.perform();
+
+  - id: led_status_no_sensors
+    then:
+      - lambda: id(led_status_code) = 5;
+      - lambda: |-
+          auto call = id(rgb_status_led).turn_on();
+          call.set_brightness(0.5f);
+          call.set_rgb(1.0f, 0.4f, 0.0f);
+          call.set_effect("Slow Blink");
+          call.perform();
+
+  - id: led_status_error
+    then:
+      - lambda: id(led_status_code) = 6;
+      - lambda: |-
+          auto call = id(rgb_status_led).turn_on();
+          call.set_brightness(0.5f);
+          call.set_rgb(1.0f, 0.0f, 0.0f);
+          call.set_effect("None");
+          call.perform();
+
+  - id: led_status_critical
+    then:
+      - lambda: id(led_status_code) = 7;
+      - lambda: |-
+          auto call = id(rgb_status_led).turn_on();
+          call.set_brightness(0.8f);
+          call.set_rgb(1.0f, 0.0f, 0.0f);
+          call.set_effect("Fast Blink");
+          call.perform();
+
+  - id: led_status_calibrating
+    then:
+      - lambda: id(led_status_code) = 8;
+      - lambda: |-
+          auto call = id(rgb_status_led).turn_on();
+          call.set_brightness(0.5f);
+          call.set_rgb(0.8f, 0.0f, 1.0f);
+          call.set_effect("None");
+          call.perform();
+
+  - id: led_flash_command
+    then:
+      - light.turn_on:
+          id: rgb_status_led
+          brightness: 100%
+          red: 100%
+          green: 100%
+          blue: 100%
+      - delay: 100ms
+      - script.execute: led_update_status
+
+  - id: led_update_status
+    then:
+      - if:
+          condition:
+            lambda: |-
+              auto fault = id(hv6_valves).get_last_fault();
+              return fault == hv6::FaultCode::OVERCURRENT ||
+                     fault == hv6::FaultCode::STALL ||
+                     fault == hv6::FaultCode::THERMAL;
+          then:
+            - script.execute: led_status_critical
+          else:
+            - if:
+                condition:
+                  lambda: return id(hv6_valves).is_calibrating();
+                then:
+                  - script.execute: led_status_calibrating
+                else:
+                  - if:
+                      condition:
+                        lambda: return id(hv6_valves).is_motor_busy();
+                      then:
+                        - script.execute: led_status_motor
+                      else:
+                        - if:
+                            condition:
+                              lambda: |-
+                                bool p1 = id(probe_temp_1).has_state() && !std::isnan(id(probe_temp_1).state);
+                                bool p2 = id(probe_temp_2).has_state() && !std::isnan(id(probe_temp_2).state);
+                                bool p3 = id(probe_temp_3).has_state() && !std::isnan(id(probe_temp_3).state);
+                                bool p4 = id(probe_temp_4).has_state() && !std::isnan(id(probe_temp_4).state);
+                                bool p5 = id(probe_temp_5).has_state() && !std::isnan(id(probe_temp_5).state);
+                                bool p6 = id(probe_temp_6).has_state() && !std::isnan(id(probe_temp_6).state);
+                                bool p7 = id(probe_temp_7).has_state() && !std::isnan(id(probe_temp_7).state);
+                                bool p8 = id(probe_temp_8).has_state() && !std::isnan(id(probe_temp_8).state);
+                                return !(p1 || p2 || p3 || p4 || p5 || p6 || p7 || p8);
+                            then:
+                              - script.execute: led_status_no_sensors
+                            else:
+                              - if:
+                                  condition:
+                                    wifi.connected:
+                                  then:
+                                    - if:
+                                        condition:
+                                          api.connected:
+                                        then:
+                                          - script.execute: led_status_ok
+                                        else:
+                                          - script.execute: led_status_standalone
+                                  else:
+                                    - script.execute: led_status_boot
+
+interval:
+  - interval: 2s
+    then:
+      - script.execute: led_update_status

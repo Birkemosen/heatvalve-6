@@ -1,0 +1,6 @@
+api:
+  encryption:
+    key: !secret api_key
+
+web_server:
+  port: 80

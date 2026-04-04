@@ -1,558 +1,152 @@
-# ============================================
-# HeatValve-6 - Base Template
-# ============================================
-# Single root template used by all deployment entrypoints.
-# Deployment-specific settings (local dev/prod, remote ESPHome, DRV tests)
-# are defined in files under deploy/.
-#
-# SETUP: Run this config from the repo root:
-# heatvalve-6/
-# |- heatvalve-6.yaml
-# |- secrets.yaml
-# |- boards/
-# |- core/
-# |- optional/
-# |- zones/
-# |- components/
-#
-# If you move this file outside the repo, update the relative include paths below.
-#
-# HARDWARE:
-#   - ESP32-S3 Super Mini
-#   - 6x DRV8215 I2C motor drivers (individual H-bridge per motor)
-#   - 6x motor valves with current-based endstop detection
-#
-# For flashing: press BOOT button for 2-3 seconds before serial init
-# After OTA update: press EN (reset) button to run firmware
+# =============================================================================
+# HeatValve-6 — Device Configuration
+# =============================================================================
+# Edit this file to configure device identity, hardware wiring, and control
+# parameters. Everything else lives in packages/ and rarely needs touching.
+# =============================================================================
 
-# NOTE:
-# This template intentionally does not define external_components.
-# Each deployment entrypoint must provide external_components source
-# (local path or git URL).
-
-# ============================================
-# General Configuration
-# ============================================
+# =============================================================================
+# Substitutions — All user-tunable settings in one place
+# =============================================================================
 substitutions:
-  name: heatvalve-6
-  friendly_name: "HeatValve-6"
-  id_prefix: "heating_"
-  zone_entities_internal: "false"  # set true to hide zone entities from web_server/API
-  revision: "1.0.0"
-  wifi_ssid: "CHANGE_ME_WIFI_SSID"
-  wifi_password: "CHANGE_ME_WIFI_PASSWORD"
-  fallback_password: "CHANGE_ME_FALLBACK_PASSWORD"
-  ota_password: "CHANGE_ME_OTA_PASSWORD"
-   
-  # Multi-controller configuration
-  controller_id: "1"  # Change to "2" for second controller
-  total_controllers: "2"  # Total number of controllers in the system
-  
-  # Zone climate entity IDs (must match zone include 'id' parameter + _thermostat)
-  zone_1_climate_id: "wc_thermostat"
-  zone_2_climate_id: "storage_thermostat"
-  zone_3_climate_id: "living_thermostat"
-  zone_4_climate_id: "dining_thermostat"
-  zone_5_climate_id: "kitchen_thermostat"
-  zone_6_climate_id: "office_thermostat"
-  
-  # Ecodan / Asgard bridge
-  asgard_host: "ecodan-heatpump.local"
-    
-  #time
-  TZ: "Europe/Zurich" #timezone
-  reboot_days_of_week: "MON"
-  reboot_hours: "5"
-  reboot_minutes: "0"
-  reboot_seconds: "0"
-  onboot_valve_calibration_delay: "1min"
-  
-  # Valve maintenance (exercise valves to prevent sticking)
-  # Set to "0s" to disable periodic maintenance
-  valve_maintenance_interval: "7d"  # 7 days
-  
-  # DS18x20 sensors are auto-discovered on the 1-Wire bus.
-  # Use the UI selects in the Settings group to map:
-  #   - DS18x20 Select Input Sensor
-  #   - DS18x20 Select Output Sensor
-  #   - DS18x20 Select Extra Sensor
-  
-  adc_zero_calibration: "-0.075"
-  pump_mac_address: "AA:BB:CC:DD:EE:FF"
-  
-  # INA219 current sensor I2C address (A0,A1 to GND = 0x40)
-  ina219_address: 0x40
-  
-  # ============================================
-  # CONTROL PROFILE
-  # ============================================
-  # NOTE: ESPHome does not support substitutions in !include paths.
-  # To change control profile, manually replace the path in all zone includes below.
-  # Options:
-  #   zones/tanh.yaml   (default)
-  #   zones/linear.yaml
-  #   zones/pid.yaml
-  #   zones/remote.yaml
+  # Device identity
+  device_name: heatvalve-6
+  friendly_name: "HeatValve-6 UFH Controller"
 
-# ============================================
-# Web Server
-# ============================================
-web_server:
-  port: 80
-  version: 3
-  log: false  # Disable for better performance
-  sorting_groups:
-    # Zone groups (one per zone)
-    - id: sorting_group_zone_1
-      name: "Zone 1: WC"
-      sorting_weight: 10
-    - id: sorting_group_zone_2
-      name: "Zone 2: Storage"
-      sorting_weight: 11
-    - id: sorting_group_zone_3
-      name: "Zone 3: Living Room"
-      sorting_weight: 12
-    - id: sorting_group_zone_4
-      name: "Zone 4: Dining Room"
-      sorting_weight: 13
-    - id: sorting_group_zone_5
-      name: "Zone 5: Kitchen"
-      sorting_weight: 14
-    - id: sorting_group_zone_6
-      name: "Zone 6: Office"
-      sorting_weight: 15
-    # System groups
-    - id: sorting_group_settings
-      name: "Settings"
-      sorting_weight: 80
-    - id: sorting_group_status
-      name: "Status"
-      sorting_weight: 81
-    - id: sorting_group_debug
-      name: "Debug"
-      sorting_weight: 90
+  # GPIO pins — change to match your PCB revision
+  pin_i2c_sda: GPIO8
+  pin_i2c_scl: GPIO9
+  pin_onewire: GPIO12
+  pin_nsleep: "2"
+  pin_nfault: "7"
+  pin_status_led: GPIO48
+  pin_adc_current: GPIO1
 
-# ============================================
-# Dashboard (standalone web UI at /dashboard)
-# ============================================
-heatvalve_dashboard:
-  # Zone climates (thermostats)
-  climate_z1_id: wc_thermostat
-  climate_z2_id: storage_thermostat
-  climate_z3_id: living_thermostat
-  climate_z4_id: dining_thermostat
-  climate_z5_id: kitchen_thermostat
-  climate_z6_id: office_thermostat
-  # Zone covers (valves)
-  cover_z1_id: CH1_cover
-  cover_z2_id: CH2_cover
-  cover_z3_id: CH3_cover
-  cover_z4_id: CH4_cover
-  cover_z5_id: CH5_cover
-  cover_z6_id: CH6_cover
-  # Room temperature sensors
-  temp_z1_id: zone_1_temp
-  temp_z2_id: zone_2_temp
-  temp_z3_id: zone_3_temp
-  temp_z4_id: zone_4_temp
-  temp_z5_id: zone_5_temp
-  temp_z6_id: zone_6_temp
-  # Per-zone runtime temperature source selects
-  sel_zone_1_source_id: heating_zone_1_temp_source
-  sel_zone_2_source_id: heating_zone_2_temp_source
-  sel_zone_3_source_id: heating_zone_3_temp_source
-  sel_zone_4_source_id: heating_zone_4_temp_source
-  sel_zone_5_source_id: heating_zone_5_temp_source
-  sel_zone_6_source_id: heating_zone_6_temp_source
-  # Heating circuit sensors
-  input_temp_id: heating_dallas_input_temp
-  output_temp_id: heating_dallas_output_temp
-  extra_temp_id: heating_dallas_extra_temp
-  # Status sensors
-  avg_valve_position_id: heating_avg_valve_position
-  active_zones_id: heating_active_zones_count
-  wifi_signal_id: heating_wifi_signal_db
-  # Text sensors
-  controller_mode_id: heating_controller_mode
-  system_status_id: heating_system_status
-  uptime_id: heating_uptime_human
-  # Switches
-  sw_balancing_id: heating_balancing_enabled
-  sw_standalone_id: heating_standalone_mode
-  sw_display_id: heating_oled_enabled
-  sw_ecodan_coordinator_id: heating_ecodan_coordinator
-  # Zone enable switches
-  sw_zone_1_enabled_id: heating_zone_1_enabled
-  sw_zone_2_enabled_id: heating_zone_2_enabled
-  sw_zone_3_enabled_id: heating_zone_3_enabled
-  sw_zone_4_enabled_id: heating_zone_4_enabled
-  sw_zone_5_enabled_id: heating_zone_5_enabled
-  sw_zone_6_enabled_id: heating_zone_6_enabled
-  # Settings numbers
-  num_min_valve_opening_id: heating_minimum_valve_opening
-  num_comfort_band_id: heating_comfort_band
-  num_maintenance_base_id: heating_maintenance_base
-  num_demand_boost_id: heating_demand_boost
-  num_boost_factor_id: heating_boost_factor
-  num_min_movement_id: heating_min_movement
-  # Ecodan / Asgard settings
-  num_asgard_reference_setpoint_id: heating_asgard_reference_setpoint
-  text_asgard_host_id: heating_asgard_host
-  # Zone area/max opening numbers
-  num_zone_1_area_id: heating_zone_1_area
-  num_zone_2_area_id: heating_zone_2_area
-  num_zone_3_area_id: heating_zone_3_area
-  num_zone_4_area_id: heating_zone_4_area
-  num_zone_5_area_id: heating_zone_5_area
-  num_zone_6_area_id: heating_zone_6_area
-  num_zone_1_max_opening_id: heating_zone_1_max_opening
-  num_zone_2_max_opening_id: heating_zone_2_max_opening
-  num_zone_3_max_opening_id: heating_zone_3_max_opening
-  num_zone_4_max_opening_id: heating_zone_4_max_opening
-  num_zone_5_max_opening_id: heating_zone_5_max_opening
-  num_zone_6_max_opening_id: heating_zone_6_max_opening
-  # Per-zone pipe type selects
-  sel_zone_1_pipe_type_id: heating_zone_1_pipe_type
-  sel_zone_2_pipe_type_id: heating_zone_2_pipe_type
-  sel_zone_3_pipe_type_id: heating_zone_3_pipe_type
-  sel_zone_4_pipe_type_id: heating_zone_4_pipe_type
-  sel_zone_5_pipe_type_id: heating_zone_5_pipe_type
-  sel_zone_6_pipe_type_id: heating_zone_6_pipe_type
-  # Per-zone floor type selects
-  sel_zone_1_floor_type_id: heating_zone_1_floor_type
-  sel_zone_2_floor_type_id: heating_zone_2_floor_type
-  sel_zone_3_floor_type_id: heating_zone_3_floor_type
-  sel_zone_4_floor_type_id: heating_zone_4_floor_type
-  sel_zone_5_floor_type_id: heating_zone_5_floor_type
-  sel_zone_6_floor_type_id: heating_zone_6_floor_type
-  # Per-zone pipe spacing numbers
-  num_zone_1_pipe_spacing_id: heating_zone_1_pipe_spacing
-  num_zone_2_pipe_spacing_id: heating_zone_2_pipe_spacing
-  num_zone_3_pipe_spacing_id: heating_zone_3_pipe_spacing
-  num_zone_4_pipe_spacing_id: heating_zone_4_pipe_spacing
-  num_zone_5_pipe_spacing_id: heating_zone_5_pipe_spacing
-  num_zone_6_pipe_spacing_id: heating_zone_6_pipe_spacing
-  # Per-zone floor cover thickness numbers
-  num_zone_1_floor_cover_thickness_id: heating_zone_1_floor_cover_thickness
-  num_zone_2_floor_cover_thickness_id: heating_zone_2_floor_cover_thickness
-  num_zone_3_floor_cover_thickness_id: heating_zone_3_floor_cover_thickness
-  num_zone_4_floor_cover_thickness_id: heating_zone_4_floor_cover_thickness
-  num_zone_5_floor_cover_thickness_id: heating_zone_5_floor_cover_thickness
-  num_zone_6_floor_cover_thickness_id: heating_zone_6_floor_cover_thickness
-  # Per-zone control profile selects (runtime algorithm switching)
-  sel_zone_1_profile_id: heating_zone_1_profile
-  sel_zone_2_profile_id: heating_zone_2_profile
-  sel_zone_3_profile_id: heating_zone_3_profile
-  sel_zone_4_profile_id: heating_zone_4_profile
-  sel_zone_5_profile_id: heating_zone_5_profile
-  sel_zone_6_profile_id: heating_zone_6_profile
-  # Per-zone link group selects
-  sel_zone_1_link_group_id: heating_zone_1_link_group
-  sel_zone_2_link_group_id: heating_zone_2_link_group
-  sel_zone_3_link_group_id: heating_zone_3_link_group
-  sel_zone_4_link_group_id: heating_zone_4_link_group
-  sel_zone_5_link_group_id: heating_zone_5_link_group
-  sel_zone_6_link_group_id: heating_zone_6_link_group
-  # Per-zone BLE MAC text entities (optional: only when including optional/ble_sensors.yaml)
-  # Uncomment when enabling BLE sensor management:
-  text_zone_1_ble_mac_id: heating_zone_1_ble_mac
-  text_zone_2_ble_mac_id: heating_zone_2_ble_mac
-  text_zone_3_ble_mac_id: heating_zone_3_ble_mac
-  text_zone_4_ble_mac_id: heating_zone_4_ble_mac
-  text_zone_5_ble_mac_id: heating_zone_5_ble_mac
-  text_zone_6_ble_mac_id: heating_zone_6_ble_mac
-  # BLE scan results text sensor (optional: only when including optional/ble_sensors.yaml)
-  ble_scan_results_id: heating_ble_scan_results
+  # Network — fallback AP name when WiFi is unreachable
+  fallback_ap_ssid: "HeatValve-6 Setup"
 
-# ============================================
-# Hydraulic Balancer (free, no license required)
-# ============================================
-# Computes per-zone hydraulic factors from pipe lengths,
-# pipe types, floor types, and floor cover thickness.
-# Factors are written to per-zone globals and used by the
-# adaptive control scripts when "Hydraulic Balancing" is enabled.
-heatvalve_balancer:
-  update_interval: 5min
-  # Zone climates
-  climate_z1_id: wc_thermostat
-  climate_z2_id: storage_thermostat
-  climate_z3_id: living_thermostat
-  climate_z4_id: dining_thermostat
-  climate_z5_id: kitchen_thermostat
-  climate_z6_id: office_thermostat
-  # Settings
-  comfort_band_id: heating_comfort_band
-  maintenance_base_id: heating_maintenance_base
-  # Per-zone areas
-  zone_1_area_id: heating_zone_1_area
-  zone_2_area_id: heating_zone_2_area
-  zone_3_area_id: heating_zone_3_area
-  zone_4_area_id: heating_zone_4_area
-  zone_5_area_id: heating_zone_5_area
-  zone_6_area_id: heating_zone_6_area
-  # Per-zone pipe spacings
-  zone_1_pipe_spacing_id: heating_zone_1_pipe_spacing
-  zone_2_pipe_spacing_id: heating_zone_2_pipe_spacing
-  zone_3_pipe_spacing_id: heating_zone_3_pipe_spacing
-  zone_4_pipe_spacing_id: heating_zone_4_pipe_spacing
-  zone_5_pipe_spacing_id: heating_zone_5_pipe_spacing
-  zone_6_pipe_spacing_id: heating_zone_6_pipe_spacing
-  # Per-zone pipe types
-  zone_1_pipe_type_id: heating_zone_1_pipe_type
-  zone_2_pipe_type_id: heating_zone_2_pipe_type
-  zone_3_pipe_type_id: heating_zone_3_pipe_type
-  zone_4_pipe_type_id: heating_zone_4_pipe_type
-  zone_5_pipe_type_id: heating_zone_5_pipe_type
-  zone_6_pipe_type_id: heating_zone_6_pipe_type
-  # Per-zone floor types
-  zone_1_floor_type_id: heating_zone_1_floor_type
-  zone_2_floor_type_id: heating_zone_2_floor_type
-  zone_3_floor_type_id: heating_zone_3_floor_type
-  zone_4_floor_type_id: heating_zone_4_floor_type
-  zone_5_floor_type_id: heating_zone_5_floor_type
-  zone_6_floor_type_id: heating_zone_6_floor_type
-  # Per-zone floor cover thicknesses
-  zone_1_floor_cover_thickness_id: heating_zone_1_floor_cover_thickness
-  zone_2_floor_cover_thickness_id: heating_zone_2_floor_cover_thickness
-  zone_3_floor_cover_thickness_id: heating_zone_3_floor_cover_thickness
-  zone_4_floor_cover_thickness_id: heating_zone_4_floor_cover_thickness
-  zone_5_floor_cover_thickness_id: heating_zone_5_floor_cover_thickness
-  zone_6_floor_cover_thickness_id: heating_zone_6_floor_cover_thickness
-  # Per-zone hydraulic factor output globals
-  hyd_factor_z1_id: heating_zone_1_hydraulic_factor
-  hyd_factor_z2_id: heating_zone_2_hydraulic_factor
-  hyd_factor_z3_id: heating_zone_3_hydraulic_factor
-  hyd_factor_z4_id: heating_zone_4_hydraulic_factor
-  hyd_factor_z5_id: heating_zone_5_hydraulic_factor
-  hyd_factor_z6_id: heating_zone_6_hydraulic_factor
+  # Control parameters — defaults (adjustable at runtime via HA or MQTT)
+  default_comfort_band: "0.5"        # °C dead-band around setpoint
+  default_min_valve_opening: "25.0"  # % minimum total valve opening (heat-pump protection)
+  default_maintenance_base: "45.0"   # % valve position when zone is satisfied
+  default_demand_boost: "30.0"       # % added to calculated position when zone has demand
 
-api:
-  reboot_timeout: 30min
+  # Zone controller timing
+  zone_cycle_interval: 10s
 
-# ============================================
-# WiFi Configuration
-# ============================================
-# Configure directly here or use: wifi: !include core/wifi.yaml
-wifi:
-  networks:
-    - ssid: ${wifi_ssid}
-      password: ${wifi_password}
-  # Additional networks (optional):
-  # - ssid: !secret wifi_ssid_2
-  #   password: !secret wifi_password_2
-  #   priority: 2
-  ap:
-    ssid: "UFH_Fallback"
-    password: ${fallback_password}
-  
-  # WiFi optimization for hardware interference
-  power_save_mode: none          # Disable power saving for better stability
-  output_power: 17dB             # Reduce TX power (default 20dB) - try 15dB or 12dB if issues persist
-  # fast_connect: true           # Skip scanning, connect faster (requires static IP)
-  # enable_btm: false            # Disable BSS Transition Management
-  # enable_rrm: false            # Disable Radio Resource Management
-
-captive_portal:
-
-ota:
-  platform: esphome
-  password: ${ota_password}
-
-# ============================================
-# Valve Maintenance
-# ============================================
-script:
-  - id: valve_maintenance
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  comment: "Underfloor heating 6-zone valve controller"
+  on_boot:
+    priority: 600
     then:
-      - logger.log: "Valve maintenance"
-      - script.execute: calibrate_CH1_cover
-      - delay: 300s
-      - script.execute: calibrate_CH2_cover
-      - delay: 300s
-      - script.execute: calibrate_CH3_cover
-      - delay: 300s
-      - script.execute: calibrate_CH4_cover
-      - delay: 300s
-      - script.execute: calibrate_CH5_cover
-      - delay: 300s
-      - script.execute: calibrate_CH6_cover
-      - delay: 300s
+      - logger.log: "HeatValve-6 booting..."
 
-# ============================================
-# Packages
-# ============================================
+# =============================================================================
+# WIFI Manual IP
+# =============================================================================
+#wifi:
+#  manual_ip:
+#    static_ip: 192.168.1.2
+#    gatewway: 192.168.1.1
+#    subnet: 255.255.255.0
+
+# =============================================================================
+# Packages — Platform and zone configuration
+# =============================================================================
 packages:
-  # Board (ESP32-S3 Super Mini only)
-  board: !include boards/esp32-s3.yaml
-  
-  # Core infrastructure
-  core_settings: !include core/settings.yaml
-  adaptive_settings: !include core/adaptive_settings.yaml  # Runtime control algorithm tuning
-  logger: !include core/logger.yaml
-  motor_driver: !include core/motor_driver.yaml  # DRV8215 I2C motor control
-  time: !include core/time.yaml
+  # Board
+  board:        !include packages/board/esp32-s3.yaml
+  # Network
+  wifi:         !include packages/network/wifi.yaml
+  api:          !include packages/network/api.yaml
+  mqtt:         !include packages/network/mqtt.yaml
+  ota:          !include packages/network/ota.yaml
+  # Hardware
+  i2c:          !include packages/hardware/i2c.yaml
+  onewire:      !include packages/hardware/onewire.yaml
+  motors:       !include packages/hardware/motors.yaml
+  led:          !include packages/hardware/led.yaml
+  display:      !include packages/hardware/display.yaml
+  hw_sensors:   !include packages/hardware/sensors.yaml
+  # Zones
+  zone_sensors: !include packages/zones/sensors.yaml
+  climate:      !include packages/zones/climate.yaml
+  ui:           !include packages/zones/ui.yaml
 
-  # ============================================
-  # Optional: OLED 1.54" display (SSD1306 128x64, I2C)
-  # Comment out if display is not fitted.
-  # ============================================
-  display: !include core/display.yaml
-  switch_others: !include core/switch_others.yaml
-  sensor_others: !include core/sensor_others.yaml
-  onewire: !include core/onewire.yaml
+# =============================================================================
+# External Components — Custom hardware drivers
+# =============================================================================
+external_components:
+  - source:
+      type: local
+      path: components
+    components:
+      - hv6_valve_controller
+      - hv6_zone_controller
+      - hv6_config_store
 
-  # ============================================
-  # Optional: Pump control via ESP-NOW
-  # Disabled for boards with onboard pump relay control.
-  # ============================================
-  # pump_control: !include
-  #   file: optional/pump_control.yaml
-  #   vars:
-  #     pump_mac_address: ${pump_mac_address}
-  #     circulation_check_interval: "24h"
-  #     circulation_run_duration: "5min"
+# =============================================================================
+# Logger
+# =============================================================================
+logger:
+  level: DEBUG
+  logs:
+    component: ERROR
 
-  # ============================================
-  # Optional: MQTT Ecodan integration
-  # ============================================
-  # mqtt_ecodan: !include optional/mqtt_ecodan.yaml
+# =============================================================================
+# Control Parameters — Tune these for your heating system
+# =============================================================================
+globals:
+  - id: global_comfort_band
+    type: float
+    restore_value: true
+    initial_value: "${default_comfort_band}"
+  - id: global_min_valve_opening
+    type: float
+    restore_value: true
+    initial_value: "${default_min_valve_opening}"
+  - id: global_maintenance_base
+    type: float
+    restore_value: true
+    initial_value: "${default_maintenance_base}"
+  - id: global_demand_boost
+    type: float
+    restore_value: true
+    initial_value: "${default_demand_boost}"
 
-  # ============================================
-  # ZONES (Runtime Adaptive Control)
-  # ============================================
-  # All zones use adaptive.yaml which allows runtime profile switching
-  # via dashboard or Home Assistant (Tanh/Linear/PID/Fixed).
-  # No reflash needed to change control algorithm!
-  #
-  # Algorithm tuning parameters are in core/adaptive_settings.yaml:
-  #   - Tanh Steepness, Linear Steepness, PID Kp/Ki/Kd
-  #
-  # For compile-time fixed profiles (smaller binary), use instead:
-  #   zones/tanh.yaml, zones/linear.yaml, zones/pid.yaml, zones/remote.yaml
-  #
-  # Motor mapping (DRV8215 I2C):
-  #   motor_number: 1-6 (maps to physical motor outputs)
-  #     Motor 1: DRV8215 @ 0x30
-  #     Motor 2: DRV8215 @ 0x31
-  #     Motor 3: DRV8215 @ 0x32
-  #     Motor 4: DRV8215 @ 0x33
-  #     Motor 5: DRV8215 @ 0x34
-  #     Motor 6: DRV8215 @ 0x35
-  
-  zone_1: !include
-    file: zones/adaptive.yaml
-    vars:
-      zone_number: "1"
-      motor_number: "1"
-      id: wc
-      friendly_name: "WC"
-      temperature_sensor: zone_1_temp
-      zone_area_default: "4"
-      zone_max_opening_default: "90"
-      default_preset: HOME
-      preset_home_temp: "21 °C"
-      preset_away_temp: "19 °C"
-      preset_boost_temp: "23 °C"
-      check_interval: "15min"
+# =============================================================================
+# Custom Component Configuration — Device-specific hardware
+# =============================================================================
 
-  zone_2: !include
-    file: zones/adaptive.yaml
-    vars:
-      zone_number: "2"
-      motor_number: "2"
-      id: storage
-      friendly_name: "Storage"
-      temperature_sensor: zone_2_temp
-      zone_area_default: "6"
-      zone_max_opening_default: "90"
-      default_preset: HOME
-      preset_home_temp: "21 °C"
-      preset_away_temp: "19 °C"
-      preset_boost_temp: "23 °C"
-      check_interval: "16min"
+# NVS config store (zone settings, motor calibration)
+hv6_config_store:
+  id: hv6_config
 
-  zone_3: !include
-    file: zones/adaptive.yaml
-    vars:
-      zone_number: "3"
-      motor_number: "3"
-      id: living
-      friendly_name: "Living Room"
-      temperature_sensor: zone_3_temp
-      zone_area_default: "25"
-      zone_max_opening_default: "90"
-      default_preset: HOME
-      preset_home_temp: "21 °C"
-      preset_away_temp: "19 °C"
-      preset_boost_temp: "23 °C"
-      check_interval: "17min"
+# Valve controller — edit motor_addresses to match your PCB wiring
+hv6_valve_controller:
+  id: hv6_valves
+  config_store_id: hv6_config
+  i2c_id: i2c_bus
+  nsleep_pin: ${pin_nsleep}
+  nfault_pin: ${pin_nfault}
+  ipropi_pin: 1
+  current_sense: motor_current_adc
+  motor_addresses: [0x30, 0x31, 0x32, 0x35, 0x33, 0x34]
 
-  zone_4: !include
-    file: zones/adaptive.yaml
-    vars:
-      zone_number: "4"
-      motor_number: "4"
-      id: dining
-      friendly_name: "Dining Room"
-      temperature_sensor: zone_4_temp
-      zone_area_default: "15"
-      zone_max_opening_default: "90"
-      default_preset: HOME
-      preset_home_temp: "21 °C"
-      preset_away_temp: "19 °C"
-      preset_boost_temp: "23 °C"
-      check_interval: "18min"
-
-  zone_5: !include
-    file: zones/adaptive.yaml
-    vars:
-      zone_number: "5"
-      motor_number: "5"
-      id: kitchen
-      friendly_name: "Kitchen"
-      temperature_sensor: zone_5_temp
-      zone_area_default: "12"
-      zone_max_opening_default: "90"
-      default_preset: HOME
-      preset_home_temp: "21 °C"
-      preset_away_temp: "19 °C"
-      preset_boost_temp: "23 °C"
-      check_interval: "15min"
-
-  zone_6: !include
-    file: zones/adaptive.yaml
-    vars:
-      zone_number: "6"
-      motor_number: "6"
-      id: office
-      friendly_name: "Office"
-      temperature_sensor: zone_6_temp
-      zone_area_default: "10"
-      zone_max_opening_default: "90"
-      default_preset: HOME
-      preset_home_temp: "21 °C"
-      preset_away_temp: "19 °C"
-      preset_boost_temp: "23 °C"
-      check_interval: "16min"
-
-
-# ============================================
-# TEMPERATURE SENSORS
-# ============================================
-# Temperature source producers are NOT defined here.
-# Include the router plus one or more source packages in your deployment entrypoint:
-#
-#   zone_temperature_router: !include core/zone_temperature_router.yaml
-#
-#   For Home Assistant sensors:
-#     ha_sensors: !include core/ha_sensors.yaml
-#
-#   For MQTT sensors (standalone, no HA required):
-#     mqtt_sensors: !include core/mqtt_sensor_overrides.yaml
-#
-#   For BLE sensors (Bluetooth thermometers):
-#     ble_sensors: !include optional/ble_sensors.yaml
-#     (then assign BLE MACs via the dashboard BLE tab)
-#
-# Zones and the dashboard consume the router proxy IDs
-# `zone_1_temp` .. `zone_6_temp`.
+# Zone controller
+hv6_zone_controller:
+  id: hv6_zones
+  config_store_id: hv6_config
+  valve_controller_id: hv6_valves
+  cycle_interval: ${zone_cycle_interval}
+  probe_sensors:
+    - probe_temp_1
+    - probe_temp_2
+    - probe_temp_3
+    - probe_temp_4
+    - probe_temp_5
+    - probe_temp_6
+    - probe_temp_7
+    - probe_temp_8
