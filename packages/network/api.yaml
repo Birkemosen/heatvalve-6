@@ -4,3 +4,8 @@ api:
 
 web_server:
   port: 80
+  version: 2
+  css_url: ""
+  js_url: ""
+  css_include: "web/dashboard.css"
+  js_include: "web/dashboard.js"

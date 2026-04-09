@@ -18,6 +18,14 @@
   var historyMotor = [];
   var historyDemand = [];
   var lastHistorySampleAt = 0;
+  var activityLog = [];
+  var zoneLog = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
+  var prevZoneState = {};
+  var prevZoneEnabled = {};
+  var prevZoneTarget = {};
+  var prevDriversOn = null;
+  var prevFaultOn = null;
+  var i2cLastResult = 'No scan has been run yet.';
 
   // Zone friendly names (persisted in localStorage)
   var zoneNames = [];
@@ -150,43 +158,39 @@
     var app = document.createElement("div");
     app.className = "app";
     app.innerHTML =
-      '<aside class="side" id="side">' +
-        '<div class="side-brand">HeatValve-6</div>' +
-        (mockMode ? '<div class="mode-pill mock">' + runtimeConfig.mockLabel + '</div>' : '') +
-        '<button class="side-collapse" onclick="window._hv6.tSide()" title="Collapse">‹</button>' +
-        '<nav class="menu">' +
-          '<a href="#" class="menu-link active" data-sec="sec-overview" onclick="window._hv6.nav(\'sec-overview\');return false">Dashboard</a>' +
-          '<a href="#" class="menu-link" data-sec="sec-diag" onclick="window._hv6.nav(\'sec-diag\');return false">Diagnostics</a>' +
-          '<a href="#" class="menu-link" data-sec="sec-settings" onclick="window._hv6.nav(\'sec-settings\');return false">Global Settings</a>' +
-        '</nav>' +
-        '<div class="zone-links">' + buildZoneLinks() + '</div>' +
-        '<div class="side-meta"><div class="dot" id="side-dot"></div><span id="side-up"></span><span id="side-wifi"></span></div>' +
-      '</aside>' +
       '<main class="shell">' +
+        '<header class="topbar">' +
+          '<div class="topbar-head">' +
+            '<div class="top-brand"><div class="side-brand">HEATVALVE-6</div>' + (mockMode ? '<div class="mode-pill mock">' + runtimeConfig.mockLabel + '</div>' : '') + '</div>' +
+            '<nav class="menu top-menu">' +
+              '<a href="#" class="menu-link active" data-sec="sec-overview" onclick="window._hv6.nav(\'sec-overview\');return false">Dashboard</a>' +
+              '<a href="#" class="menu-link" data-sec="sec-diag" onclick="window._hv6.nav(\'sec-diag\');return false">Diagnostics</a>' +
+              '<a href="#" class="menu-link" data-sec="sec-settings" onclick="window._hv6.nav(\'sec-settings\');return false">Settings</a>' +
+            '</nav>' +
+            '<div class="top-meta"><div class="dot" id="side-dot"></div><span id="side-up"></span><span id="side-wifi"></span></div>' +
+          '</div>' +
+        '</header>' +
         '<div class="reconn" id="reconn">' + (mockMode ? 'MOCK MODE ACTIVE' : 'CONNECTION LOST - RECONNECTING...') + '</div>' +
-        '<div class="sec" id="sec-zones"><div class="zone-main">' + buildZonePanel() + '</div></div>' +
-        '<div class="sec" id="sec-overview">' + buildFlowDiagram() +
-          '<div class="bento">' +
-            '<div class="card"><div class="card-title">Manifold</div><table class="st">' +
-              '<tr><td>Flow Temperature</td><td id="mf-flow">---</td></tr>' +
-              '<tr><td>Return Temperature</td><td id="mf-ret">---</td></tr>' +
-              '<tr><td>ΔT (Flow − Return)</td><td id="mf-dt">---</td></tr>' +
-              '<tr><td>Manifold Type</td><td id="mf-type">---</td></tr>' +
-            '</table></div>' +
-            '<div class="card"><div class="card-title">System</div><table class="st">' +
+        '<div class="zone-selector">' + buildZoneGrid() + '</div>' +
+        '<div class="sec" id="sec-overview">' +
+          '<div class="card flow-card">' + buildFlowDiagram() + '</div>' +
+          '<div class="dashboard-grid">' +
+            '<div class="card status-card"><div class="card-title">Status</div><table class="st">' +
+              '<tr><td>Motor Drivers</td><td><div class="drv-toggle"><span id="sys-drv">---</span><div class="sw" id="sw-drv" onclick="window._hv6.tDrv()"></div></div></td></tr>' +
+              '<tr><td>Motor Fault</td><td id="sys-fault">---</td></tr>' +
               '<tr><td>Connection</td><td id="sys-conn"><span class="dot" id="sys-dot"></span></td></tr>' +
-              '<tr><td>WiFi Signal</td><td id="sys-wifi">---</td></tr>' +
+            '</table></div>' +
+            '<div class="card conn-card"><div class="card-title">Connectivity</div><table class="st">' +
               '<tr><td>IP Address</td><td id="sys-ip">---</td></tr>' +
               '<tr><td>SSID</td><td id="sys-ssid">---</td></tr>' +
               '<tr><td>MAC Address</td><td id="sys-mac">---</td></tr>' +
               '<tr><td>Uptime</td><td id="sys-up">---</td></tr>' +
-              '<tr><td>Motor Drivers</td><td><div class="drv-toggle"><span id="sys-drv">---</span><div class="sw" id="sw-drv" onclick="window._hv6.tDrv()"></div></div></td></tr>' +
-              '<tr><td>Motor Fault</td><td id="sys-fault">---</td></tr>' +
             '</table></div>' +
           '</div>' +
         '</div>' +
-        '<div class="sec" id="sec-diag"><div class="card">' + buildDiagBody() + '</div></div>' +
-        '<div class="sec" id="sec-settings"><div class="card">' + buildConfigBody() + '</div></div>' +
+        '<div class="sec" id="sec-zones"><div class="zone-main">' + buildZonePanel() + '</div></div>' +
+        '<div class="sec" id="sec-diag">' + buildDiagBody() + '</div>' +
+        '<div class="sec" id="sec-settings">' + buildConfigBody() + buildMotorBody() + buildControlBody() + buildOTABody() + '</div>' +
         '<div class="ftr">HEATVALVE-6 · UFH CONTROLLER</div>' +
       '</main>';
 
@@ -194,35 +198,54 @@
     window._hv6.nav("sec-overview");
     updateZoneMenuActive();
     updateZonePanel();
+    // Initialize active zone card
+    var activeCard = document.querySelector('[data-zone="' + selectedZone + '"]');
+    if (activeCard) { activeCard.classList.add('active'); }
   }
 
-  function buildZoneLinks() {
-    var out = "";
+  function buildZoneGrid() {
+    var r = '<div class="zone-grid">';
     for (var z = 1; z <= NZ; z++) {
-      out += '<button class="zone-link" id="zlink' + z + '" onclick="window._hv6.pickZone(' + z + ')">' + zoneLabel(z) + '<span id="zlinkv' + z + '">---</span></button>';
+      r += '<div class="zone-card" data-zone="' + z + '" onclick="window._hv6.selZone(' + z + ')">' +
+        '<div class="zc-label" id="zc-name-' + z + '">' + zoneLabel(z) + '</div>' +
+        '<div class="zc-temp" id="zc-temp-' + z + '">---</div>' +
+        '<div class="zc-valve" id="zc-valve-' + z + '">---</div>' +
+        '<div class="zc-badge" id="zc-state-' + z + '"></div>' +
+      '</div>';
     }
-    return out;
+    r += '</div>';
+    return r;
   }
 
   function buildZonePanel() {
-    return '<div class="zone-panel card">' +
-      '<div class="zone-focus-head"><div class="zone-focus-title" id="zf-name">' + zoneLabel(1) + '</div><span class="badge unknown" id="zf-state">---</span></div>' +
-      '<div class="zone-focus-grid">' +
-        '<div class="zone-kpi"><span>Temperature</span><strong id="zf-temp">---</strong></div>' +
-        '<div class="zone-kpi"><span>Target</span><strong id="zf-set">---</strong></div>' +
-        '<div class="zone-kpi"><span>Valve</span><strong id="zf-valve">---</strong></div>' +
+    var r = '<div class="zone-panels">';
+    r += '<div class="zone-detail card">' +
+      '<div class="zone-detail-head"><div class="zone-detail-title" id="zf-name">' + zoneLabel(1) + '</div><span class="badge unknown" id="zf-state">---</span></div>' +
+      '<div class="target-control">' +
+        '<div class="target-kicker">Target Temperature</div>' +
+        '<div class="target-value" id="zf-set">---</div>' +
+        '<div class="target-actions">' +
+          '<button class="spb" onclick="window._hv6.adjSel(-0.5)">−</button>' +
+          '<button class="spb" onclick="window._hv6.adjSel(0.5)">+</button>' +
+        '</div>' +
+        '<div class="target-hint">Use +/- to adjust target setpoint</div>' +
+        '<div class="target-toggle"><span>Zone Enabled</span><div class="sw" id="zf-sw" onclick="window._hv6.tZoneSel()"></div></div>' +
       '</div>' +
-      '<div class="zone-focus-actions">' +
-        '<button class="spb" onclick="window._hv6.adjSel(-0.5)">−</button>' +
-        '<button class="spb" onclick="window._hv6.adjSel(0.5)">+</button>' +
-        '<div class="sw" id="zf-sw" onclick="window._hv6.tZoneSel()"></div>' +
+      '<div class="zone-detail-grid">' +
+        '<div class="zone-detail-stat"><span>Current Temperature</span><strong id="zf-temp">---</strong></div>' +
+        '<div class="zone-detail-stat"><span>Current Return Temperature</span><strong id="zf-ret">---</strong></div>' +
+        '<div class="zone-detail-stat"><span>Valve Opening</span><strong id="zf-valve">---</strong></div>' +
       '</div>' +
-      '<div class="vbar zone-focus-bar"><div class="fill" id="zf-fill"></div></div>' +
-      '<div class="cfg-sep">Zone Settings</div>' +
-      '<div class="cfg-row"><span class="lbl">Probe</span><select class="sel" id="zf-probe" onchange="window._hv6.sProbe(this.value)"><option>Probe 1</option><option>Probe 2</option><option>Probe 3</option><option>Probe 4</option><option>Probe 5</option><option>Probe 6</option><option>Probe 7</option><option>Probe 8</option></select></div>' +
+    '</div>';
+    r += '<div class="card zone-sensor-card">' +
+      '<div class="card-title">Temperature Sensors / Connectivity</div>' +
+      '<div class="cfg-row"><span class="lbl">Zone Return Temperature Sensor</span><select class="sel" id="zf-probe" onchange="window._hv6.sProbe(this.value)"><option>Probe 1</option><option>Probe 2</option><option>Probe 3</option><option>Probe 4</option><option>Probe 5</option><option>Probe 6</option><option>Probe 7</option><option>Probe 8</option></select></div>' +
       '<div class="cfg-row"><span class="lbl">Temperature Source</span><select class="sel" id="zf-source" onchange="window._hv6.sSource(this.value)"><option>Local Probe</option><option>Zigbee MQTT</option><option>BLE Sensor</option></select></div>' +
       '<div class="cfg-row" id="zf-row-zigbee"><span class="lbl">Zigbee Device</span><input class="txt" id="zf-zigbee" onchange="window._hv6.sZigbee(this.value)" maxlength="47"></div>' +
       '<div class="cfg-row" id="zf-row-ble"><span class="lbl">BLE MAC</span><input class="txt" id="zf-ble" onchange="window._hv6.sBle(this.value)" maxlength="17" placeholder="AA:BB:CC:DD:EE:FF"></div>' +
+    '</div>';
+    r += '<div class="card zone-room-card">' +
+      '<div class="card-title">Room Settings</div>' +
       '<div class="cfg-row"><span class="lbl">Friendly Name</span><input class="txt" id="zf-friendly" maxlength="24" onchange="window._hv6.sName(this.value)" placeholder="e.g. Living Room"></div>' +
       '<div class="cfg-row"><span class="lbl">Zone Area</span><input class="txt" id="zf-area" type="number" min="1" step="0.1" onchange="window._hv6.sArea(this.value)" placeholder="m2"></div>' +
       '<div class="cfg-row"><span class="lbl">Pipe Spacing</span><input class="txt" id="zf-spacing" type="number" min="50" step="5" onchange="window._hv6.sSpacing(this.value)" placeholder="mm"></div>' +
@@ -235,6 +258,8 @@
         '<button class="ew-btn" data-dir="W" onclick="window._hv6.tEWSel(\'W\')"><svg viewBox="0 0 24 24"><path d="M3 12L15 19l-4-7 4-7z" fill="currentColor"/></svg><span>W</span></button>' +
       '</div></div>' +
     '</div>';
+    r += '</div>';
+    return r;
   }
 
   function buildGraphWidgets() {
@@ -345,52 +370,97 @@
   }
 
   function buildConfigBody() {
-    var r = '';
-    r += '<div class="cfg-row"><span class="lbl">Manifold Type</span><select class="sel" id="cfg-mtype" onchange="window._hv6.sS(\'manifold_type\',this.value)"><option>NC</option><option>NO</option></select></div>';
-    r += '<div class="cfg-row"><span class="lbl">Flow Probe</span>' + buildProbeSelect('cfg-fp', 'manifold_flow_probe') + '</div>';
-    r += '<div class="cfg-row"><span class="lbl">Return Probe</span>' + buildProbeSelect('cfg-rp', 'manifold_return_probe') + '</div>';
-    for (var z = 1; z <= NZ; z++) r += '<div class="cfg-row"><span class="lbl">Zone ' + z + ' Probe</span>' + buildProbeSelect('cfg-zp' + z, 'zone_' + z + '_probe') + '</div>';
-    r += '<div class="cfg-sep">External Temperature Sensors</div>';
-    for (z = 1; z <= NZ; z++) {
-      r += '<div class="cfg-row"><span class="lbl">Zone ' + z + ' Source</span>' + buildTempSourceSelect('cfg-ts' + z, 'zone_' + z + '_temp_source') + '</div>';
-      r += '<div class="cfg-row"><span class="lbl">Zone ' + z + ' Zigbee Device</span><input type="text" class="txt" id="cfg-zd' + z + '" maxlength="47" onchange="window._hv6.sT(\'zone_' + z + '_zigbee_device\',this.value)"></div>';
-      r += '<div class="cfg-row"><span class="lbl">Zone ' + z + ' BLE MAC</span><input type="text" class="txt" id="cfg-bm' + z + '" maxlength="17" onchange="window._hv6.sT(\'zone_' + z + '_ble_mac\',this.value)"></div>';
-    }
-    r += '<div class="cfg-sep">Exterior Walls</div>';
-    for (z = 1; z <= NZ; z++) {
-      r += '<div class="cfg-row"><span class="lbl">Zone ' + z + '</span><div class="ew-group" id="cfg-ew' + z + '">' +
-        '<button class="ew-btn" data-dir="NONE" onclick="window._hv6.tEW(' + z + ',\'NONE\')">None</button>' +
-        '<button class="ew-btn" data-dir="N" onclick="window._hv6.tEW(' + z + ',\'N\')"><svg viewBox="0 0 24 24"><path d="M12 3L5 15l7-4 7 4z" fill="currentColor"/></svg><span>N</span></button>' +
-        '<button class="ew-btn" data-dir="E" onclick="window._hv6.tEW(' + z + ',\'E\')"><svg viewBox="0 0 24 24"><path d="M21 12L9 5l4 7-4 7z" fill="currentColor"/></svg><span>E</span></button>' +
-        '<button class="ew-btn" data-dir="S" onclick="window._hv6.tEW(' + z + ',\'S\')"><svg viewBox="0 0 24 24"><path d="M12 21L19 9l-7 4-7-4z" fill="currentColor"/></svg><span>S</span></button>' +
-        '<button class="ew-btn" data-dir="W" onclick="window._hv6.tEW(' + z + ',\'W\')"><svg viewBox="0 0 24 24"><path d="M3 12L15 19l-4-7 4-7z" fill="currentColor"/></svg><span>W</span></button>' +
-      '</div></div>';
-    }
+    var r = '<div class="card">';
+    r += '<div class="card-title">Manifold Configuration</div>';
+    r += '<div class="cfg-row"><span class="lbl">Manifold Type</span><select class="sel" id="cfg-mtype" onchange="window._hv6.sS(\'manifold_type\',this.value)"><option value="NC">Normally Closed (NC)</option><option value="NO">Normally Open (NO)</option></select></div>';
+    r += '<div class="cfg-row"><span class="lbl">Flow Probe</span><div class="cfg-probe-col"><div class="cfg-probe-temp" id="cfg-fp-temp">---</div>' + buildProbeSelect('cfg-fp', 'manifold_flow_probe') + '</div></div>';
+    r += '<div class="cfg-row"><span class="lbl">Return Probe</span><div class="cfg-probe-col"><div class="cfg-probe-temp" id="cfg-rp-temp">---</div>' + buildProbeSelect('cfg-rp', 'manifold_return_probe') + '</div></div>';
+    r += '</div>';
     return r;
   }
 
+  function buildControlBody() {
+    return '<div class="card control-slim-card">' +
+      '<div class="btn-row"><button class="btn warn" onclick="if(confirm(\'Restart device?\'))window._hv6.pB(\'restart\')">Restart Device</button></div>' +
+    '</div>';
+  }
+
+  function buildMotorBody() {
+    function mnRow(label, id, min, max, step, entity, unit) {
+      return '<div class="cfg-row"><span class="lbl">' + label + '</span><div class="mn-wrap">' +
+        '<input type="number" class="mn-inp" id="' + id + '" min="' + min + '" max="' + max + '" step="' + step + '" onchange="window._hv6.sN(\'' + entity + '\',+this.value)">' +
+        '<span class="mn-unit">' + unit + '</span></div></div>';
+    }
+    return '<div class="card">' +
+      '<div class="card-title">Motor Configuration</div>' +
+      '<div class="sl-grp"><label class="sl-lbl">Motor 1 Target Position</label><div class="sl-row">' +
+        '<input type="range" class="rng" id="mc-slider" min="0" max="100" step="1" value="0" oninput="document.getElementById(\'mc-slbl\').textContent=this.value+\'%\'" onchange="window._hv6.sN(\'motor_1_target_position\',this.value)">' +
+        '<span style="font-family:var(--mono)" class="sl-val" id="mc-slbl">0%</span>' +
+      '</div></div>' +
+      '<div class="btn-row">' +
+        '<button class="btn accent" onclick="window._hv6.pB(\'motor_1_open_100_\')">Open 100%</button>' +
+        '<button class="btn accent" onclick="window._hv6.pB(\'motor_1_close_0_\')">Close 0%</button>' +
+        '<button class="btn warn" onclick="window._hv6.pB(\'motor_1_stop_now\')">Stop</button>' +
+        '<button class="btn" onclick="window._hv6.pB(\'motor_1_self_learn\')">Self-Learn</button>' +
+        '<button class="btn" onclick="window._hv6.pB(\'calibrate_all_motors\')">Calibrate All</button>' +
+        '<button class="btn" onclick="window._hv6.pB(\'clear_motor_trace\')">Clear Trace</button>' +
+      '</div>' +
+      '<div class="cfg-section">Close Endstop Detection</div>' +
+      mnRow('Current Threshold', 'mc-clf',  1.1, 3.0,  0.1,  'close_threshold_multiplier', '× mean') +
+      mnRow('Slope Threshold',   'mc-cls',  0.1, 5.0,  0.05, 'close_slope_threshold',       'mA/s') +
+      mnRow('Slope Floor',       'mc-clsf', 1.0, 2.5,  0.1,  'close_slope_current_factor',  '× mean') +
+      '<div class="cfg-section">Open Endstop Detection</div>' +
+      mnRow('Current Threshold', 'mc-opf',  1.1, 3.0,  0.1,  'open_threshold_multiplier',   '× mean') +
+      mnRow('Slope Threshold',   'mc-ops',  0.05, 5.0, 0.05, 'open_slope_threshold',         'mA/s') +
+      mnRow('Slope Floor',       'mc-opsf', 1.0, 2.5,  0.1,  'open_slope_current_factor',   '× mean') +
+      mnRow('Ripple Limit',      'mc-rlf',  0,   2.0,  0.1,  'open_ripple_limit_factor',    '× learned') +
+      '<div class="cfg-section">Calibration</div>' +
+      mnRow('Pin Engage Step',   'mc-pes',  1.0, 10.0, 0.5,  'pin_engage_step',             'mA') +
+      mnRow('Pin Engage Margin', 'mc-pem',  0,   200,  10,   'pin_engage_margin',           'ripples') +
+    '</div>';
+  }
+
+  function buildOTABody() {
+    return '<div class="card"><div class="card-title">OTA Update</div>' +
+      '<p class="cfg-hint">Select a compiled <code>.bin</code> firmware file to update the device over the air. The device reboots automatically after a successful upload.</p>' +
+      '<div class="cfg-row"><span class="lbl">Firmware File</span>' +
+        '<input type="file" class="ota-file-input" id="ota-file" accept=".bin,application/octet-stream"></div>' +
+      '<div class="btn-row"><button class="btn accent" onclick="window._hv6.otaUpload()">Upload Firmware</button></div>' +
+      '<div class="ota-progress-wrap" id="ota-status" style="display:none">' +
+        '<div class="ota-progress"><div class="ota-bar" id="ota-bar"></div></div>' +
+        '<span class="ota-pct" id="ota-pct">0%</span>' +
+      '</div>' +
+      '<div class="ota-msg" id="ota-msg"></div>' +
+    '</div>';
+  }
+
   function buildDiagBody() {
-    return '<table class="st">' +
-      '<tr><td>Motor 1 Position</td><td id="dg-pos">---</td></tr>' +
-      '<tr><td>Motor Current</td><td id="dg-cur">---</td></tr>' +
-      '<tr><td>Live Ripple Count</td><td id="dg-rip">---</td></tr>' +
-      '<tr><td>Learned Open Ripples</td><td id="dg-lor">---</td></tr>' +
-      '<tr><td>Learned Close Ripples</td><td id="dg-lcr">---</td></tr>' +
-    '</table>' +
-    '<div class="sl-grp"><label class="sl-lbl">Motor 1 Target Position</label><div class="sl-row">' +
-      '<input type="range" class="rng" id="dg-slider" min="0" max="100" step="1" value="0" oninput="document.getElementById(\'dg-slbl\').textContent=this.value+\'%\'" onchange="window._hv6.sN(\'motor_1_target_position\',this.value)">' +
-      '<span style="font-family:var(--mono)" class="sl-val" id="dg-slbl">0%</span>' +
-    '</div></div>' +
-    '<div class="btn-row">' +
-      '<button class="btn accent" onclick="window._hv6.pB(\'motor_1_open_100_\')">Open 100%</button>' +
-      '<button class="btn accent" onclick="window._hv6.pB(\'motor_1_close_0_\')">Close 0%</button>' +
-      '<button class="btn warn" onclick="window._hv6.pB(\'motor_1_stop_now\')">Stop</button>' +
-      '<button class="btn" onclick="window._hv6.pB(\'motor_1_self_learn\')">Self-Learn</button>' +
-      '<button class="btn" onclick="window._hv6.pB(\'calibrate_all_motors\')">Calibrate All</button>' +
-      '<button class="btn" onclick="window._hv6.pB(\'i2c_scan\')">I2C Scan</button>' +
-      '<button class="btn" onclick="window._hv6.pB(\'clear_motor_trace\')">Clear Trace</button>' +
-    '</div>' +
-    '<div class="btn-row btn-row-sep"><button class="btn warn" onclick="if(confirm(\'Restart device?\'))window._hv6.pB(\'restart\')">Restart Device</button></div>';
+    var r = '<div class="diag-col">';
+
+    r += '<div class="diag-2col"><div class="card diag-i2c-card"><div class="card-title">I2C Scan</div>' +
+      '<div class="btn-row"><button class="btn" onclick="window._hv6.pB(\'i2c_scan\')">Run I2C Scan</button></div>' +
+      '<pre class="diag-pre" id="dg-i2c-result">No scan has been run yet.</pre></div>';
+
+    r += '<div class="card diag-activity-card"><div class="card-title">General Activity / Log</div><div class="diag-log" id="dg-activity-log"><div class="diag-log-empty">No activity yet.</div></div></div></div>';
+
+    r += '<div class="zone-diag-grid">';
+    for (var z = 1; z <= NZ; z++) {
+      r += '<div class="card zone-diag-card">' +
+        '<div class="card-title">' + zoneLabel(z) + ' Diagnostics</div>' +
+        '<table class="st st-tight">' +
+          '<tr><td>State</td><td id="dz-state-' + z + '">---</td></tr>' +
+          '<tr><td>Enabled</td><td id="dz-enabled-' + z + '">---</td></tr>' +
+          '<tr><td>Temperature</td><td id="dz-temp-' + z + '">---</td></tr>' +
+          '<tr><td>Target</td><td id="dz-target-' + z + '">---</td></tr>' +
+          '<tr><td>Valve</td><td id="dz-valve-' + z + '">---</td></tr>' +
+        '</table>' +
+        '<div class="diag-sub">Latest Zone Events</div>' +
+        '<div class="diag-log" id="dz-log-' + z + '"><div class="diag-log-empty">No events yet.</div></div>' +
+      '</div>';
+    }
+
+    r += '</div></div>';
+    return r;
   }
 
   function connect() {
@@ -407,7 +477,22 @@
       } catch (x) {}
     });
     sse.addEventListener('ping', function () { setLive(true); });
-    sse.addEventListener('log', function () { setLive(true); });
+    sse.addEventListener('log', function (e) {
+      setLive(true);
+      var msg = '';
+      try {
+        var d = JSON.parse(e.data || '{}');
+        msg = d.message || d.msg || d.text || '';
+      } catch (x) {
+        msg = String(e.data || '');
+      }
+      msg = (msg || '').trim();
+      if (!msg) return;
+      var zm = msg.match(/zone[\s_\-]?(\d+)/i);
+      var z = zm ? Number(zm[1]) : null;
+      addActivity(msg, z && z >= 1 && z <= NZ ? z : null);
+      if (/i2c/i.test(msg)) setI2CResult(msg);
+    });
     sse.onerror = function () {
       setLive(false);
       scheduleReconnect();
@@ -437,7 +522,8 @@
 
   function updateEntity(id) {
     var m;
-    m = id.match(/^sensor-zone_(\d+)_temperature$/);   if (m) { updateZoneTemp(+m[1]); updateFlowDiagram(); }
+    m = id.match(/^sensor-zone_(\d+)_temperature$/);   if (m) { updateZoneTemp(+m[1]); updateFlowDiagram(); updateConfigProbeTemps(); }
+    m = id.match(/^sensor-probe_(\d+)_temperature$/);  if (m) updateConfigProbeTemps();
     m = id.match(/^sensor-zone_(\d+)_valve_position$/); if (m) { updateZoneValve(+m[1]); updateFlowDiagram(); }
     m = id.match(/^text_sensor-zone_(\d+)_state$/);     if (m) { updateZoneState(+m[1]); updateFlowDiagram(); }
     m = id.match(/^climate-zone_(\d+)$/);               if (m) updateZoneClimate(+m[1]);
@@ -451,7 +537,8 @@
     if (id === 'sensor-manifold_flow_temperature') { updateManifold(); updateFlowDiagram(); }
     if (id === 'sensor-manifold_return_temperature') { updateManifold(); updateFlowDiagram(); }
     if (id === 'select-manifold_type') updateManifoldType();
-    if (id === 'number-motor_1_target_position') updateDiagPos();
+    if (id === 'number-motor_1_target_position') { updateDiagPos(); updateMotorSettings(); }
+    if (/^number-(close_|open_ripple_limit|open_threshold|open_slope|pin_engage)/.test(id)) updateMotorSettings();
     if (id === 'sensor-motor_current') updateDiagCur();
     if (id === 'sensor-motor_1_ripple_count') updateDiagRip();
     if (id === 'sensor-motor_1_learned_open_ripples') updateDiagLor();
@@ -462,38 +549,80 @@
     m = id.match(/^number-zone_(\d+)_(area_m2|pipe_spacing_mm)$/);
     if (m && Number(m[1]) === selectedZone) updateZonePanel();
 
+    updateZoneDiagnostics();
     maybeSampleHistory();
   }
 
+  function updateZoneVal(z) {
+    var v = ev('sensor-zone_' + z + '_valve_position');
+    var valEl = h('zc-valve-' + z);
+    if (valEl) valEl.textContent = fmtV(v);
+    if (selectedZone === z) updateZonePanel();
+  }
+
+  function updateZoneCardState(z) {
+    var st = (es('text_sensor-zone_' + z + '_state') || 'unknown').toUpperCase();
+    var stateEl = h('zc-state-' + z);
+    if (stateEl) {
+      stateEl.className = 'zc-badge';
+      if (st === 'DEMAND') stateEl.style.background = '#EEA111';
+      else if (st === 'SATISFIED') stateEl.style.background = '#7fd489';
+      else if (st === 'OVERHEATED') stateEl.style.background = '#ff6464';
+      else stateEl.style.background = '#555';
+    }
+    if (selectedZone === z) updateZonePanel();
+  }
+
   function updateZoneTemp(z) {
-    var linkVal = h('zlinkv' + z);
     var t = ev('sensor-zone_' + z + '_temperature');
-    if (linkVal) linkVal.textContent = fmtT(t) + '°';
+    var nameEl = h('zc-temp-' + z);
+    if (nameEl) nameEl.textContent = fmtT(t) + '°';
     if (selectedZone === z) updateZonePanel();
   }
 
   function updateZoneValve(z) { if (selectedZone === z) updateZonePanel(); }
 
   function updateZoneState(z) {
-    var link = h('zlink' + z);
     var st = es('text_sensor-zone_' + z + '_state').toUpperCase();
     var en = isOn('switch-zone_' + z + '_enabled');
-    if (link) link.classList.remove('state-demand', 'state-satisfied', 'state-overheated', 'state-disabled');
-    if (!en) { if (link) link.classList.add('state-disabled'); return; }
-    if (st === 'DEMAND' && link) link.classList.add('state-demand');
-    if (st === 'SATISFIED' && link) link.classList.add('state-satisfied');
-    if (st === 'OVERHEATED' && link) link.classList.add('state-overheated');
+    if (prevZoneState[z] == null) prevZoneState[z] = st;
+    else if (prevZoneState[z] !== st) {
+      addActivity(zoneLabel(z) + ' state changed to ' + st, z);
+      prevZoneState[z] = st;
+    }
+    if (prevZoneEnabled[z] == null) prevZoneEnabled[z] = en;
+    else if (prevZoneEnabled[z] !== en) {
+      addActivity(zoneLabel(z) + (en ? ' enabled' : ' disabled'), z);
+      prevZoneEnabled[z] = en;
+    }
+    if (!en) {
+      updateZoneCardState(z);
+      if (selectedZone === z) updateZonePanel();
+      return;
+    }
+    updateZoneCardState(z);
     if (selectedZone === z) updateZonePanel();
   }
 
-  function updateZoneClimate(z) { if (E['climate-zone_' + z] && selectedZone === z) updateZonePanel(); }
+  function updateZoneClimate(z) {
+    var d = E['climate-zone_' + z];
+    if (d && d.target_temperature != null) {
+      var t = Number(d.target_temperature);
+      if (prevZoneTarget[z] == null) prevZoneTarget[z] = t;
+      else if (Math.abs(prevZoneTarget[z] - t) >= 0.1) {
+        addActivity(zoneLabel(z) + ' target set to ' + t.toFixed(1) + '°C', z);
+        prevZoneTarget[z] = t;
+      }
+    }
+    if (d && selectedZone === z) updateZonePanel();
+  }
   function updateZoneEnabled(z) { updateZoneState(z); if (selectedZone === z) updateZonePanel(); }
 
   function updateZoneMenuActive() {
-    for (var z = 1; z <= NZ; z++) {
-      var link = h('zlink' + z);
-      if (link) link.classList.toggle('active', z === selectedZone);
-    }
+    document.querySelectorAll('.zone-card').forEach(function (card) {
+      var z = Number(card.getAttribute('data-zone'));
+      card.classList.toggle('active', z === selectedZone);
+    });
   }
 
   function zoneNumberValue(z, key) {
@@ -506,6 +635,7 @@
     var st = es('text_sensor-zone_' + z + '_state').toUpperCase();
     var en = isOn('switch-zone_' + z + '_enabled');
     var t = ev('sensor-zone_' + z + '_temperature');
+    var ret = ev('sensor-manifold_return_temperature');
     var v = ev('sensor-zone_' + z + '_valve_position');
     var c = E['climate-zone_' + z];
 
@@ -519,13 +649,13 @@
     if (h('zf-name')) h('zf-name').textContent = zoneLabel(z);
     if (h('zf-friendly')) h('zf-friendly').value = zoneNames[z - 1] || '';
     if (h('zf-temp')) h('zf-temp').textContent = fmtT(t) + '°C';
-    if (h('zf-set')) h('zf-set').textContent = c && c.target_temperature != null ? Number(c.target_temperature).toFixed(1) + '°' : '---';
+    if (h('zf-ret')) h('zf-ret').textContent = fmtT(ret) + '°C';
+    if (h('zf-set')) h('zf-set').textContent = c && c.target_temperature != null ? Number(c.target_temperature).toFixed(1) + '°C' : '---';
     if (h('zf-valve')) {
       h('zf-valve').textContent = fmtV(v);
       var vv = v != null ? Number(v) : null;
       h('zf-valve').style.color = vv == null ? '' : vv < 30 ? '#42A5F5' : vv > 80 ? '#EF5350' : '#66BB6A';
     }
-    if (h('zf-fill')) h('zf-fill').style.width = (v != null && !isNaN(v) ? Math.round(v) : 0) + '%';
     if (h('zf-sw')) h('zf-sw').className = en ? 'sw on' : 'sw';
     if (h('zf-probe') && probe) h('zf-probe').value = probe.state || 'Probe 1';
 
@@ -585,11 +715,22 @@
     var on = isOn('switch-motor_drivers_enabled');
     if (h('sw-drv')) h('sw-drv').className = on ? 'sw on' : 'sw';
     if (h('sys-drv')) h('sys-drv').textContent = on ? 'Enabled' : 'Disabled';
+    if (prevDriversOn == null) prevDriversOn = on;
+    else if (prevDriversOn !== on) {
+      addActivity(on ? 'Motor drivers enabled' : 'Motor drivers disabled');
+      prevDriversOn = on;
+    }
   }
 
   function updateFault() {
     if (!h('sys-fault')) return;
-    h('sys-fault').innerHTML = isOn('binary_sensor-motor_fault') ? '<span style="color:#E74C3C">⚠ FAULT</span>' : '<span style="color:#2ECC71">✓ OK</span>';
+    var fault = isOn('binary_sensor-motor_fault');
+    h('sys-fault').innerHTML = fault ? '<span style="color:#E74C3C">⚠ FAULT</span>' : '<span style="color:#2ECC71">✓ OK</span>';
+    if (prevFaultOn == null) prevFaultOn = fault;
+    else if (prevFaultOn !== fault) {
+      addActivity(fault ? 'Motor fault detected' : 'Motor fault cleared');
+      prevFaultOn = fault;
+    }
   }
 
   function updateManifold() {
@@ -602,8 +743,25 @@
 
   function updateManifoldType() {
     var d = E['select-manifold_type'];
-    if (h('mf-type') && d) h('mf-type').textContent = d.state || '---';
+    if (h('mf-type') && d) h('mf-type').textContent = d.state === 'NO' ? 'Normally Open' : d.state === 'NC' ? 'Normally Closed' : (d.state || '---');
     if (h('cfg-mtype') && d) h('cfg-mtype').value = d.state || 'NC';
+  }
+
+  function probeTempFromLabel(label) {
+    var idx = parseProbeIndex(label);
+    if (idx == null) return null;
+    var v = ev('sensor-probe_' + idx + '_temperature');
+    if (v == null) v = ev('sensor-zone_' + idx + '_temperature');
+    return v;
+  }
+
+  function updateConfigProbeTemps() {
+    var fp = E['select-manifold_flow_probe'];
+    var rp = E['select-manifold_return_probe'];
+    var ft = fp ? probeTempFromLabel(fp.state) : null;
+    var rt = rp ? probeTempFromLabel(rp.state) : null;
+    if (h('cfg-fp-temp')) h('cfg-fp-temp').textContent = fp && fp.state ? (fp.state + ' · ' + (ft != null ? fmtT(ft) + '°C' : '---')) : '---';
+    if (h('cfg-rp-temp')) h('cfg-rp-temp').textContent = rp && rp.state ? (rp.state + ' · ' + (rt != null ? fmtT(rt) + '°C' : '---')) : '---';
   }
 
   function updateDiagPos() {
@@ -613,10 +771,87 @@
     if (h('dg-slbl') && d && d.value != null) h('dg-slbl').textContent = Math.round(d.value) + '%';
   }
 
+  function updateMotorSettings() {
+    var d = E['number-motor_1_target_position'];
+    if (d && d.value != null) {
+      var slEl = h('mc-slider'); if (slEl && slEl !== document.activeElement) slEl.value = Math.round(d.value);
+      var slLbl = h('mc-slbl'); if (slLbl) slLbl.textContent = Math.round(d.value) + '%';
+    }
+    function setInp(elId, entityId) {
+      var el = h(elId);
+      if (!el || el === document.activeElement) return;
+      var v = ev(entityId);
+      if (v != null) el.value = v;
+    }
+    setInp('mc-clf',  'number-close_threshold_multiplier');
+    setInp('mc-cls',  'number-close_slope_threshold');
+    setInp('mc-clsf', 'number-close_slope_current_factor');
+    setInp('mc-opf',  'number-open_threshold_multiplier');
+    setInp('mc-ops',  'number-open_slope_threshold');
+    setInp('mc-opsf', 'number-open_slope_current_factor');
+    setInp('mc-rlf',  'number-open_ripple_limit_factor');
+    setInp('mc-pes',  'number-pin_engage_step');
+    setInp('mc-pem',  'number-pin_engage_margin');
+  }
+
   function updateDiagCur() { if (h('dg-cur')) h('dg-cur').textContent = ev('sensor-motor_current') != null ? Number(ev('sensor-motor_current')).toFixed(1) + ' mA' : '---'; }
   function updateDiagRip() { if (h('dg-rip')) h('dg-rip').textContent = ev('sensor-motor_1_ripple_count') != null ? Math.round(ev('sensor-motor_1_ripple_count')) : '---'; }
   function updateDiagLor() { if (h('dg-lor')) h('dg-lor').textContent = ev('sensor-motor_1_learned_open_ripples') != null ? Math.round(ev('sensor-motor_1_learned_open_ripples')) : '---'; }
   function updateDiagLcr() { if (h('dg-lcr')) h('dg-lcr').textContent = ev('sensor-motor_1_learned_close_ripples') != null ? Math.round(ev('sensor-motor_1_learned_close_ripples')) : '---'; }
+
+  function timeStamp() {
+    var d = new Date();
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
+  }
+
+  function renderLog(elId, items) {
+    var el = h(elId);
+    if (!el) return;
+    if (!items || !items.length) {
+      el.innerHTML = '<div class="diag-log-empty">No events yet.</div>';
+      return;
+    }
+    var html = '';
+    for (var i = items.length - 1; i >= 0; i--) {
+      html += '<div class="diag-log-item"><span class="diag-log-time">' + items[i].time + '</span><span class="diag-log-msg">' + items[i].msg + '</span></div>';
+    }
+    el.innerHTML = html;
+  }
+
+  function addActivity(msg, zone) {
+    var entry = { time: timeStamp(), msg: msg };
+    activityLog.push(entry);
+    if (activityLog.length > 60) activityLog.shift();
+    if (zone && zoneLog[zone]) {
+      zoneLog[zone].push(entry);
+      if (zoneLog[zone].length > 8) zoneLog[zone].shift();
+    }
+    renderLog('dg-activity-log', activityLog);
+    for (var z = 1; z <= NZ; z++) renderLog('dz-log-' + z, zoneLog[z]);
+  }
+
+  function setI2CResult(text) {
+    i2cLastResult = text || 'No scan has been run yet.';
+    if (h('dg-i2c-result')) h('dg-i2c-result').textContent = i2cLastResult;
+  }
+
+  function updateZoneDiagCard(z) {
+    var st = es('text_sensor-zone_' + z + '_state') || '---';
+    var en = isOn('switch-zone_' + z + '_enabled');
+    var temp = ev('sensor-zone_' + z + '_temperature');
+    var val = ev('sensor-zone_' + z + '_valve_position');
+    var c = E['climate-zone_' + z];
+    if (h('dz-state-' + z)) h('dz-state-' + z).textContent = st;
+    if (h('dz-enabled-' + z)) h('dz-enabled-' + z).textContent = en ? 'Enabled' : 'Disabled';
+    if (h('dz-temp-' + z)) h('dz-temp-' + z).textContent = fmtT(temp) + '°C';
+    if (h('dz-target-' + z)) h('dz-target-' + z).textContent = c && c.target_temperature != null ? Number(c.target_temperature).toFixed(1) + '°C' : '---';
+    if (h('dz-valve-' + z)) h('dz-valve-' + z).textContent = fmtV(val);
+  }
+
+  function updateZoneDiagnostics() {
+    for (var z = 1; z <= NZ; z++) updateZoneDiagCard(z);
+    if (h('dg-i2c-result')) h('dg-i2c-result').textContent = i2cLastResult;
+  }
 
   function updateSelect(name) {
     var d = E['select-' + name];
@@ -627,6 +862,7 @@
       map['zone_' + z + '_temp_source'] = 'cfg-ts' + z;
     }
     if (map[name] && h(map[name]) && d.state) h(map[name]).value = d.state;
+    if (name === 'manifold_flow_probe' || name === 'manifold_return_probe') updateConfigProbeTemps();
     if (name === 'manifold_return_probe' || name === 'zone_' + selectedZone + '_probe' || name === 'zone_' + selectedZone + '_temp_source' || name === 'zone_' + selectedZone + '_pipe_type') updateZonePanel();
   }
 
@@ -839,6 +1075,15 @@
     setEntity('sensor-motor_1_ripple_count', { value: 93 });
     setEntity('sensor-motor_1_learned_open_ripples', { value: 305 });
     setEntity('sensor-motor_1_learned_close_ripples', { value: 298 });
+    setEntity('number-close_threshold_multiplier', { value: 1.8 });
+    setEntity('number-close_slope_threshold', { value: 0.6 });
+    setEntity('number-close_slope_current_factor', { value: 1.3 });
+    setEntity('number-open_threshold_multiplier', { value: 1.2 });
+    setEntity('number-open_slope_threshold', { value: 0.15 });
+    setEntity('number-open_slope_current_factor', { value: 1.3 });
+    setEntity('number-open_ripple_limit_factor', { value: 1.2 });
+    setEntity('number-pin_engage_step', { value: 3.0 });
+    setEntity('number-pin_engage_margin', { value: 50 });
 
     for (var z = 1; z <= NZ; z++) {
       var enabled = z !== 5;
@@ -913,6 +1158,7 @@
   function startMock() {
     if (mockTickTimer) clearInterval(mockTickTimer);
     seedMockEntities();
+    setI2CResult('No scan has been run yet.');
     refreshAll();
     maybeSampleHistory(true);
     setLive(true);
@@ -939,6 +1185,11 @@
     if (parts[0] === 'button') {
       if (parts[1] === 'motor_1_open_100_') setEntity('number-motor_1_target_position', { value: 100 });
       if (parts[1] === 'motor_1_close_0_' || parts[1] === 'motor_1_stop_now') setEntity('number-motor_1_target_position', { value: 0 });
+      if (parts[1] === 'i2c_scan') {
+        var mockRes = 'I2C scan complete\nFound devices: 0x3C, 0x44, 0x76';
+        setI2CResult(mockRes);
+        addActivity('I2C scan complete (mock)');
+      }
       return;
     }
 
@@ -959,7 +1210,6 @@
     nav: function (secId) {
       document.querySelectorAll('.sec').forEach(function (s) { s.classList.remove('active'); });
       document.querySelectorAll('.menu-link').forEach(function (a) { a.classList.toggle('active', a.getAttribute('data-sec') === secId); });
-      document.querySelectorAll('.zone-link').forEach(function (a) { a.classList.remove('active'); });
       var target = h(secId);
       if (target) { target.classList.add('active'); window.scrollTo(0, 0); }
     },
@@ -972,14 +1222,20 @@
     adjSel: function (delta) { window._hv6.adj(selectedZone, delta); },
     tZone: function (z) { postAPI('/switch/zone_' + z + '_enabled/' + (isOn('switch-zone_' + z + '_enabled') ? 'turn_off' : 'turn_on')); },
     tZoneSel: function () { window._hv6.tZone(selectedZone); },
+    selZone: function (z) {
+      selectedZone = Math.max(1, Math.min(NZ, Number(z) || 1));
+      updateZoneMenuActive();
+      updateZonePanel();
+      window._hv6.nav('sec-zones');
+    },
     tDrv: function () { postAPI('/switch/motor_drivers_enabled/' + (isOn('switch-motor_drivers_enabled') ? 'turn_off' : 'turn_on')); },
     pickZone: function (z) {
       selectedZone = Math.max(1, Math.min(NZ, Number(z) || 1));
       document.querySelectorAll('.menu-link').forEach(function (a) { a.classList.remove('active'); });
       updateZoneMenuActive();
       updateZonePanel();
+      window._hv6.selZone(selectedZone);
       window._hv6.nav('sec-zones');
-      updateZoneMenuActive();
     },
     tSide: function () {
       var side = h('side');
@@ -989,7 +1245,13 @@
         if (app) app.classList.toggle('side-collapsed', side.classList.contains('collapsed'));
       }
     },
-    pB: function (n) { postAPI('/button/' + n + '/press'); },
+    pB: function (n) {
+      if (n === 'i2c_scan') {
+        setI2CResult('Scanning I2C bus...');
+        addActivity('I2C scan started');
+      }
+      postAPI('/button/' + n + '/press');
+    },
     sS: function (n, v) { postAPI('/select/' + n + '/set?option=' + encodeURIComponent(v)); },
     sN: function (n, v) { postAPI('/number/' + n + '/set?value=' + v); },
     sT: function (n, v) { postAPI('/text/' + n + '/set?value=' + encodeURIComponent(v)); },
@@ -1007,14 +1269,56 @@
     sName: function (v) {
       setZoneName(selectedZone, v);
       if (h('zf-name')) h('zf-name').textContent = zoneLabel(selectedZone);
-      var lnk = h('zlink' + selectedZone);
-      if (lnk) { var sp = lnk.querySelector('span'); var txt = sp ? sp.outerHTML : ''; lnk.innerHTML = zoneLabel(selectedZone) + txt; }
+      var zc = h('zc-name-' + selectedZone);
+      if (zc) zc.textContent = zoneLabel(selectedZone);
       var fdLbl = h('fd-zn' + selectedZone);
       if (fdLbl) fdLbl.textContent = zoneLabel(selectedZone).toUpperCase();
     },
     sSpacing: function (v) { window._hv6.sN('zone_' + selectedZone + '_pipe_spacing_mm', Number(v)); },
     sPipe: function (v) { window._hv6.sS('zone_' + selectedZone + '_pipe_type', v); },
     tEWSel: function (dir) { window._hv6.tEW(selectedZone, dir); },
+    otaUpload: function () {
+      var fileEl = h('ota-file');
+      if (!fileEl || !fileEl.files || !fileEl.files[0]) { alert('Please select a .bin firmware file first.'); return; }
+      var f = fileEl.files[0];
+      if (!confirm('Upload "' + f.name + '" (' + Math.round(f.size / 1024) + '\u00a0KB)?\n\nThe device will reboot after a successful upload.')) return;
+      var statusEl = h('ota-status');
+      var barEl = h('ota-bar');
+      var pctEl = h('ota-pct');
+      var msgEl = h('ota-msg');
+      if (statusEl) statusEl.style.display = 'flex';
+      if (barEl) barEl.style.width = '0%';
+      if (pctEl) pctEl.textContent = '0%';
+      if (msgEl) msgEl.textContent = '';
+      if (mockMode) {
+        var pct = 0;
+        var iv = setInterval(function () {
+          pct = Math.min(100, pct + 12);
+          if (barEl) barEl.style.width = pct + '%';
+          if (pctEl) pctEl.textContent = pct + '%';
+          if (pct >= 100) { clearInterval(iv); if (statusEl) statusEl.style.display = 'none'; if (msgEl) msgEl.textContent = 'Upload complete (mock). Device would reboot now.'; }
+        }, 200);
+        return;
+      }
+      var xhr = new XMLHttpRequest();
+      xhr.upload.onprogress = function (e) {
+        if (!e.lengthComputable) return;
+        var p = Math.round(e.loaded / e.total * 100);
+        if (barEl) barEl.style.width = p + '%';
+        if (pctEl) pctEl.textContent = p + '%';
+      };
+      xhr.onload = function () {
+        if (statusEl) statusEl.style.display = 'none';
+        if (msgEl) msgEl.textContent = xhr.status === 200 ? 'Upload complete. Device is rebooting\u2026' : 'Upload failed: ' + xhr.statusText + ' (' + xhr.status + ')';
+      };
+      xhr.onerror = function () {
+        if (statusEl) statusEl.style.display = 'none';
+        if (msgEl) msgEl.textContent = 'Upload failed. Check device connection.';
+      };
+      xhr.open('POST', '/update');
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      xhr.send(f);
+    },
     tEW: function (z, dir) {
       var cur = E['text-zone_' + z + '_exterior_walls'] ? (E['text-zone_' + z + '_exterior_walls'].state || '') : '';
       var parsed = parseExteriorState(cur);
