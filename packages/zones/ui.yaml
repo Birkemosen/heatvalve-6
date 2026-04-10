@@ -20,25 +20,25 @@ button:
           }
 
   - platform: template
-    name: "Motor 1 Open (100%)"
+    name: "Motor 1 Open Flow (100%)"
     icon: "mdi:valve-open"
     entity_category: config
     on_press:
       - lambda: |-
           if (!id(hv6_valves).are_drivers_enabled()) {
-            ESP_LOGW("hv6_ui", "Motor 1 OPEN ignored: drivers are disabled");
+            ESP_LOGW("hv6_ui", "Motor 1 OPEN FLOW ignored: drivers are disabled");
             return;
           }
           id(hv6_valves).request_position(0, 100.0f);
 
   - platform: template
-    name: "Motor 1 Close (0%)"
+    name: "Motor 1 Close Flow (0%)"
     icon: "mdi:valve-closed"
     entity_category: config
     on_press:
       - lambda: |-
           if (!id(hv6_valves).are_drivers_enabled()) {
-            ESP_LOGW("hv6_ui", "Motor 1 CLOSE ignored: drivers are disabled");
+            ESP_LOGW("hv6_ui", "Motor 1 CLOSE FLOW ignored: drivers are disabled");
             return;
           }
           id(hv6_valves).request_position(0, 0.0f);
@@ -62,6 +62,200 @@ button:
           }
           id(hv6_valves).request_calibration(0);
 
+  - platform: template
+    name: "Zone 2 Open 100%"
+    icon: "mdi:valve-open"
+    entity_category: config
+    on_press:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) return;
+          id(hv6_valves).request_position(1, 100.0f);
+
+  - platform: template
+    name: "Zone 2 Close 0%"
+    icon: "mdi:valve-closed"
+    entity_category: config
+    on_press:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) return;
+          id(hv6_valves).request_position(1, 0.0f);
+
+  - platform: template
+    name: "Zone 2 Stop"
+    icon: "mdi:hand-back-right-off"
+    entity_category: config
+    on_press:
+      - lambda: id(hv6_valves).set_drivers_enabled(false);
+
+  - platform: template
+    name: "Zone 3 Open 100%"
+    icon: "mdi:valve-open"
+    entity_category: config
+    on_press:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) return;
+          id(hv6_valves).request_position(2, 100.0f);
+
+  - platform: template
+    name: "Zone 3 Close 0%"
+    icon: "mdi:valve-closed"
+    entity_category: config
+    on_press:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) return;
+          id(hv6_valves).request_position(2, 0.0f);
+
+  - platform: template
+    name: "Zone 3 Stop"
+    icon: "mdi:hand-back-right-off"
+    entity_category: config
+    on_press:
+      - lambda: id(hv6_valves).set_drivers_enabled(false);
+
+  - platform: template
+    name: "Zone 4 Open 100%"
+    icon: "mdi:valve-open"
+    entity_category: config
+    on_press:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) return;
+          id(hv6_valves).request_position(3, 100.0f);
+
+  - platform: template
+    name: "Zone 4 Close 0%"
+    icon: "mdi:valve-closed"
+    entity_category: config
+    on_press:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) return;
+          id(hv6_valves).request_position(3, 0.0f);
+
+  - platform: template
+    name: "Zone 4 Stop"
+    icon: "mdi:hand-back-right-off"
+    entity_category: config
+    on_press:
+      - lambda: id(hv6_valves).set_drivers_enabled(false);
+
+  - platform: template
+    name: "Zone 5 Open 100%"
+    icon: "mdi:valve-open"
+    entity_category: config
+    on_press:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) return;
+          id(hv6_valves).request_position(4, 100.0f);
+
+  - platform: template
+    name: "Zone 5 Close 0%"
+    icon: "mdi:valve-closed"
+    entity_category: config
+    on_press:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) return;
+          id(hv6_valves).request_position(4, 0.0f);
+
+  - platform: template
+    name: "Zone 5 Stop"
+    icon: "mdi:hand-back-right-off"
+    entity_category: config
+    on_press:
+      - lambda: id(hv6_valves).set_drivers_enabled(false);
+
+  - platform: template
+    name: "Zone 6 Open 100%"
+    icon: "mdi:valve-open"
+    entity_category: config
+    on_press:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) return;
+          id(hv6_valves).request_position(5, 100.0f);
+
+  - platform: template
+    name: "Zone 6 Close 0%"
+    icon: "mdi:valve-closed"
+    entity_category: config
+    on_press:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) return;
+          id(hv6_valves).request_position(5, 0.0f);
+
+  - platform: template
+    name: "Zone 6 Stop"
+    icon: "mdi:hand-back-right-off"
+    entity_category: config
+    on_press:
+      - lambda: id(hv6_valves).set_drivers_enabled(false);
+
+  - platform: template
+    name: "I2C Scan"
+    icon: "mdi:bus-alert"
+    entity_category: diagnostic
+    on_press:
+      - lambda: id(hv6_valves).log_i2c_scan();
+
+  - platform: template
+    name: "Dump 1Wire Probe Diagnostics"
+    id: dump_1wire_probe_diagnostics
+    icon: "mdi:thermometer-lines"
+    entity_category: diagnostic
+    on_press:
+      - lambda: |-
+          auto log_probe = [](const char *tag, esphome::sensor::Sensor *s) {
+            if (s == nullptr) {
+              ESP_LOGW("hv6_onewire", "%s: sensor ptr=null", tag);
+              return;
+            }
+            auto *d = static_cast<esphome::dallas_temp::DallasTemperatureSensor *>(s);
+            auto addr = d->get_address_name();
+            bool ok = s->has_state();
+            if (ok) {
+              ESP_LOGI("hv6_onewire", "%s: addr=%s has_state=1 value=%.2f", tag, addr.c_str(), s->state);
+            } else {
+              ESP_LOGW("hv6_onewire", "%s: addr=%s has_state=0 value=NaN", tag, addr.c_str());
+            }
+          };
+
+          log_probe("Probe 1", id(probe_temp_1));
+          log_probe("Probe 2", id(probe_temp_2));
+          log_probe("Probe 3", id(probe_temp_3));
+          log_probe("Probe 4", id(probe_temp_4));
+          log_probe("Probe 5", id(probe_temp_5));
+          log_probe("Probe 6", id(probe_temp_6));
+          log_probe("Probe 7", id(probe_temp_7));
+          log_probe("Probe 8", id(probe_temp_8));
+
+  - platform: template
+    name: "Reset 1Wire Probe Map Reboot"
+    id: reset_1wire_probe_map_reboot
+    icon: "mdi:source-branch-refresh"
+    entity_category: diagnostic
+    on_press:
+      - lambda: |-
+          id(probe_addr_1) = 0;
+          id(probe_addr_2) = 0;
+          id(probe_addr_3) = 0;
+          id(probe_addr_4) = 0;
+          id(probe_addr_5) = 0;
+          id(probe_addr_6) = 0;
+          id(probe_addr_7) = 0;
+          id(probe_addr_8) = 0;
+          id(probe_map_fail_cycles) = 0;
+          ESP_LOGW("hv6_ui", "1-Wire probe map reset requested; rebooting for fresh probe discovery");
+          App.safe_reboot();
+
+  - platform: template
+    name: "Erase HV6 NVS + Reboot"
+    icon: "mdi:database-remove"
+    entity_category: config
+    disabled_by_default: false
+    on_press:
+      - lambda: |-
+          id(hv6_valves).set_drivers_enabled(false);
+          if (!id(hv6_config).erase_namespace_and_restart()) {
+            ESP_LOGE("hv6_ui", "Failed to erase HV6 NVS namespace");
+          }
+
 switch:
   - platform: template
     name: "Motor Drivers Enabled"
@@ -77,11 +271,25 @@ switch:
       - lambda: id(hv6_valves).set_drivers_enabled(false);
 
   - platform: template
+    name: "Manual Mode"
+    id: manual_mode
+    icon: "mdi:hand-back-right"
+    entity_category: config
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).is_manual_mode();
+    turn_on_action:
+      - lambda: id(hv6_zones).set_manual_mode(true);
+    turn_off_action:
+      - lambda: id(hv6_zones).set_manual_mode(false);
+
+  - platform: template
     name: "Zone 1 Enabled"
     id: zone_1_enabled
     icon: "mdi:radiator"
     entity_category: config
     optimistic: false
+    restore_mode: DISABLED
     lambda: |-
       return id(hv6_zones).is_zone_enabled(0);
     turn_on_action:
@@ -95,6 +303,7 @@ switch:
     icon: "mdi:radiator"
     entity_category: config
     optimistic: false
+    restore_mode: DISABLED
     lambda: |-
       return id(hv6_zones).is_zone_enabled(1);
     turn_on_action:
@@ -108,6 +317,7 @@ switch:
     icon: "mdi:radiator"
     entity_category: config
     optimistic: false
+    restore_mode: DISABLED
     lambda: |-
       return id(hv6_zones).is_zone_enabled(2);
     turn_on_action:
@@ -121,6 +331,7 @@ switch:
     icon: "mdi:radiator"
     entity_category: config
     optimistic: false
+    restore_mode: DISABLED
     lambda: |-
       return id(hv6_zones).is_zone_enabled(3);
     turn_on_action:
@@ -134,6 +345,7 @@ switch:
     icon: "mdi:radiator"
     entity_category: config
     optimistic: false
+    restore_mode: DISABLED
     lambda: |-
       return id(hv6_zones).is_zone_enabled(4);
     turn_on_action:
@@ -147,6 +359,7 @@ switch:
     icon: "mdi:radiator"
     entity_category: config
     optimistic: false
+    restore_mode: DISABLED
     lambda: |-
       return id(hv6_zones).is_zone_enabled(5);
     turn_on_action:
@@ -175,7 +388,478 @@ number:
           }
           id(hv6_valves).request_position(0, x);
 
+  - platform: template
+    name: "Motor 2 Target Position"
+    id: motor_2_target_position
+    icon: "mdi:tune-vertical"
+    entity_category: config
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 1
+    optimistic: false
+    lambda: |-
+      return id(hv6_valves).get_position(1);
+    set_action:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) return;
+          id(hv6_valves).request_position(1, x);
+
+  - platform: template
+    name: "Motor 3 Target Position"
+    id: motor_3_target_position
+    icon: "mdi:tune-vertical"
+    entity_category: config
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 1
+    optimistic: false
+    lambda: |-
+      return id(hv6_valves).get_position(2);
+    set_action:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) return;
+          id(hv6_valves).request_position(2, x);
+
+  - platform: template
+    name: "Motor 4 Target Position"
+    id: motor_4_target_position
+    icon: "mdi:tune-vertical"
+    entity_category: config
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 1
+    optimistic: false
+    lambda: |-
+      return id(hv6_valves).get_position(3);
+    set_action:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) return;
+          id(hv6_valves).request_position(3, x);
+
+  - platform: template
+    name: "Motor 5 Target Position"
+    id: motor_5_target_position
+    icon: "mdi:tune-vertical"
+    entity_category: config
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 1
+    optimistic: false
+    lambda: |-
+      return id(hv6_valves).get_position(4);
+    set_action:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) return;
+          id(hv6_valves).request_position(4, x);
+
+  - platform: template
+    name: "Motor 6 Target Position"
+    id: motor_6_target_position
+    icon: "mdi:tune-vertical"
+    entity_category: config
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 1
+    optimistic: false
+    lambda: |-
+      return id(hv6_valves).get_position(5);
+    set_action:
+      - lambda: |-
+          if (!id(hv6_valves).are_drivers_enabled()) return;
+          id(hv6_valves).request_position(5, x);
+
+  - platform: template
+    name: "Zone 1 Area M2"
+    id: zone_1_area_m2
+    entity_category: config
+    mode: box
+    unit_of_measurement: "m2"
+    min_value: 1
+    max_value: 120
+    step: 0.1
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_area_m2(0);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_area_m2(0, x);
+
+  - platform: template
+    name: "Zone 2 Area M2"
+    id: zone_2_area_m2
+    entity_category: config
+    mode: box
+    unit_of_measurement: "m2"
+    min_value: 1
+    max_value: 120
+    step: 0.1
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_area_m2(1);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_area_m2(1, x);
+
+  - platform: template
+    name: "Zone 3 Area M2"
+    id: zone_3_area_m2
+    entity_category: config
+    mode: box
+    unit_of_measurement: "m2"
+    min_value: 1
+    max_value: 120
+    step: 0.1
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_area_m2(2);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_area_m2(2, x);
+
+  - platform: template
+    name: "Zone 4 Area M2"
+    id: zone_4_area_m2
+    entity_category: config
+    mode: box
+    unit_of_measurement: "m2"
+    min_value: 1
+    max_value: 120
+    step: 0.1
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_area_m2(3);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_area_m2(3, x);
+
+  - platform: template
+    name: "Zone 5 Area M2"
+    id: zone_5_area_m2
+    entity_category: config
+    mode: box
+    unit_of_measurement: "m2"
+    min_value: 1
+    max_value: 120
+    step: 0.1
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_area_m2(4);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_area_m2(4, x);
+
+  - platform: template
+    name: "Zone 6 Area M2"
+    id: zone_6_area_m2
+    entity_category: config
+    mode: box
+    unit_of_measurement: "m2"
+    min_value: 1
+    max_value: 120
+    step: 0.1
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_area_m2(5);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_area_m2(5, x);
+
+  - platform: template
+    name: "Zone 1 Pipe Spacing Mm"
+    id: zone_1_pipe_spacing_mm
+    entity_category: config
+    mode: box
+    unit_of_measurement: "mm"
+    min_value: 50
+    max_value: 500
+    step: 5
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_pipe_spacing_mm(0);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_pipe_spacing_mm(0, x);
+
+  - platform: template
+    name: "Zone 2 Pipe Spacing Mm"
+    id: zone_2_pipe_spacing_mm
+    entity_category: config
+    mode: box
+    unit_of_measurement: "mm"
+    min_value: 50
+    max_value: 500
+    step: 5
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_pipe_spacing_mm(1);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_pipe_spacing_mm(1, x);
+
+  - platform: template
+    name: "Zone 3 Pipe Spacing Mm"
+    id: zone_3_pipe_spacing_mm
+    entity_category: config
+    mode: box
+    unit_of_measurement: "mm"
+    min_value: 50
+    max_value: 500
+    step: 5
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_pipe_spacing_mm(2);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_pipe_spacing_mm(2, x);
+
+  - platform: template
+    name: "Zone 4 Pipe Spacing Mm"
+    id: zone_4_pipe_spacing_mm
+    entity_category: config
+    mode: box
+    unit_of_measurement: "mm"
+    min_value: 50
+    max_value: 500
+    step: 5
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_pipe_spacing_mm(3);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_pipe_spacing_mm(3, x);
+
+  - platform: template
+    name: "Zone 5 Pipe Spacing Mm"
+    id: zone_5_pipe_spacing_mm
+    entity_category: config
+    mode: box
+    unit_of_measurement: "mm"
+    min_value: 50
+    max_value: 500
+    step: 5
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_pipe_spacing_mm(4);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_pipe_spacing_mm(4, x);
+
+  - platform: template
+    name: "Zone 6 Pipe Spacing Mm"
+    id: zone_6_pipe_spacing_mm
+    entity_category: config
+    mode: box
+    unit_of_measurement: "mm"
+    min_value: 50
+    max_value: 500
+    step: 5
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_pipe_spacing_mm(5);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_pipe_spacing_mm(5, x);
+
+  - platform: template
+    name: "Close Endstop Threshold"
+    id: close_threshold_multiplier
+    icon: "mdi:speedometer"
+    entity_category: config
+    disabled_by_default: false
+    mode: box
+    unit_of_measurement: "x"
+    min_value: 1.1
+    max_value: 3.0
+    step: 0.1
+    optimistic: false
+    lambda: |-
+      return id(hv6_config).get_config().motor.close_current_factor;
+    set_action:
+      - lambda: |-
+          auto cfg = id(hv6_config).get_config();
+          cfg.motor.close_current_factor = x;
+          id(hv6_config).update_motor(cfg.motor);
+          id(hv6_valves).reload_motor_config();
+
+  - platform: template
+    name: "Close Endstop Slope"
+    id: close_slope_threshold
+    icon: "mdi:chart-line-variant"
+    entity_category: config
+    disabled_by_default: false
+    mode: box
+    unit_of_measurement: "mA/s"
+    min_value: 0.1
+    max_value: 5.0
+    step: 0.05
+    optimistic: false
+    lambda: |-
+      return id(hv6_config).get_config().motor.close_slope_threshold_ma_per_s;
+    set_action:
+      - lambda: |-
+          auto cfg = id(hv6_config).get_config();
+          cfg.motor.close_slope_threshold_ma_per_s = x;
+          id(hv6_config).update_motor(cfg.motor);
+          id(hv6_valves).reload_motor_config();
+
+  - platform: template
+    name: "Close Endstop Slope Floor"
+    id: close_slope_current_factor
+    icon: "mdi:current-ac"
+    entity_category: config
+    disabled_by_default: false
+    mode: box
+    unit_of_measurement: "x"
+    min_value: 1.0
+    max_value: 2.5
+    step: 0.1
+    optimistic: false
+    lambda: |-
+      return id(hv6_config).get_config().motor.close_slope_current_factor;
+    set_action:
+      - lambda: |-
+          auto cfg = id(hv6_config).get_config();
+          cfg.motor.close_slope_current_factor = x;
+          id(hv6_config).update_motor(cfg.motor);
+          id(hv6_valves).reload_motor_config();
+
+  - platform: template
+    name: "Open Endstop Threshold"
+    id: open_threshold_multiplier
+    icon: "mdi:speedometer-slow"
+    entity_category: config
+    disabled_by_default: false
+    mode: box
+    unit_of_measurement: "x"
+    min_value: 1.1
+    max_value: 3.0
+    step: 0.1
+    optimistic: false
+    lambda: |-
+      return id(hv6_config).get_config().motor.open_current_factor;
+    set_action:
+      - lambda: |-
+          auto cfg = id(hv6_config).get_config();
+          cfg.motor.open_current_factor = x;
+          id(hv6_config).update_motor(cfg.motor);
+          id(hv6_valves).reload_motor_config();
+
+  - platform: template
+    name: "Open Endstop Slope"
+    id: open_slope_threshold
+    icon: "mdi:chart-line-variant"
+    entity_category: config
+    disabled_by_default: false
+    mode: box
+    unit_of_measurement: "mA/s"
+    min_value: 0.05
+    max_value: 5.0
+    step: 0.05
+    optimistic: false
+    lambda: |-
+      return id(hv6_config).get_config().motor.open_slope_threshold_ma_per_s;
+    set_action:
+      - lambda: |-
+          auto cfg = id(hv6_config).get_config();
+          cfg.motor.open_slope_threshold_ma_per_s = x;
+          id(hv6_config).update_motor(cfg.motor);
+          id(hv6_valves).reload_motor_config();
+
+  - platform: template
+    name: "Open Endstop Slope Floor"
+    id: open_slope_current_factor
+    icon: "mdi:current-ac"
+    entity_category: config
+    disabled_by_default: false
+    mode: box
+    unit_of_measurement: "x"
+    min_value: 1.0
+    max_value: 2.5
+    step: 0.1
+    optimistic: false
+    lambda: |-
+      return id(hv6_config).get_config().motor.open_slope_current_factor;
+    set_action:
+      - lambda: |-
+          auto cfg = id(hv6_config).get_config();
+          cfg.motor.open_slope_current_factor = x;
+          id(hv6_config).update_motor(cfg.motor);
+          id(hv6_valves).reload_motor_config();
+
+  - platform: template
+    name: "Open Endstop Ripple Limit"
+    id: open_ripple_limit_factor
+    icon: "mdi:sine-wave"
+    entity_category: config
+    disabled_by_default: false
+    mode: box
+    unit_of_measurement: "x"
+    min_value: 0.0
+    max_value: 2.0
+    step: 0.1
+    optimistic: false
+    lambda: |-
+      return id(hv6_config).get_config().motor.open_ripple_limit_factor;
+    set_action:
+      - lambda: |-
+          auto cfg = id(hv6_config).get_config();
+          cfg.motor.open_ripple_limit_factor = x;
+          id(hv6_config).update_motor(cfg.motor);
+          id(hv6_valves).reload_motor_config();
+
+  - platform: template
+    name: "Pin Engage Step"
+    id: pin_engage_step
+    icon: "mdi:arrow-collapse-vertical"
+    entity_category: config
+    disabled_by_default: false
+    mode: box
+    unit_of_measurement: "mA"
+    min_value: 1.0
+    max_value: 10.0
+    step: 0.5
+    optimistic: false
+    lambda: |-
+      return id(hv6_config).get_config().motor.pin_engage_step_ma;
+    set_action:
+      - lambda: |-
+          auto cfg = id(hv6_config).get_config();
+          cfg.motor.pin_engage_step_ma = x;
+          id(hv6_config).update_motor(cfg.motor);
+          id(hv6_valves).reload_motor_config();
+
+  - platform: template
+    name: "Pin Engage Margin"
+    id: pin_engage_margin
+    icon: "mdi:arrow-expand-horizontal"
+    entity_category: config
+    disabled_by_default: false
+    mode: box
+    unit_of_measurement: "ripples"
+    min_value: 0
+    max_value: 200
+    step: 10
+    optimistic: false
+    lambda: |-
+      return id(hv6_config).get_config().motor.pin_engage_margin_ripples;
+    set_action:
+      - lambda: |-
+          auto cfg = id(hv6_config).get_config();
+          cfg.motor.pin_engage_margin_ripples = static_cast<uint16_t>(x);
+          id(hv6_config).update_motor(cfg.motor);
+          id(hv6_valves).reload_motor_config();
+
 select:
+  - platform: template
+    name: "Manifold Type"
+    id: manifold_type_select
+    entity_category: config
+    optimistic: false
+    options:
+      - "NO (Normally Open)"
+      - "NC (Normally Closed)"
+    lambda: |-
+      return id(hv6_valves).get_manifold_type() == hv6::ManifoldType::NC
+        ? std::string("NC (Normally Closed)")
+        : std::string("NO (Normally Open)");
+    set_action:
+      - lambda: |-
+          bool nc = x.find("NC") != std::string::npos;
+          id(hv6_valves).set_manifold_type(nc ? hv6::ManifoldType::NC : hv6::ManifoldType::NO);
+
   - platform: template
     name: "Manifold Flow Probe"
     id: manifold_flow_probe_select
@@ -303,3 +987,710 @@ select:
       - lambda: |-
           int probe = static_cast<int>(x[x.size() - 1] - '1');
           id(hv6_zones).set_zone_probe(5, probe);
+
+  - platform: template
+    name: "Zone 1 Pipe Type"
+    id: zone_1_pipe_type
+    entity_category: config
+    optimistic: false
+    options: ["Unknown", "PEX 16mm", "PEX 20mm", "PERT 16mm", "PERT 20mm"]
+    lambda: |-
+      auto t = id(hv6_zones).get_zone_pipe_type(0);
+      if (t == hv6::PipeType::PEX_20X2) return std::string("PEX 20mm");
+      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("PERT 16mm");
+      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("PERT 20mm");
+      return std::string("PEX 16mm");
+    set_action:
+      - lambda: |-
+          hv6::PipeType t = hv6::PipeType::PEX_16X2;
+          if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
+          else if (x == "PERT 16mm") t = hv6::PipeType::ALUPEX_16X2;
+          else if (x == "PERT 20mm") t = hv6::PipeType::ALUPEX_20X2;
+          id(hv6_zones).set_zone_pipe_type(0, t);
+
+  - platform: template
+    name: "Zone 2 Pipe Type"
+    id: zone_2_pipe_type
+    entity_category: config
+    optimistic: false
+    options: ["Unknown", "PEX 16mm", "PEX 20mm", "PERT 16mm", "PERT 20mm"]
+    lambda: |-
+      auto t = id(hv6_zones).get_zone_pipe_type(1);
+      if (t == hv6::PipeType::PEX_20X2) return std::string("PEX 20mm");
+      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("PERT 16mm");
+      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("PERT 20mm");
+      return std::string("PEX 16mm");
+    set_action:
+      - lambda: |-
+          hv6::PipeType t = hv6::PipeType::PEX_16X2;
+          if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
+          else if (x == "PERT 16mm") t = hv6::PipeType::ALUPEX_16X2;
+          else if (x == "PERT 20mm") t = hv6::PipeType::ALUPEX_20X2;
+          id(hv6_zones).set_zone_pipe_type(1, t);
+
+  - platform: template
+    name: "Zone 3 Pipe Type"
+    id: zone_3_pipe_type
+    entity_category: config
+    optimistic: false
+    options: ["Unknown", "PEX 16mm", "PEX 20mm", "PERT 16mm", "PERT 20mm"]
+    lambda: |-
+      auto t = id(hv6_zones).get_zone_pipe_type(2);
+      if (t == hv6::PipeType::PEX_20X2) return std::string("PEX 20mm");
+      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("PERT 16mm");
+      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("PERT 20mm");
+      return std::string("PEX 16mm");
+    set_action:
+      - lambda: |-
+          hv6::PipeType t = hv6::PipeType::PEX_16X2;
+          if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
+          else if (x == "PERT 16mm") t = hv6::PipeType::ALUPEX_16X2;
+          else if (x == "PERT 20mm") t = hv6::PipeType::ALUPEX_20X2;
+          id(hv6_zones).set_zone_pipe_type(2, t);
+
+  - platform: template
+    name: "Zone 4 Pipe Type"
+    id: zone_4_pipe_type
+    entity_category: config
+    optimistic: false
+    options: ["Unknown", "PEX 16mm", "PEX 20mm", "PERT 16mm", "PERT 20mm"]
+    lambda: |-
+      auto t = id(hv6_zones).get_zone_pipe_type(3);
+      if (t == hv6::PipeType::PEX_20X2) return std::string("PEX 20mm");
+      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("PERT 16mm");
+      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("PERT 20mm");
+      return std::string("PEX 16mm");
+    set_action:
+      - lambda: |-
+          hv6::PipeType t = hv6::PipeType::PEX_16X2;
+          if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
+          else if (x == "PERT 16mm") t = hv6::PipeType::ALUPEX_16X2;
+          else if (x == "PERT 20mm") t = hv6::PipeType::ALUPEX_20X2;
+          id(hv6_zones).set_zone_pipe_type(3, t);
+
+  - platform: template
+    name: "Zone 5 Pipe Type"
+    id: zone_5_pipe_type
+    entity_category: config
+    optimistic: false
+    options: ["Unknown", "PEX 16mm", "PEX 20mm", "PERT 16mm", "PERT 20mm"]
+    lambda: |-
+      auto t = id(hv6_zones).get_zone_pipe_type(4);
+      if (t == hv6::PipeType::PEX_20X2) return std::string("PEX 20mm");
+      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("PERT 16mm");
+      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("PERT 20mm");
+      return std::string("PEX 16mm");
+    set_action:
+      - lambda: |-
+          hv6::PipeType t = hv6::PipeType::PEX_16X2;
+          if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
+          else if (x == "PERT 16mm") t = hv6::PipeType::ALUPEX_16X2;
+          else if (x == "PERT 20mm") t = hv6::PipeType::ALUPEX_20X2;
+          id(hv6_zones).set_zone_pipe_type(4, t);
+
+  - platform: template
+    name: "Zone 6 Pipe Type"
+    id: zone_6_pipe_type
+    entity_category: config
+    optimistic: false
+    options: ["Unknown", "PEX 16mm", "PEX 20mm", "PERT 16mm", "PERT 20mm"]
+    lambda: |-
+      auto t = id(hv6_zones).get_zone_pipe_type(5);
+      if (t == hv6::PipeType::PEX_20X2) return std::string("PEX 20mm");
+      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("PERT 16mm");
+      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("PERT 20mm");
+      return std::string("PEX 16mm");
+    set_action:
+      - lambda: |-
+          hv6::PipeType t = hv6::PipeType::PEX_16X2;
+          if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
+          else if (x == "PERT 16mm") t = hv6::PipeType::ALUPEX_16X2;
+          else if (x == "PERT 20mm") t = hv6::PipeType::ALUPEX_20X2;
+          id(hv6_zones).set_zone_pipe_type(5, t);
+
+  - platform: template
+    name: "Zone 1 Temp Source"
+    id: zone_1_temp_source
+    entity_category: config
+    optimistic: false
+    options: ["Local Probe", "Zigbee MQTT", "BLE Sensor"]
+    lambda: |-
+      auto src = id(hv6_zones).get_zone_temp_source(0);
+      if (src == hv6::TempSource::MQTT_EXTERNAL) return std::string("Zigbee MQTT");
+      if (src == hv6::TempSource::BLE_SENSOR) return std::string("BLE Sensor");
+      return std::string("Local Probe");
+    set_action:
+      - lambda: |-
+          hv6::TempSource src = hv6::TempSource::LOCAL_PROBE;
+          if (x == "Zigbee MQTT") src = hv6::TempSource::MQTT_EXTERNAL;
+          else if (x == "BLE Sensor") src = hv6::TempSource::BLE_SENSOR;
+          id(hv6_zones).set_zone_temp_source(0, src);
+
+  - platform: template
+    name: "Zone 2 Temp Source"
+    id: zone_2_temp_source
+    entity_category: config
+    optimistic: false
+    options: ["Local Probe", "Zigbee MQTT", "BLE Sensor"]
+    lambda: |-
+      auto src = id(hv6_zones).get_zone_temp_source(1);
+      if (src == hv6::TempSource::MQTT_EXTERNAL) return std::string("Zigbee MQTT");
+      if (src == hv6::TempSource::BLE_SENSOR) return std::string("BLE Sensor");
+      return std::string("Local Probe");
+    set_action:
+      - lambda: |-
+          hv6::TempSource src = hv6::TempSource::LOCAL_PROBE;
+          if (x == "Zigbee MQTT") src = hv6::TempSource::MQTT_EXTERNAL;
+          else if (x == "BLE Sensor") src = hv6::TempSource::BLE_SENSOR;
+          id(hv6_zones).set_zone_temp_source(1, src);
+
+  - platform: template
+    name: "Zone 3 Temp Source"
+    id: zone_3_temp_source
+    entity_category: config
+    optimistic: false
+    options: ["Local Probe", "Zigbee MQTT", "BLE Sensor"]
+    lambda: |-
+      auto src = id(hv6_zones).get_zone_temp_source(2);
+      if (src == hv6::TempSource::MQTT_EXTERNAL) return std::string("Zigbee MQTT");
+      if (src == hv6::TempSource::BLE_SENSOR) return std::string("BLE Sensor");
+      return std::string("Local Probe");
+    set_action:
+      - lambda: |-
+          hv6::TempSource src = hv6::TempSource::LOCAL_PROBE;
+          if (x == "Zigbee MQTT") src = hv6::TempSource::MQTT_EXTERNAL;
+          else if (x == "BLE Sensor") src = hv6::TempSource::BLE_SENSOR;
+          id(hv6_zones).set_zone_temp_source(2, src);
+
+  - platform: template
+    name: "Zone 4 Temp Source"
+    id: zone_4_temp_source
+    entity_category: config
+    optimistic: false
+    options: ["Local Probe", "Zigbee MQTT", "BLE Sensor"]
+    lambda: |-
+      auto src = id(hv6_zones).get_zone_temp_source(3);
+      if (src == hv6::TempSource::MQTT_EXTERNAL) return std::string("Zigbee MQTT");
+      if (src == hv6::TempSource::BLE_SENSOR) return std::string("BLE Sensor");
+      return std::string("Local Probe");
+    set_action:
+      - lambda: |-
+          hv6::TempSource src = hv6::TempSource::LOCAL_PROBE;
+          if (x == "Zigbee MQTT") src = hv6::TempSource::MQTT_EXTERNAL;
+          else if (x == "BLE Sensor") src = hv6::TempSource::BLE_SENSOR;
+          id(hv6_zones).set_zone_temp_source(3, src);
+
+  - platform: template
+    name: "Zone 5 Temp Source"
+    id: zone_5_temp_source
+    entity_category: config
+    optimistic: false
+    options: ["Local Probe", "Zigbee MQTT", "BLE Sensor"]
+    lambda: |-
+      auto src = id(hv6_zones).get_zone_temp_source(4);
+      if (src == hv6::TempSource::MQTT_EXTERNAL) return std::string("Zigbee MQTT");
+      if (src == hv6::TempSource::BLE_SENSOR) return std::string("BLE Sensor");
+      return std::string("Local Probe");
+    set_action:
+      - lambda: |-
+          hv6::TempSource src = hv6::TempSource::LOCAL_PROBE;
+          if (x == "Zigbee MQTT") src = hv6::TempSource::MQTT_EXTERNAL;
+          else if (x == "BLE Sensor") src = hv6::TempSource::BLE_SENSOR;
+          id(hv6_zones).set_zone_temp_source(4, src);
+
+  - platform: template
+    name: "Zone 6 Temp Source"
+    id: zone_6_temp_source
+    entity_category: config
+    optimistic: false
+    options: ["Local Probe", "Zigbee MQTT", "BLE Sensor"]
+    lambda: |-
+      auto src = id(hv6_zones).get_zone_temp_source(5);
+      if (src == hv6::TempSource::MQTT_EXTERNAL) return std::string("Zigbee MQTT");
+      if (src == hv6::TempSource::BLE_SENSOR) return std::string("BLE Sensor");
+      return std::string("Local Probe");
+    set_action:
+      - lambda: |-
+          hv6::TempSource src = hv6::TempSource::LOCAL_PROBE;
+          if (x == "Zigbee MQTT") src = hv6::TempSource::MQTT_EXTERNAL;
+          else if (x == "BLE Sensor") src = hv6::TempSource::BLE_SENSOR;
+          id(hv6_zones).set_zone_temp_source(5, src);
+
+  - platform: template
+    name: "Zone 1 Sync To"
+    id: zone_1_sync_to
+    entity_category: config
+    icon: "mdi:link-variant"
+    optimistic: false
+    options: ["None", "Zone 2", "Zone 3", "Zone 4", "Zone 5", "Zone 6"]
+    lambda: |-
+      int8_t s = id(hv6_zones).get_zone_sync(0);
+      if (s < 0) return std::string("None");
+      return std::string("Zone ") + std::to_string(s + 1);
+    set_action:
+      - lambda: |-
+          int8_t z = -1;
+          if (x.size() >= 6 && x[0] == 'Z') z = static_cast<int8_t>(x[5] - '1');
+          id(hv6_zones).set_zone_sync(0, z);
+
+  - platform: template
+    name: "Zone 2 Sync To"
+    id: zone_2_sync_to
+    entity_category: config
+    icon: "mdi:link-variant"
+    optimistic: false
+    options: ["None", "Zone 1", "Zone 3", "Zone 4", "Zone 5", "Zone 6"]
+    lambda: |-
+      int8_t s = id(hv6_zones).get_zone_sync(1);
+      if (s < 0) return std::string("None");
+      return std::string("Zone ") + std::to_string(s + 1);
+    set_action:
+      - lambda: |-
+          int8_t z = -1;
+          if (x.size() >= 6 && x[0] == 'Z') z = static_cast<int8_t>(x[5] - '1');
+          id(hv6_zones).set_zone_sync(1, z);
+
+  - platform: template
+    name: "Zone 3 Sync To"
+    id: zone_3_sync_to
+    entity_category: config
+    icon: "mdi:link-variant"
+    optimistic: false
+    options: ["None", "Zone 1", "Zone 2", "Zone 4", "Zone 5", "Zone 6"]
+    lambda: |-
+      int8_t s = id(hv6_zones).get_zone_sync(2);
+      if (s < 0) return std::string("None");
+      return std::string("Zone ") + std::to_string(s + 1);
+    set_action:
+      - lambda: |-
+          int8_t z = -1;
+          if (x.size() >= 6 && x[0] == 'Z') z = static_cast<int8_t>(x[5] - '1');
+          id(hv6_zones).set_zone_sync(2, z);
+
+  - platform: template
+    name: "Zone 4 Sync To"
+    id: zone_4_sync_to
+    entity_category: config
+    icon: "mdi:link-variant"
+    optimistic: false
+    options: ["None", "Zone 1", "Zone 2", "Zone 3", "Zone 5", "Zone 6"]
+    lambda: |-
+      int8_t s = id(hv6_zones).get_zone_sync(3);
+      if (s < 0) return std::string("None");
+      return std::string("Zone ") + std::to_string(s + 1);
+    set_action:
+      - lambda: |-
+          int8_t z = -1;
+          if (x.size() >= 6 && x[0] == 'Z') z = static_cast<int8_t>(x[5] - '1');
+          id(hv6_zones).set_zone_sync(3, z);
+
+  - platform: template
+    name: "Zone 5 Sync To"
+    id: zone_5_sync_to
+    entity_category: config
+    icon: "mdi:link-variant"
+    optimistic: false
+    options: ["None", "Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 6"]
+    lambda: |-
+      int8_t s = id(hv6_zones).get_zone_sync(4);
+      if (s < 0) return std::string("None");
+      return std::string("Zone ") + std::to_string(s + 1);
+    set_action:
+      - lambda: |-
+          int8_t z = -1;
+          if (x.size() >= 6 && x[0] == 'Z') z = static_cast<int8_t>(x[5] - '1');
+          id(hv6_zones).set_zone_sync(4, z);
+
+  - platform: template
+    name: "Zone 6 Sync To"
+    id: zone_6_sync_to
+    entity_category: config
+    icon: "mdi:link-variant"
+    optimistic: false
+    options: ["None", "Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5"]
+    lambda: |-
+      int8_t s = id(hv6_zones).get_zone_sync(5);
+      if (s < 0) return std::string("None");
+      return std::string("Zone ") + std::to_string(s + 1);
+    set_action:
+      - lambda: |-
+          int8_t z = -1;
+          if (x.size() >= 6 && x[0] == 'Z') z = static_cast<int8_t>(x[5] - '1');
+          id(hv6_zones).set_zone_sync(5, z);
+
+text:
+  - platform: template
+    name: "Zone 1 Zigbee Device"
+    id: zone_1_zigbee_device
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 47
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_mqtt_device(0);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_mqtt_device(0, x);
+
+  - platform: template
+    name: "Zone 2 Zigbee Device"
+    id: zone_2_zigbee_device
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 47
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_mqtt_device(1);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_mqtt_device(1, x);
+
+  - platform: template
+    name: "Zone 3 Zigbee Device"
+    id: zone_3_zigbee_device
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 47
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_mqtt_device(2);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_mqtt_device(2, x);
+
+  - platform: template
+    name: "Zone 4 Zigbee Device"
+    id: zone_4_zigbee_device
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 47
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_mqtt_device(3);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_mqtt_device(3, x);
+
+  - platform: template
+    name: "Zone 5 Zigbee Device"
+    id: zone_5_zigbee_device
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 47
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_mqtt_device(4);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_mqtt_device(4, x);
+
+  - platform: template
+    name: "Zone 6 Zigbee Device"
+    id: zone_6_zigbee_device
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 47
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_mqtt_device(5);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_mqtt_device(5, x);
+
+  - platform: template
+    name: "Zone 1 BLE MAC"
+    id: zone_1_ble_mac
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 17
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_ble_mac(0);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_ble_mac(0, x);
+
+  - platform: template
+    name: "Zone 2 BLE MAC"
+    id: zone_2_ble_mac
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 17
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_ble_mac(1);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_ble_mac(1, x);
+
+  - platform: template
+    name: "Zone 3 BLE MAC"
+    id: zone_3_ble_mac
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 17
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_ble_mac(2);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_ble_mac(2, x);
+
+  - platform: template
+    name: "Zone 4 BLE MAC"
+    id: zone_4_ble_mac
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 17
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_ble_mac(3);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_ble_mac(3, x);
+
+  - platform: template
+    name: "Zone 5 BLE MAC"
+    id: zone_5_ble_mac
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 17
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_ble_mac(4);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_ble_mac(4, x);
+
+  - platform: template
+    name: "Zone 6 BLE MAC"
+    id: zone_6_ble_mac
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 17
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_zone_ble_mac(5);
+    set_action:
+      - lambda: id(hv6_zones).set_zone_ble_mac(5, x);
+
+  - platform: template
+    name: "Zone 1 Exterior Walls"
+    id: zone_1_exterior_walls
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 7
+    optimistic: false
+    lambda: |-
+      uint8_t w = id(hv6_zones).get_zone_exterior_walls(0);
+      std::string s;
+      if (w & hv6::ExteriorWall::NORTH) s += "N";
+      if (w & hv6::ExteriorWall::EAST)  s += "E";
+      if (w & hv6::ExteriorWall::SOUTH) s += "S";
+      if (w & hv6::ExteriorWall::WEST)  s += "W";
+      return s.empty() ? std::string("None") : s;
+    set_action:
+      - lambda: |-
+          uint8_t w = 0;
+          for (char c : x) {
+            if (c == 'N' || c == 'n') w |= hv6::ExteriorWall::NORTH;
+            if (c == 'E' || c == 'e') w |= hv6::ExteriorWall::EAST;
+            if (c == 'S' || c == 's') w |= hv6::ExteriorWall::SOUTH;
+            if (c == 'W' || c == 'w') w |= hv6::ExteriorWall::WEST;
+          }
+          id(hv6_zones).set_zone_exterior_walls(0, w);
+
+  - platform: template
+    name: "Zone 2 Exterior Walls"
+    id: zone_2_exterior_walls
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 7
+    optimistic: false
+    lambda: |-
+      uint8_t w = id(hv6_zones).get_zone_exterior_walls(1);
+      std::string s;
+      if (w & hv6::ExteriorWall::NORTH) s += "N";
+      if (w & hv6::ExteriorWall::EAST)  s += "E";
+      if (w & hv6::ExteriorWall::SOUTH) s += "S";
+      if (w & hv6::ExteriorWall::WEST)  s += "W";
+      return s.empty() ? std::string("None") : s;
+    set_action:
+      - lambda: |-
+          uint8_t w = 0;
+          for (char c : x) {
+            if (c == 'N' || c == 'n') w |= hv6::ExteriorWall::NORTH;
+            if (c == 'E' || c == 'e') w |= hv6::ExteriorWall::EAST;
+            if (c == 'S' || c == 's') w |= hv6::ExteriorWall::SOUTH;
+            if (c == 'W' || c == 'w') w |= hv6::ExteriorWall::WEST;
+          }
+          id(hv6_zones).set_zone_exterior_walls(1, w);
+
+  - platform: template
+    name: "Zone 3 Exterior Walls"
+    id: zone_3_exterior_walls
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 7
+    optimistic: false
+    lambda: |-
+      uint8_t w = id(hv6_zones).get_zone_exterior_walls(2);
+      std::string s;
+      if (w & hv6::ExteriorWall::NORTH) s += "N";
+      if (w & hv6::ExteriorWall::EAST)  s += "E";
+      if (w & hv6::ExteriorWall::SOUTH) s += "S";
+      if (w & hv6::ExteriorWall::WEST)  s += "W";
+      return s.empty() ? std::string("None") : s;
+    set_action:
+      - lambda: |-
+          uint8_t w = 0;
+          for (char c : x) {
+            if (c == 'N' || c == 'n') w |= hv6::ExteriorWall::NORTH;
+            if (c == 'E' || c == 'e') w |= hv6::ExteriorWall::EAST;
+            if (c == 'S' || c == 's') w |= hv6::ExteriorWall::SOUTH;
+            if (c == 'W' || c == 'w') w |= hv6::ExteriorWall::WEST;
+          }
+          id(hv6_zones).set_zone_exterior_walls(2, w);
+
+  - platform: template
+    name: "Zone 4 Exterior Walls"
+    id: zone_4_exterior_walls
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 7
+    optimistic: false
+    lambda: |-
+      uint8_t w = id(hv6_zones).get_zone_exterior_walls(3);
+      std::string s;
+      if (w & hv6::ExteriorWall::NORTH) s += "N";
+      if (w & hv6::ExteriorWall::EAST)  s += "E";
+      if (w & hv6::ExteriorWall::SOUTH) s += "S";
+      if (w & hv6::ExteriorWall::WEST)  s += "W";
+      return s.empty() ? std::string("None") : s;
+    set_action:
+      - lambda: |-
+          uint8_t w = 0;
+          for (char c : x) {
+            if (c == 'N' || c == 'n') w |= hv6::ExteriorWall::NORTH;
+            if (c == 'E' || c == 'e') w |= hv6::ExteriorWall::EAST;
+            if (c == 'S' || c == 's') w |= hv6::ExteriorWall::SOUTH;
+            if (c == 'W' || c == 'w') w |= hv6::ExteriorWall::WEST;
+          }
+          id(hv6_zones).set_zone_exterior_walls(3, w);
+
+  - platform: template
+    name: "Zone 5 Exterior Walls"
+    id: zone_5_exterior_walls
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 7
+    optimistic: false
+    lambda: |-
+      uint8_t w = id(hv6_zones).get_zone_exterior_walls(4);
+      std::string s;
+      if (w & hv6::ExteriorWall::NORTH) s += "N";
+      if (w & hv6::ExteriorWall::EAST)  s += "E";
+      if (w & hv6::ExteriorWall::SOUTH) s += "S";
+      if (w & hv6::ExteriorWall::WEST)  s += "W";
+      return s.empty() ? std::string("None") : s;
+    set_action:
+      - lambda: |-
+          uint8_t w = 0;
+          for (char c : x) {
+            if (c == 'N' || c == 'n') w |= hv6::ExteriorWall::NORTH;
+            if (c == 'E' || c == 'e') w |= hv6::ExteriorWall::EAST;
+            if (c == 'S' || c == 's') w |= hv6::ExteriorWall::SOUTH;
+            if (c == 'W' || c == 'w') w |= hv6::ExteriorWall::WEST;
+          }
+          id(hv6_zones).set_zone_exterior_walls(4, w);
+
+  - platform: template
+    name: "Zone 6 Exterior Walls"
+    id: zone_6_exterior_walls
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 7
+    optimistic: false
+    lambda: |-
+      uint8_t w = id(hv6_zones).get_zone_exterior_walls(5);
+      std::string s;
+      if (w & hv6::ExteriorWall::NORTH) s += "N";
+      if (w & hv6::ExteriorWall::EAST)  s += "E";
+      if (w & hv6::ExteriorWall::SOUTH) s += "S";
+      if (w & hv6::ExteriorWall::WEST)  s += "W";
+      return s.empty() ? std::string("None") : s;
+    set_action:
+      - lambda: |-
+          uint8_t w = 0;
+          for (char c : x) {
+            if (c == 'N' || c == 'n') w |= hv6::ExteriorWall::NORTH;
+            if (c == 'E' || c == 'e') w |= hv6::ExteriorWall::EAST;
+            if (c == 'S' || c == 's') w |= hv6::ExteriorWall::SOUTH;
+            if (c == 'W' || c == 'w') w |= hv6::ExteriorWall::WEST;
+          }
+          id(hv6_zones).set_zone_exterior_walls(5, w);
+
+  # ---------------------------------------------------------------------------
+  # MQTT Broker Configuration (NVS-persisted overrides)
+  # ---------------------------------------------------------------------------
+  - platform: template
+    name: "MQTT Broker"
+    id: mqtt_broker_host
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 63
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_mqtt_broker();
+    set_action:
+      - lambda: id(hv6_zones).set_mqtt_broker(x);
+
+  - platform: template
+    name: "MQTT Port"
+    id: mqtt_broker_port
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 5
+    optimistic: false
+    lambda: |-
+      uint16_t p = id(hv6_zones).get_mqtt_port();
+      return p > 0 ? std::to_string(p) : std::string("");
+    set_action:
+      - lambda: |-
+          uint16_t p = x.empty() ? 0 : static_cast<uint16_t>(std::stoi(x));
+          id(hv6_zones).set_mqtt_port(p);
+
+  - platform: template
+    name: "MQTT Username"
+    id: mqtt_broker_username
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 47
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_mqtt_username();
+    set_action:
+      - lambda: id(hv6_zones).set_mqtt_username(x);
+
+  - platform: template
+    name: "MQTT Password"
+    id: mqtt_broker_password
+    entity_category: config
+    mode: text
+    min_length: 0
+    max_length: 47
+    optimistic: false
+    lambda: |-
+      return id(hv6_zones).get_mqtt_password();
+    set_action:
+      - lambda: id(hv6_zones).set_mqtt_password(x);

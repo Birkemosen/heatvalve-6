@@ -38,6 +38,106 @@ sensor:
     lambda: |-
       return static_cast<float>(id(hv6_valves).get_telemetry(0).learned_close_ripples);
 
+  - platform: template
+    name: "Motor 2 Learned Open Ripples"
+    id: motor_2_learned_open_ripples
+    unit_of_measurement: "ripples"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return static_cast<float>(id(hv6_valves).get_telemetry(1).learned_open_ripples);
+
+  - platform: template
+    name: "Motor 2 Learned Close Ripples"
+    id: motor_2_learned_close_ripples
+    unit_of_measurement: "ripples"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return static_cast<float>(id(hv6_valves).get_telemetry(1).learned_close_ripples);
+
+  - platform: template
+    name: "Motor 3 Learned Open Ripples"
+    id: motor_3_learned_open_ripples
+    unit_of_measurement: "ripples"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return static_cast<float>(id(hv6_valves).get_telemetry(2).learned_open_ripples);
+
+  - platform: template
+    name: "Motor 3 Learned Close Ripples"
+    id: motor_3_learned_close_ripples
+    unit_of_measurement: "ripples"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return static_cast<float>(id(hv6_valves).get_telemetry(2).learned_close_ripples);
+
+  - platform: template
+    name: "Motor 4 Learned Open Ripples"
+    id: motor_4_learned_open_ripples
+    unit_of_measurement: "ripples"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return static_cast<float>(id(hv6_valves).get_telemetry(3).learned_open_ripples);
+
+  - platform: template
+    name: "Motor 4 Learned Close Ripples"
+    id: motor_4_learned_close_ripples
+    unit_of_measurement: "ripples"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return static_cast<float>(id(hv6_valves).get_telemetry(3).learned_close_ripples);
+
+  - platform: template
+    name: "Motor 5 Learned Open Ripples"
+    id: motor_5_learned_open_ripples
+    unit_of_measurement: "ripples"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return static_cast<float>(id(hv6_valves).get_telemetry(4).learned_open_ripples);
+
+  - platform: template
+    name: "Motor 5 Learned Close Ripples"
+    id: motor_5_learned_close_ripples
+    unit_of_measurement: "ripples"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return static_cast<float>(id(hv6_valves).get_telemetry(4).learned_close_ripples);
+
+  - platform: template
+    name: "Motor 6 Learned Open Ripples"
+    id: motor_6_learned_open_ripples
+    unit_of_measurement: "ripples"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return static_cast<float>(id(hv6_valves).get_telemetry(5).learned_open_ripples);
+
+  - platform: template
+    name: "Motor 6 Learned Close Ripples"
+    id: motor_6_learned_close_ripples
+    unit_of_measurement: "ripples"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return static_cast<float>(id(hv6_valves).get_telemetry(5).learned_close_ripples);
+
   - platform: wifi_signal
     name: "WiFi Signal"
     id: wifi_signal_dbm

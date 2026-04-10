@@ -10,7 +10,7 @@ PORT ?=
 AUTO_PORT := $(strip $(shell ls /dev/cu.usbmodem* /dev/cu.usbserial* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbserial* 2>/dev/null | head -n 1))
 SERIAL_PORT := $(if $(PORT),$(PORT),$(AUTO_PORT))
 
-.PHONY: help check config build deploy ota logs monitor erase clean
+.PHONY: help check config build deploy ota logs monitor erase erase-nvs clean
 
 help:
 	@echo "HeatValve-6 ESPHome tasks"
@@ -21,6 +21,7 @@ help:
 	@echo "  make logs          Stream logs from HOST"
 	@echo "  make monitor       Open serial monitor on PORT"
 	@echo "  make erase         Erase flash on PORT"
+	@echo "  make erase-nvs     Erase NVS partition only (clears calibration data)"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make build"
@@ -83,6 +84,15 @@ erase: check
 	fi
 	@echo "Using serial port: $(SERIAL_PORT)"
 	$(PIO) run -d $(BUILD_ROOT) -t erase --upload-port $(SERIAL_PORT)
+
+erase-nvs: check
+	@if [ -z "$(SERIAL_PORT)" ]; then \
+		echo "No serial port detected. Use PORT=/dev/cu.usbmodemXXXX"; \
+		exit 1; \
+	fi
+	@echo "Erasing NVS partition on $(SERIAL_PORT)..."
+	python3 -m esptool --port $(SERIAL_PORT) erase_region 0x9000 0x6000
+	@echo "NVS erased. Calibration data cleared — device will need recalibration."
 
 clean:
 	rm -rf .esphome/build

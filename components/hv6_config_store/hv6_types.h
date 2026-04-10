@@ -91,6 +91,31 @@ enum class HeatingProfile : uint8_t {
   DISTRICT_HEATING = 2,
 };
 
+enum class ManifoldType : uint8_t {
+  NO = 0,
+  NC = 1,
+};
+
+enum class TempSource : uint8_t {
+  LOCAL_PROBE = 0,
+  MQTT_EXTERNAL = 1,
+  BLE_SENSOR = 2,
+};
+
+/// What the zone's local DS18B20 probe measures.
+enum class ProbeRole : uint8_t {
+  ROOM_TEMPERATURE = 0,   ///< Measures room/air temperature (used as control input)
+  RETURN_WATER = 1,       ///< Measures return-pipe water temperature (enables dynamic balancing)
+};
+
+namespace ExteriorWall {
+  static constexpr uint8_t NONE  = 0;
+  static constexpr uint8_t NORTH = 1 << 0;
+  static constexpr uint8_t EAST  = 1 << 1;
+  static constexpr uint8_t SOUTH = 1 << 2;
+  static constexpr uint8_t WEST  = 1 << 3;
+}  // namespace ExteriorWall
+
 // =============================================================================
 // Configuration Structs
 // =============================================================================
@@ -110,6 +135,9 @@ struct ZoneConfig {
   float cooling_delta_c = 5.0f;
   float concrete_thickness_mm = 50.0f;
   char name[16] = "";
+  uint8_t exterior_walls = ExteriorWall::NONE;  // Bitmask: N|E|S|W
+  ProbeRole probe_role = ProbeRole::ROOM_TEMPERATURE;
+  int8_t sync_to_zone = -1;  ///< -1 = independent, 0–5 = synced to that zone (shares setpoint + avg temp)
 };
 
 struct ControlConfig {
@@ -128,6 +156,35 @@ struct ProbeConfig {
   int8_t zone_return_probe[NUM_ZONES] = {2, 3, 4, 5, 6, 7};
 };
 
+static constexpr uint8_t MQTT_DEVICE_NAME_LEN = 48;
+static constexpr uint8_t BLE_MAC_LEN = 18;  // "AA:BB:CC:DD:EE:FF" + null
+
+struct MqttTempConfig {
+  TempSource zone_temp_source[NUM_ZONES] = {};
+  char zone_mqtt_device[NUM_ZONES][MQTT_DEVICE_NAME_LEN] = {};
+  char zone_ble_mac[NUM_ZONES][BLE_MAC_LEN] = {};
+};
+
+struct BalancingConfig {
+  bool dynamic_balancing_enabled = false;   ///< Use measured return temps for balance factors
+  bool modulating_heat_source = false;      ///< True when heat source can modulate flow temp (Helios-6/Ecodan)
+  float minimum_flow_pct = 15.0f;           ///< Per-zone minimum valve opening (only active with modulating source)
+  float flow_increase_threshold_pct = 80.0f;///< Request higher flow temp when avg zone opening exceeds this
+  float flow_decrease_threshold_pct = 30.0f;///< Request lower flow temp when avg zone opening drops below this
+  float target_delta_t_c = 5.0f;            ///< Target ΔT (flow − return) for dynamic balancing
+  float damping_factor = 0.3f;              ///< EMA damping for balance factor updates (0..1, lower = slower)
+};
+
+static constexpr uint8_t MQTT_BROKER_LEN = 64;
+static constexpr uint8_t MQTT_CRED_LEN = 48;
+
+struct MqttBrokerConfig {
+  char broker[MQTT_BROKER_LEN] = "";   ///< MQTT broker hostname/IP (empty = use YAML default)
+  uint16_t port = 0;                     ///< MQTT broker port (0 = use YAML default)
+  char username[MQTT_CRED_LEN] = "";   ///< MQTT username (empty = use YAML default)
+  char password[MQTT_CRED_LEN] = "";   ///< MQTT password (empty = use YAML default)
+};
+
 struct PIDParams {
   float kp = 5.0f;
   float ki = 0.005f;
@@ -140,7 +197,19 @@ struct MotorConfig {
   uint8_t pwm_hold_duty_pct = 70;
   uint32_t pwm_period_ms = 40;
   uint32_t max_runtime_s = 65;
-  float current_factor_high = 1.7f;
+  // Close-direction endstop (higher current at mechanical stop)
+  float close_current_factor = 1.8f;
+  float close_slope_threshold_ma_per_s = 0.6f;
+  float close_slope_current_factor = 1.3f;
+  // Open-direction endstop (gentler ramp — spring assist)
+  float open_current_factor = 1.2f;
+  float open_slope_threshold_ma_per_s = 0.15f;
+  float open_slope_current_factor = 1.3f;
+  // Ripple safety limit for opening: learned_open_ripples × factor (0 = disabled)
+  float open_ripple_limit_factor = 1.2f;
+  // Pin engagement detection (calibration)
+  float pin_engage_step_ma = 3.0f;              // Current increase to detect pin contact
+  uint16_t pin_engage_margin_ripples = 50;       // Offset toward open from detected point
   float low_current_threshold_ma = 5.0f;
   uint32_t low_current_window_ms = 1200;
   uint32_t calibration_min_travel_ms = 3000;
@@ -171,6 +240,7 @@ struct MotorTelemetry {
   bool presence_known = false;
   float mean_current_ma = 20.0f;
   float current_position_pct = 0.0f;
+  uint32_t pin_engage_close_ripples = 0;  // Ripples from open end at pin contact (close pass)
 };
 
 struct ZoneSnapshot {
@@ -185,6 +255,8 @@ struct ZoneSnapshot {
   float flow_lh = 0.0f;
   float floor_surface_temp_c = 0.0f;
   bool pipe_length_warning = false;
+  float return_temp_c = NAN;          ///< Measured return water temperature (when probe_role == RETURN_WATER)
+  float measured_delta_t_c = NAN;     ///< Measured ΔT (flow − return)
 };
 
 struct SystemSnapshot {
@@ -193,6 +265,8 @@ struct SystemSnapshot {
   float avg_valve_pct = 0.0f;
   float manifold_flow_temp_c = NAN;
   float manifold_return_temp_c = NAN;
+  bool flow_temp_increase_requested = false;  ///< Avg opening > threshold → need higher flow temp
+  bool flow_temp_decrease_requested = false;  ///< Avg opening < threshold → can lower flow temp
   uint32_t uptime_s = 0;
   uint32_t free_heap = 0;
   uint32_t cycle_count = 0;
@@ -205,13 +279,22 @@ struct SystemConfig {
   float supply_temp_c = 35.0f;
 };
 
+/// Bump this whenever a struct layout or default value changes to force
+/// NVS-stored config to be discarded in favour of fresh C++ defaults.
+static constexpr uint32_t CONFIG_VERSION = 3;
+
 struct DeviceConfig {
+  uint32_t config_version = CONFIG_VERSION;
   SystemConfig system;
   ZoneConfig zones[NUM_ZONES];
   ControlConfig control;
   ProbeConfig probes;
   PIDParams pid;
   MotorConfig motor;
+  ManifoldType manifold_type = ManifoldType::NO;
+  MqttTempConfig mqtt_temp;
+  BalancingConfig balancing;
+  MqttBrokerConfig mqtt_broker;
 };
 
 // =============================================================================

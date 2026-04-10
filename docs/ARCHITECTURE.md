@@ -146,6 +146,6 @@ All hardware control is in `core/` and `boards/`:
 
 - **Motor Control**: 6x DRV8215 I2C H-bridges with shared IPROPI ADC current sensing
 - **Constraint**: One motor at a time (shared IPROPI, firmware mutex)
-- **Endstop Detection**: Software overcurrent + hardware nFAULT
+- **Endstop Detection**: Four-path software detection (threshold, slope, hard cap, ripple limit) with per-direction parameters — see [endstop_detection.md](endstop_detection.md)
 - **Sensors**: 1-Wire bus (DS18B20), HomeAssistant, BLE, DHT, I2C
 - **Communication**: WiFi, MQTT, ESPHome API, ESP-NOW (pump control)

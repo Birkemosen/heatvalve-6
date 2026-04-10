@@ -32,10 +32,17 @@ class Hv6ConfigStore : public esphome::Component {
   void update_probes(const ProbeConfig &probes);
   void update_pid(const PIDParams &pid);
   void update_motor(const MotorConfig &motor);
+  void update_mqtt_temp(const MqttTempConfig &mqtt_temp);
+  void update_balancing(const BalancingConfig &balancing);
+  void update_mqtt_broker(const MqttBrokerConfig &mqtt_broker);
 
   // Motor telemetry persistence (calibration data)
   void save_motor_telemetry(uint8_t motor, const MotorTelemetry &telemetry);
   bool load_motor_telemetry(uint8_t motor, MotorTelemetry &telemetry);
+
+  // Maintenance helpers
+  bool erase_namespace();
+  bool erase_namespace_and_restart();
 
  protected:
   static constexpr const char *NVS_NAMESPACE = "hv6";

@@ -22,6 +22,8 @@ views:
             entities:
               - entity: switch.heatvalve_6_ufh_controller_motor_drivers_enabled
                 name: Motor Drivers Enabled (ARM)
+              - entity: select.heatvalve_6_ufh_controller_manifold_type
+                name: Manifold Type (NC/NO)
               - entity: button.heatvalve_6_ufh_controller_motor_1_self_learn
                 name: Motor 1 Self-Learn
               - entity: number.heatvalve_6_ufh_controller_motor_1_target_position

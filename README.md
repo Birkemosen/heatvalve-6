@@ -94,6 +94,24 @@ For config validation only:
 esphome config heatvalve-6.yaml
 ```
 
+## Dashboard Mock Development
+
+The custom dashboard can now run without the device by opening `web/mock-dashboard.html` in a browser. It uses the same `web/dashboard.js` and `web/dashboard.css` files as the ESPHome dashboard, but swaps SSE and REST for a local mock state engine.
+
+Useful options:
+
+```bash
+open web/mock-dashboard.html
+```
+
+```bash
+cd web && python3 -m http.server 8000
+```
+
+Then open `http://127.0.0.1:8000/mock-dashboard.html`.
+
+Mock mode keeps all dashboard controls active, including setpoint changes, toggles, settings inputs, and diagnostics actions, so UI work can happen without `make deploy`.
+
 ## Notes
 
 - The current firmware layout assumes the ESPHome config lives at the repository root.

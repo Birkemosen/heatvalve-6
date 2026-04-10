@@ -10,7 +10,7 @@ import esphome.config_validation as cv
 from esphome.const import CONF_ID
 
 CODEOWNERS = ["@birkemosen"]
-DEPENDENCIES = []
+DEPENDENCIES = ["mqtt"]
 
 hv6_config_store_ns = cg.esphome_ns.namespace("hv6")
 Hv6ConfigStore = hv6_config_store_ns.class_("Hv6ConfigStore", cg.Component)

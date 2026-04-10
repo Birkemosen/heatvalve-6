@@ -4,6 +4,8 @@
 
 #include "drv8215.h"
 #include "esphome/core/log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 namespace hv6 {
 
@@ -61,29 +63,33 @@ bool DRV8215::write_reg(uint8_t reg, uint8_t value) {
   dev.set_i2c_bus(bus_);
   dev.set_i2c_address(address_);
   uint8_t buf[2] = {reg, value};
-  auto err = dev.write(buf, 2);
-  if (err != esphome::i2c::ERROR_OK) {
-    ESP_LOGW(TAG, "Motor %d: I2C write 0x%02X=0x%02X failed", motor_num_, reg, value);
-    return false;
+  for (int attempt = 1; attempt <= 3; attempt++) {
+    auto err = dev.write(buf, 2);
+    if (err == esphome::i2c::ERROR_OK)
+      return true;
+    if (attempt < 3)
+      vTaskDelay(pdMS_TO_TICKS(1));
   }
-  return true;
+  ESP_LOGW(TAG, "Motor %d: I2C write 0x%02X=0x%02X failed", motor_num_, reg, value);
+  return false;
 }
 
 bool DRV8215::read_reg(uint8_t reg, uint8_t &value) {
   esphome::i2c::I2CDevice dev;
   dev.set_i2c_bus(bus_);
   dev.set_i2c_address(address_);
-  auto err = dev.write(&reg, 1);
-  if (err != esphome::i2c::ERROR_OK) {
-    ESP_LOGW(TAG, "Motor %d: I2C write-addr 0x%02X failed", motor_num_, reg);
-    return false;
+  for (int attempt = 1; attempt <= 3; attempt++) {
+    auto err = dev.write(&reg, 1);
+    if (err == esphome::i2c::ERROR_OK) {
+      err = dev.read(&value, 1);
+      if (err == esphome::i2c::ERROR_OK)
+        return true;
+    }
+    if (attempt < 3)
+      vTaskDelay(pdMS_TO_TICKS(1));
   }
-  err = dev.read(&value, 1);
-  if (err != esphome::i2c::ERROR_OK) {
-    ESP_LOGW(TAG, "Motor %d: I2C read 0x%02X failed", motor_num_, reg);
-    return false;
-  }
-  return true;
+  ESP_LOGW(TAG, "Motor %d: I2C read 0x%02X failed", motor_num_, reg);
+  return false;
 }
 
 }  // namespace hv6

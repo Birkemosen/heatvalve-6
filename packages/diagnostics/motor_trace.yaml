@@ -1,0 +1,33 @@
+# =============================================================================
+# Motor Trace Diagnostic Package
+# =============================================================================
+# Real-time streaming of motor trace data to Home Assistant via MQTT
+# Captures entire calibration process (temperature ramps, position learning)
+# =============================================================================
+
+# Text sensor that streams motor trace JSON to Home Assistant
+text_sensor:
+  - platform: template
+    name: "Motor Trace Stream"
+    id: motor_trace_stream
+    internal: true
+    update_interval: never
+    entity_category: "diagnostic"
+    icon: "mdi:chart-line"
+    # This will be populated by the C++ component via trace_text_sensor_
+    # and automatically published to MQTT by ESPHome
+
+# Buttons for manual control
+button:
+  - platform: template
+    name: "Clear Motor Trace"
+    id: clear_motor_trace_btn
+    entity_category: "diagnostic"
+    icon: "mdi:delete-outline"
+    on_press:
+      then:
+        - lambda: |-
+            id(hv6_valves).clear_motor_trace();
+            ESP_LOGI("motor_trace", "Trace buffer cleared");
+
+

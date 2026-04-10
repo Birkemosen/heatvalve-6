@@ -17,10 +17,10 @@ substitutions:
   pin_i2c_sda: GPIO8
   pin_i2c_scl: GPIO9
   pin_onewire: GPIO12
-  pin_nsleep: "2"
-  pin_nfault: "7"
+  pin_nsleep: "6"
+  pin_nfault: "4"
   pin_status_led: GPIO48
-  pin_adc_current: GPIO1
+  pin_adc_current: GPIO7
 
   # Network — fallback AP name when WiFi is unreachable
   fallback_ap_ssid: "HeatValve-6 Setup"
@@ -34,14 +34,28 @@ substitutions:
   # Zone controller timing
   zone_cycle_interval: 10s
 
+  # 1-Wire timing — slower polling improves DS18B20 bus stability with many probes
+  onewire_update_interval: 10s
+  onewire_resolution_bits: "10"
+
 esphome:
   name: ${device_name}
   friendly_name: ${friendly_name}
   comment: "Underfloor heating 6-zone valve controller"
   on_boot:
-    priority: 600
+    priority: 800
     then:
       - logger.log: "HeatValve-6 booting..."
+      - lambda: |-
+          // Apply persisted DS18B20 ROM map early so probe slots stay stable across reboots.
+          if (id(probe_addr_1) != 0) id(probe_temp_1)->set_address(id(probe_addr_1));
+          if (id(probe_addr_2) != 0) id(probe_temp_2)->set_address(id(probe_addr_2));
+          if (id(probe_addr_3) != 0) id(probe_temp_3)->set_address(id(probe_addr_3));
+          if (id(probe_addr_4) != 0) id(probe_temp_4)->set_address(id(probe_addr_4));
+          if (id(probe_addr_5) != 0) id(probe_temp_5)->set_address(id(probe_addr_5));
+          if (id(probe_addr_6) != 0) id(probe_temp_6)->set_address(id(probe_addr_6));
+          if (id(probe_addr_7) != 0) id(probe_temp_7)->set_address(id(probe_addr_7));
+          if (id(probe_addr_8) != 0) id(probe_temp_8)->set_address(id(probe_addr_8));
 
 # =============================================================================
 # WIFI Manual IP
@@ -70,10 +84,13 @@ packages:
   led:          !include packages/hardware/led.yaml
   display:      !include packages/hardware/display.yaml
   hw_sensors:   !include packages/hardware/sensors.yaml
+  ble:          !include packages/hardware/ble.yaml
   # Zones
   zone_sensors: !include packages/zones/sensors.yaml
   climate:      !include packages/zones/climate.yaml
   ui:           !include packages/zones/ui.yaml
+  # Diagnostics
+  motor_trace:  !include packages/diagnostics/motor_trace.yaml
 
 # =============================================================================
 # External Components — Custom hardware drivers
@@ -94,11 +111,58 @@ logger:
   level: DEBUG
   logs:
     component: ERROR
+    climate: WARN
+    sensor: WARN
+    light: ERROR
+    script: ERROR
+    dallas.temp.sensor: INFO
+    gpio.one_wire: INFO
+    hv6_onewire: INFO
+    text_sensor: WARN   # suppress motor trace stream state-change noise
+    json: NONE          # suppress JSON payload size warnings from trace batches (native API path)
 
 # =============================================================================
 # Control Parameters — Tune these for your heating system
 # =============================================================================
 globals:
+  # Persisted ROM map for Probe 1..8 (auto-learned once, then reused every boot).
+  - id: probe_addr_1
+    type: uint64_t
+    restore_value: true
+    initial_value: '0'
+  - id: probe_addr_2
+    type: uint64_t
+    restore_value: true
+    initial_value: '0'
+  - id: probe_addr_3
+    type: uint64_t
+    restore_value: true
+    initial_value: '0'
+  - id: probe_addr_4
+    type: uint64_t
+    restore_value: true
+    initial_value: '0'
+  - id: probe_addr_5
+    type: uint64_t
+    restore_value: true
+    initial_value: '0'
+  - id: probe_addr_6
+    type: uint64_t
+    restore_value: true
+    initial_value: '0'
+  - id: probe_addr_7
+    type: uint64_t
+    restore_value: true
+    initial_value: '0'
+  - id: probe_addr_8
+    type: uint64_t
+    restore_value: true
+    initial_value: '0'
+  - id: probe_map_fail_cycles
+    type: int
+    restore_value: no
+    initial_value: '0'
+
   - id: global_comfort_band
     type: float
     restore_value: true
@@ -116,6 +180,112 @@ globals:
     restore_value: true
     initial_value: "${default_demand_boost}"
 
+interval:
+  - interval: 30s
+    then:
+      - lambda: |-
+          const int mapped =
+              (id(probe_addr_1) != 0 ? 1 : 0) +
+              (id(probe_addr_2) != 0 ? 1 : 0) +
+              (id(probe_addr_3) != 0 ? 1 : 0) +
+              (id(probe_addr_4) != 0 ? 1 : 0) +
+              (id(probe_addr_5) != 0 ? 1 : 0) +
+              (id(probe_addr_6) != 0 ? 1 : 0) +
+              (id(probe_addr_7) != 0 ? 1 : 0) +
+              (id(probe_addr_8) != 0 ? 1 : 0);
+
+          // Watchdog only the probes that are already mapped.
+          if (mapped > 0) {
+            int missing_mapped = 0;
+            if (id(probe_addr_1) != 0 && !id(probe_temp_1)->has_state()) missing_mapped++;
+            if (id(probe_addr_2) != 0 && !id(probe_temp_2)->has_state()) missing_mapped++;
+            if (id(probe_addr_3) != 0 && !id(probe_temp_3)->has_state()) missing_mapped++;
+            if (id(probe_addr_4) != 0 && !id(probe_temp_4)->has_state()) missing_mapped++;
+            if (id(probe_addr_5) != 0 && !id(probe_temp_5)->has_state()) missing_mapped++;
+            if (id(probe_addr_6) != 0 && !id(probe_temp_6)->has_state()) missing_mapped++;
+            if (id(probe_addr_7) != 0 && !id(probe_temp_7)->has_state()) missing_mapped++;
+            if (id(probe_addr_8) != 0 && !id(probe_temp_8)->has_state()) missing_mapped++;
+
+            if (mapped >= 4 && missing_mapped >= 2) {
+              id(probe_map_fail_cycles) += 1;
+            } else {
+              id(probe_map_fail_cycles) = 0;
+            }
+
+            // If a persisted map repeatedly leaves mapped probes unavailable, reset and reboot to relearn.
+            if (id(probe_map_fail_cycles) >= 4) {
+              ESP_LOGW("hv6_onewire", "Probe map unhealthy (%d/%d mapped probes missing), resetting map and rebooting", missing_mapped, mapped);
+              id(probe_addr_1) = 0;
+              id(probe_addr_2) = 0;
+              id(probe_addr_3) = 0;
+              id(probe_addr_4) = 0;
+              id(probe_addr_5) = 0;
+              id(probe_addr_6) = 0;
+              id(probe_addr_7) = 0;
+              id(probe_addr_8) = 0;
+              id(probe_map_fail_cycles) = 0;
+              App.safe_reboot();
+              return;
+            }
+          }
+
+          // Auto-learn any currently unmapped probe slots and persist discovered ROMs.
+          uint64_t addr[8] = {0};
+          auto parse_addr = [](const std::string &s) -> uint64_t {
+            if (s.empty()) return 0;
+            return strtoull(s.c_str(), nullptr, 16);
+          };
+
+          addr[0] = parse_addr(id(probe_temp_1)->get_address_name());
+          addr[1] = parse_addr(id(probe_temp_2)->get_address_name());
+          addr[2] = parse_addr(id(probe_temp_3)->get_address_name());
+          addr[3] = parse_addr(id(probe_temp_4)->get_address_name());
+          addr[4] = parse_addr(id(probe_temp_5)->get_address_name());
+          addr[5] = parse_addr(id(probe_temp_6)->get_address_name());
+          addr[6] = parse_addr(id(probe_temp_7)->get_address_name());
+          addr[7] = parse_addr(id(probe_temp_8)->get_address_name());
+
+          auto addr_exists = [&](uint64_t v) -> bool {
+            if (v == 0) return false;
+            return
+              id(probe_addr_1) == v || id(probe_addr_2) == v || id(probe_addr_3) == v || id(probe_addr_4) == v ||
+              id(probe_addr_5) == v || id(probe_addr_6) == v || id(probe_addr_7) == v || id(probe_addr_8) == v;
+          };
+
+          int learned = 0;
+          auto learn_slot = [&](uint64_t found, uint64_t &slot, const char *name) {
+            if (slot != 0 || found == 0) return;
+            if (addr_exists(found)) {
+              ESP_LOGW("hv6_onewire", "Skip %s learn: duplicate ROM 0x%016llx", name, (unsigned long long) found);
+              return;
+            }
+            slot = found;
+            learned++;
+            ESP_LOGI("hv6_onewire", "Learned %s ROM 0x%016llx", name, (unsigned long long) found);
+          };
+
+          learn_slot(addr[0], id(probe_addr_1), "Probe 1");
+          learn_slot(addr[1], id(probe_addr_2), "Probe 2");
+          learn_slot(addr[2], id(probe_addr_3), "Probe 3");
+          learn_slot(addr[3], id(probe_addr_4), "Probe 4");
+          learn_slot(addr[4], id(probe_addr_5), "Probe 5");
+          learn_slot(addr[5], id(probe_addr_6), "Probe 6");
+          learn_slot(addr[6], id(probe_addr_7), "Probe 7");
+          learn_slot(addr[7], id(probe_addr_8), "Probe 8");
+
+          if (learned > 0) {
+            const int now_mapped =
+                (id(probe_addr_1) != 0 ? 1 : 0) +
+                (id(probe_addr_2) != 0 ? 1 : 0) +
+                (id(probe_addr_3) != 0 ? 1 : 0) +
+                (id(probe_addr_4) != 0 ? 1 : 0) +
+                (id(probe_addr_5) != 0 ? 1 : 0) +
+                (id(probe_addr_6) != 0 ? 1 : 0) +
+                (id(probe_addr_7) != 0 ? 1 : 0) +
+                (id(probe_addr_8) != 0 ? 1 : 0);
+            ESP_LOGI("hv6_onewire", "Persistent probe map updated: %d/8 mapped", now_mapped);
+          }
+
 # =============================================================================
 # Custom Component Configuration — Device-specific hardware
 # =============================================================================
@@ -131,8 +301,9 @@ hv6_valve_controller:
   i2c_id: i2c_bus
   nsleep_pin: ${pin_nsleep}
   nfault_pin: ${pin_nfault}
-  ipropi_pin: 1
+  ipropi_pin: 7
   current_sense: motor_current_adc
+  trace_sense: motor_trace_stream
   motor_addresses: [0x30, 0x31, 0x32, 0x35, 0x33, 0x34]
 
 # Zone controller

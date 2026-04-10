@@ -43,18 +43,18 @@ Assembly: Aisler (DRV8215RTER sourced from Mouser/Digikey).
   │       │  OUT2──→J5   │  │  OUT2──→J6   │  │  OUT2──→J7   │     ║║     │
   │       └──────────────┘  └──────────────┘  └──────────────┘     ║║     │
   │                                                                  ║║     │
-  │  ◄── nSLEEP_ALL (GPIO2) ──→ shared nSLEEP on all 6 chips       ║║     │
+   │  ◄── nSLEEP_ALL (GPIO6) ──→ shared nSLEEP on all 6 chips       ║║     │
   │  ◄── nFAULT_ALL (GPIO4) ←── wired-OR nFAULT from all 6 chips   ║║     │
-  │  ◄── IPROPI_ADC (GPIO1) ←── shared R7 from all 6 IPROPI        ║║     │
-  │  ◄── RC_OUT_ALL (GPIO3) ←── shared R9 from all 6 pin 3 (DRV8214)║║    │
+   │  ◄── IPROPI_ADC (GPIO7) ←── shared R7 from all 6 IPROPI        ║║     │
+   │  ◄── RC_OUT_ALL (DRV pin 3) ← shared R9 from all 6 pin 3 (DRV8214 only)║║ │
   │                                                                  ║║  ║     │
   └─────────────────────────────────────────────────────────────────────────────┘
 
   Signal flow: ESP32 I2C → DRV8215 registers → OUT1/OUT2 → Motor (via RJ11)
-               ESP32 GPIO2 → shared nSLEEP (wake/sleep all chips)
+                ESP32 GPIO6 → shared nSLEEP (wake/sleep all chips)
                ESP32 GPIO4 ← wired-OR nFAULT (any chip fault)
-               ESP32 GPIO1 (ADC) ← R7 (proportional motor current)
-               ESP32 GPIO3 (INT) ← RC_OUT_ALL (DRV8214 ripple count, NC on DRV8215)
+                ESP32 GPIO7 (ADC) ← R7 (proportional motor current)
+                RC_OUT_ALL is DRV pin 3 and is not used with DRV8215
 ```
 
 ## Architecture
@@ -71,10 +71,10 @@ I2C bus (GPIO8 SCL, GPIO9 SDA) ──┬── DRV8215 #1 (0x30) ─── OUT1/
                                   ├── DRV8215 #5 (0x34) ─── OUT1/OUT2 → Motor 5
                                   └── DRV8215 #6 (0x35) ─── OUT1/OUT2 → Motor 6
 
-GPIO2 ────→ shared nSLEEP (all 6 chips)
+GPIO6 ────→ shared nSLEEP (all 6 chips)
 GPIO4 ←──── wired-OR nFAULT (R8 pull-up to 3V3)
-GPIO1 ←──── R7 (5.1kΩ to GND, all 6 IPROPI wire-OR)
-GPIO3 ←──── RC_OUT_ALL (R9 pull-down to GND, all 6 pin 3 wire-OR, DRV8214 ready)
+GPIO7 ←──── R7 (5.1kΩ to GND, all 6 IPROPI wire-OR)
+RC_OUT_ALL ← R9 (all 6 DRV pin 3 lines wire-OR, relevant to DRV8214; NC on DRV8215)
 ```
 
 Only one motor runs at a time (firmware-enforced invariant). Inactive motors are in

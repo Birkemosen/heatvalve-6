@@ -8,7 +8,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.const import CONF_ID
-from esphome.components import i2c, sensor
+from esphome.components import i2c, sensor, text_sensor
 from esphome.components.esp32 import include_builtin_idf_component
 
 CODEOWNERS = ["@birkemosen"]
@@ -21,6 +21,7 @@ CONF_NSLEEP_PIN = "nsleep_pin"
 CONF_NFAULT_PIN = "nfault_pin"
 CONF_IPROPI_PIN = "ipropi_pin"
 CONF_CURRENT_SENSE = "current_sense"
+CONF_TRACE_SENSE = "trace_sense"
 CONF_MOTOR_ADDRESSES = "motor_addresses"
 
 hv6_ns = cg.esphome_ns.namespace("hv6")
@@ -36,6 +37,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_NFAULT_PIN): cv.int_,
         cv.Required(CONF_IPROPI_PIN): cv.int_,
         cv.Optional(CONF_CURRENT_SENSE): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_TRACE_SENSE): cv.use_id(text_sensor.TextSensor),
         cv.Required(CONF_MOTOR_ADDRESSES): cv.All(
             cv.ensure_list(cv.hex_uint8_t), cv.Length(min=6, max=6)
         ),
@@ -63,6 +65,10 @@ async def to_code(config):
     if CONF_CURRENT_SENSE in config:
         current_sensor = await cg.get_variable(config[CONF_CURRENT_SENSE])
         cg.add(var.set_current_sensor(current_sensor))
+
+    if CONF_TRACE_SENSE in config:
+        trace_sensor = await cg.get_variable(config[CONF_TRACE_SENSE])
+        cg.add(var.set_trace_text_sensor(trace_sensor))
 
     for i, addr in enumerate(config[CONF_MOTOR_ADDRESSES]):
         cg.add(var.set_motor_address(i, addr))
