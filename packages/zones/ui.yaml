@@ -1,4 +1,36 @@
 text_sensor:
+  - platform: template
+    name: "Firmware Version"
+    id: firmware_version_text
+    entity_category: diagnostic
+    update_interval: 6h
+    lambda: |-
+      const char *build = __DATE__;  // "Mmm dd yyyy"
+      const char *months = "JanFebMarAprMayJunJulAugSepOctNovDec";
+
+      int month = 1;
+      for (int i = 0; i < 12; i++) {
+        if (strncmp(build, months + (i * 3), 3) == 0) {
+          month = i + 1;
+          break;
+        }
+      }
+
+      const int day = (build[4] == ' ')
+                          ? (build[5] - '0')
+                          : ((build[4] - '0') * 10 + (build[5] - '0'));
+      const int year = (build[7] - '0') * 1000 +
+                       (build[8] - '0') * 100 +
+                       (build[9] - '0') * 10 +
+                       (build[10] - '0');
+
+      char yyyymmdd[9];
+      snprintf(yyyymmdd, sizeof(yyyymmdd), "%04d%02d%02d", year, month, day);
+
+      char tag[40];
+      snprintf(tag, sizeof(tag), "%s+%s", "${firmware_version}", yyyymmdd);
+      return {tag};
+
   - platform: wifi_info
     ip_address:
       name: "IP Address"

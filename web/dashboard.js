@@ -444,7 +444,7 @@
               '<a href="#" class="menu-link" data-sec="sec-diag" onclick="window._hv6.nav(\'sec-diag\');return false">Diagnostics</a>' +
               '<a href="#" class="menu-link" data-sec="sec-settings" onclick="window._hv6.nav(\'sec-settings\');return false">Settings</a>' +
             '</nav>' +
-            '<div class="top-meta"><div class="dot" id="side-dot"></div><span id="side-sync" class="sync-state synced">Synced</span><span id="side-up"></span><span id="side-wifi"></span></div>' +
+            '<div class="top-meta"><div class="meta-row"><div class="dot" id="side-dot"></div><span id="side-sync" class="meta-chip meta-chip-state synced">Synced</span><div class="meta-badges"><span class="meta-chip meta-chip-uptime"><span class="meta-chip-label">Uptime</span><span class="meta-chip-value" id="side-up">---</span></span><span class="meta-chip meta-chip-wifi"><span class="meta-chip-label"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>WiFi</span><span class="meta-chip-value" id="side-wifi">---</span></span></div></div><span id="side-fw" class="side-fw"></span></div>' +
           '</div>' +
         '</header>' +
         '<div class="reconn" id="reconn">' + (mockMode ? 'MOCK MODE ACTIVE' : 'CONNECTION LOST - RECONNECTING...') + '</div>' +
@@ -483,11 +483,11 @@
     if (!el) return;
     if (pendingWrites > 0) {
       el.textContent = 'Saving...';
-      el.className = 'sync-state saving';
+      el.className = 'meta-chip meta-chip-state saving';
       return;
     }
     el.textContent = mockMode ? 'Mock' : 'Synced';
-    el.className = 'sync-state synced';
+    el.className = 'meta-chip meta-chip-state synced';
   }
 
   function buildZoneGrid() {
@@ -864,6 +864,7 @@
     if (id === 'sensor-wifi_signal') updateWifi();
     if (id === 'sensor-uptime') updateUptime();
     if (id === 'text_sensor-ip_address' || id === 'text_sensor-connected_ssid' || id === 'text_sensor-mac_address') updateSysText();
+    if (id === 'text_sensor-firmware_version') updateFirmwareVersion();
     if (id === 'switch-motor_drivers_enabled') updateDrivers();
     if (id === 'binary_sensor-motor_fault') updateFault();
     m = id.match(/^binary_sensor-(?:motor_|zone_)(\d+)(?:_motor)?_fault$/);
@@ -1058,13 +1059,18 @@
   function updateWifi() {
     var v = ev('sensor-wifi_signal');
     if (h('sys-wifi')) h('sys-wifi').textContent = fmtWifi(v);
-    if (h('side-wifi')) h('side-wifi').textContent = v != null ? Math.round(v) + ' dBm' : '';
+    if (h('side-wifi')) h('side-wifi').textContent = v != null ? Math.round(v) + 'dB' : '--';
   }
 
   function updateUptime() {
     var s = fmtUp(ev('sensor-uptime'));
     if (h('sys-up')) h('sys-up').textContent = s;
     if (h('side-up')) h('side-up').textContent = s;
+  }
+
+  function updateFirmwareVersion() {
+    var fw = es('text_sensor-firmware_version');
+    if (h('side-fw')) h('side-fw').textContent = fw ? 'FW ' + fw : '';
   }
 
   function updateSysText() {
@@ -1493,6 +1499,7 @@
   }
 
   function seedMockEntities() {
+    setEntity('text_sensor-firmware_version', { state: '0.0.0-mock' });
     setEntity('sensor-wifi_signal', { value: -58 });
     setEntity('sensor-uptime', { value: 18 * 3600 + 12 * 60 });
     setEntity('text_sensor-ip_address', { state: '192.168.1.86' });

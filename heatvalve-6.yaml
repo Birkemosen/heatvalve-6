@@ -12,6 +12,7 @@ substitutions:
   # Device identity
   device_name: heatvalve-6
   friendly_name: "HeatValve-6 UFH Controller"
+  firmware_version: "v0.1.0"  # Keep this aligned with your git release tag/version.
 
   # GPIO pins — change to match your PCB revision
   pin_i2c_sda: GPIO8
@@ -42,6 +43,9 @@ esphome:
   name: ${device_name}
   friendly_name: ${friendly_name}
   comment: "Underfloor heating 6-zone valve controller"
+  project:
+    name: birkemosen.heatvalve-6
+    version: ${firmware_version}
   on_boot:
     priority: 800
     then:
