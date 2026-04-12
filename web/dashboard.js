@@ -545,7 +545,7 @@
       '<div class="cfg-row"><span class="lbl">Friendly Name</span><input class="txt" id="zf-friendly" maxlength="24" onchange="window._hv6.sName(this.value)" placeholder="e.g. Living Room"></div>' +
       '<div class="cfg-row"><span class="lbl">Zone Area</span><input class="txt" id="zf-area" type="number" min="1" step="0.1" onchange="window._hv6.sArea(this.value)" placeholder="m2"></div>' +
       '<div class="cfg-row"><span class="lbl">Pipe Spacing</span><input class="txt" id="zf-spacing" type="number" min="50" step="5" onchange="window._hv6.sSpacing(this.value)" placeholder="mm"></div>' +
-      '<div class="cfg-row"><span class="lbl">Pipe Type</span><select class="sel" id="zf-pipe" onchange="window._hv6.sPipe(this.value)"><option>Unknown</option><option>PEX 16mm</option><option>PEX 20mm</option><option>PERT 16mm</option><option>PERT 20mm</option></select></div>' +
+      '<div class="cfg-row"><span class="lbl">Pipe Type</span><select class="sel" id="zf-pipe" onchange="window._hv6.sPipe(this.value)"><option>PEX 16mm</option><option>PEX 12mm</option><option>PEX 14mm</option><option>PEX 17mm</option><option>PEX 18mm</option><option>PEX 20mm</option><option>ALUPEX 16mm</option><option>ALUPEX 20mm</option><option>Unknown</option></select></div>' +
       '<div class="cfg-row"><span class="lbl">Exterior Walls</span><div class="ew-group" id="zf-ew">' +
         '<button class="ew-btn" data-dir="NONE" onclick="window._hv6.tEWSel(\'NONE\')">None</button>' +
         '<button class="ew-btn" data-dir="N" onclick="window._hv6.tEWSel(\'N\')"><svg viewBox="0 0 24 24"><path d="M12 3L5 15l7-4 7 4z" fill="currentColor"/></svg><span>N</span></button>' +
@@ -1540,7 +1540,7 @@
       setEntity('select-zone_' + z + '_temp_source', { state: z % 2 ? 'Local Probe' : 'BLE Sensor' });
       setEntity('number-zone_' + z + '_area_m2', { value: round1(8 + z * 3.4) });
       setEntity('number-zone_' + z + '_pipe_spacing_mm', { value: [150, 200, 150, 100, 200, 150][z - 1] });
-      setEntity('select-zone_' + z + '_pipe_type', { state: ['PEX 16mm', 'PEX 20mm', 'PERT 16mm', 'PEX 16mm', 'PERT 20mm', 'PEX 20mm'][z - 1] });
+      setEntity('select-zone_' + z + '_pipe_type', { state: 'PEX 16mm' });
       setEntity('text-zone_' + z + '_zigbee_device', { state: 'zone_' + z + '_mock_sensor' });
       setEntity('text-zone_' + z + '_ble_mac', { state: 'AA:BB:CC:DD:EE:0' + z });
       setEntity('text-zone_' + z + '_exterior_walls', { state: ['N', 'E', 'S', 'W', 'NE', 'SW'][z - 1] || 'None' });

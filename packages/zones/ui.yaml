@@ -1025,19 +1025,28 @@ select:
     id: zone_1_pipe_type
     entity_category: config
     optimistic: false
-    options: ["Unknown", "PEX 16mm", "PEX 20mm", "PERT 16mm", "PERT 20mm"]
+    options: ["PEX 16mm", "PEX 12mm", "PEX 14mm", "PEX 17mm", "PEX 18mm", "PEX 20mm", "ALUPEX 16mm", "ALUPEX 20mm", "Unknown"]
     lambda: |-
       auto t = id(hv6_zones).get_zone_pipe_type(0);
+      if (t == hv6::PipeType::PEX_12X2) return std::string("PEX 12mm");
+      if (t == hv6::PipeType::PEX_14X2) return std::string("PEX 14mm");
+      if (t == hv6::PipeType::PEX_16X2) return std::string("PEX 16mm");
+      if (t == hv6::PipeType::PEX_17X2) return std::string("PEX 17mm");
+      if (t == hv6::PipeType::PEX_18X2) return std::string("PEX 18mm");
       if (t == hv6::PipeType::PEX_20X2) return std::string("PEX 20mm");
-      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("PERT 16mm");
-      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("PERT 20mm");
+      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("ALUPEX 16mm");
+      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("ALUPEX 20mm");
       return std::string("PEX 16mm");
     set_action:
       - lambda: |-
           hv6::PipeType t = hv6::PipeType::PEX_16X2;
-          if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
-          else if (x == "PERT 16mm") t = hv6::PipeType::ALUPEX_16X2;
-          else if (x == "PERT 20mm") t = hv6::PipeType::ALUPEX_20X2;
+          if (x == "PEX 12mm") t = hv6::PipeType::PEX_12X2;
+          else if (x == "PEX 14mm") t = hv6::PipeType::PEX_14X2;
+          else if (x == "PEX 17mm") t = hv6::PipeType::PEX_17X2;
+          else if (x == "PEX 18mm") t = hv6::PipeType::PEX_18X2;
+          else if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
+          else if (x == "ALUPEX 16mm") t = hv6::PipeType::ALUPEX_16X2;
+          else if (x == "ALUPEX 20mm") t = hv6::PipeType::ALUPEX_20X2;
           id(hv6_zones).set_zone_pipe_type(0, t);
 
   - platform: template
@@ -1045,19 +1054,28 @@ select:
     id: zone_2_pipe_type
     entity_category: config
     optimistic: false
-    options: ["Unknown", "PEX 16mm", "PEX 20mm", "PERT 16mm", "PERT 20mm"]
+    options: ["PEX 16mm", "PEX 12mm", "PEX 14mm", "PEX 17mm", "PEX 18mm", "PEX 20mm", "ALUPEX 16mm", "ALUPEX 20mm", "Unknown"]
     lambda: |-
       auto t = id(hv6_zones).get_zone_pipe_type(1);
+      if (t == hv6::PipeType::PEX_12X2) return std::string("PEX 12mm");
+      if (t == hv6::PipeType::PEX_14X2) return std::string("PEX 14mm");
+      if (t == hv6::PipeType::PEX_16X2) return std::string("PEX 16mm");
+      if (t == hv6::PipeType::PEX_17X2) return std::string("PEX 17mm");
+      if (t == hv6::PipeType::PEX_18X2) return std::string("PEX 18mm");
       if (t == hv6::PipeType::PEX_20X2) return std::string("PEX 20mm");
-      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("PERT 16mm");
-      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("PERT 20mm");
+      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("ALUPEX 16mm");
+      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("ALUPEX 20mm");
       return std::string("PEX 16mm");
     set_action:
       - lambda: |-
           hv6::PipeType t = hv6::PipeType::PEX_16X2;
-          if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
-          else if (x == "PERT 16mm") t = hv6::PipeType::ALUPEX_16X2;
-          else if (x == "PERT 20mm") t = hv6::PipeType::ALUPEX_20X2;
+          if (x == "PEX 12mm") t = hv6::PipeType::PEX_12X2;
+          else if (x == "PEX 14mm") t = hv6::PipeType::PEX_14X2;
+          else if (x == "PEX 17mm") t = hv6::PipeType::PEX_17X2;
+          else if (x == "PEX 18mm") t = hv6::PipeType::PEX_18X2;
+          else if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
+          else if (x == "ALUPEX 16mm") t = hv6::PipeType::ALUPEX_16X2;
+          else if (x == "ALUPEX 20mm") t = hv6::PipeType::ALUPEX_20X2;
           id(hv6_zones).set_zone_pipe_type(1, t);
 
   - platform: template
@@ -1065,19 +1083,28 @@ select:
     id: zone_3_pipe_type
     entity_category: config
     optimistic: false
-    options: ["Unknown", "PEX 16mm", "PEX 20mm", "PERT 16mm", "PERT 20mm"]
+    options: ["PEX 16mm", "PEX 12mm", "PEX 14mm", "PEX 17mm", "PEX 18mm", "PEX 20mm", "ALUPEX 16mm", "ALUPEX 20mm", "Unknown"]
     lambda: |-
       auto t = id(hv6_zones).get_zone_pipe_type(2);
+      if (t == hv6::PipeType::PEX_12X2) return std::string("PEX 12mm");
+      if (t == hv6::PipeType::PEX_14X2) return std::string("PEX 14mm");
+      if (t == hv6::PipeType::PEX_16X2) return std::string("PEX 16mm");
+      if (t == hv6::PipeType::PEX_17X2) return std::string("PEX 17mm");
+      if (t == hv6::PipeType::PEX_18X2) return std::string("PEX 18mm");
       if (t == hv6::PipeType::PEX_20X2) return std::string("PEX 20mm");
-      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("PERT 16mm");
-      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("PERT 20mm");
+      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("ALUPEX 16mm");
+      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("ALUPEX 20mm");
       return std::string("PEX 16mm");
     set_action:
       - lambda: |-
           hv6::PipeType t = hv6::PipeType::PEX_16X2;
-          if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
-          else if (x == "PERT 16mm") t = hv6::PipeType::ALUPEX_16X2;
-          else if (x == "PERT 20mm") t = hv6::PipeType::ALUPEX_20X2;
+          if (x == "PEX 12mm") t = hv6::PipeType::PEX_12X2;
+          else if (x == "PEX 14mm") t = hv6::PipeType::PEX_14X2;
+          else if (x == "PEX 17mm") t = hv6::PipeType::PEX_17X2;
+          else if (x == "PEX 18mm") t = hv6::PipeType::PEX_18X2;
+          else if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
+          else if (x == "ALUPEX 16mm") t = hv6::PipeType::ALUPEX_16X2;
+          else if (x == "ALUPEX 20mm") t = hv6::PipeType::ALUPEX_20X2;
           id(hv6_zones).set_zone_pipe_type(2, t);
 
   - platform: template
@@ -1085,19 +1112,28 @@ select:
     id: zone_4_pipe_type
     entity_category: config
     optimistic: false
-    options: ["Unknown", "PEX 16mm", "PEX 20mm", "PERT 16mm", "PERT 20mm"]
+    options: ["PEX 16mm", "PEX 12mm", "PEX 14mm", "PEX 17mm", "PEX 18mm", "PEX 20mm", "ALUPEX 16mm", "ALUPEX 20mm", "Unknown"]
     lambda: |-
       auto t = id(hv6_zones).get_zone_pipe_type(3);
+      if (t == hv6::PipeType::PEX_12X2) return std::string("PEX 12mm");
+      if (t == hv6::PipeType::PEX_14X2) return std::string("PEX 14mm");
+      if (t == hv6::PipeType::PEX_16X2) return std::string("PEX 16mm");
+      if (t == hv6::PipeType::PEX_17X2) return std::string("PEX 17mm");
+      if (t == hv6::PipeType::PEX_18X2) return std::string("PEX 18mm");
       if (t == hv6::PipeType::PEX_20X2) return std::string("PEX 20mm");
-      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("PERT 16mm");
-      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("PERT 20mm");
+      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("ALUPEX 16mm");
+      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("ALUPEX 20mm");
       return std::string("PEX 16mm");
     set_action:
       - lambda: |-
           hv6::PipeType t = hv6::PipeType::PEX_16X2;
-          if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
-          else if (x == "PERT 16mm") t = hv6::PipeType::ALUPEX_16X2;
-          else if (x == "PERT 20mm") t = hv6::PipeType::ALUPEX_20X2;
+          if (x == "PEX 12mm") t = hv6::PipeType::PEX_12X2;
+          else if (x == "PEX 14mm") t = hv6::PipeType::PEX_14X2;
+          else if (x == "PEX 17mm") t = hv6::PipeType::PEX_17X2;
+          else if (x == "PEX 18mm") t = hv6::PipeType::PEX_18X2;
+          else if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
+          else if (x == "ALUPEX 16mm") t = hv6::PipeType::ALUPEX_16X2;
+          else if (x == "ALUPEX 20mm") t = hv6::PipeType::ALUPEX_20X2;
           id(hv6_zones).set_zone_pipe_type(3, t);
 
   - platform: template
@@ -1105,19 +1141,28 @@ select:
     id: zone_5_pipe_type
     entity_category: config
     optimistic: false
-    options: ["Unknown", "PEX 16mm", "PEX 20mm", "PERT 16mm", "PERT 20mm"]
+    options: ["PEX 16mm", "PEX 12mm", "PEX 14mm", "PEX 17mm", "PEX 18mm", "PEX 20mm", "ALUPEX 16mm", "ALUPEX 20mm", "Unknown"]
     lambda: |-
       auto t = id(hv6_zones).get_zone_pipe_type(4);
+      if (t == hv6::PipeType::PEX_12X2) return std::string("PEX 12mm");
+      if (t == hv6::PipeType::PEX_14X2) return std::string("PEX 14mm");
+      if (t == hv6::PipeType::PEX_16X2) return std::string("PEX 16mm");
+      if (t == hv6::PipeType::PEX_17X2) return std::string("PEX 17mm");
+      if (t == hv6::PipeType::PEX_18X2) return std::string("PEX 18mm");
       if (t == hv6::PipeType::PEX_20X2) return std::string("PEX 20mm");
-      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("PERT 16mm");
-      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("PERT 20mm");
+      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("ALUPEX 16mm");
+      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("ALUPEX 20mm");
       return std::string("PEX 16mm");
     set_action:
       - lambda: |-
           hv6::PipeType t = hv6::PipeType::PEX_16X2;
-          if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
-          else if (x == "PERT 16mm") t = hv6::PipeType::ALUPEX_16X2;
-          else if (x == "PERT 20mm") t = hv6::PipeType::ALUPEX_20X2;
+          if (x == "PEX 12mm") t = hv6::PipeType::PEX_12X2;
+          else if (x == "PEX 14mm") t = hv6::PipeType::PEX_14X2;
+          else if (x == "PEX 17mm") t = hv6::PipeType::PEX_17X2;
+          else if (x == "PEX 18mm") t = hv6::PipeType::PEX_18X2;
+          else if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
+          else if (x == "ALUPEX 16mm") t = hv6::PipeType::ALUPEX_16X2;
+          else if (x == "ALUPEX 20mm") t = hv6::PipeType::ALUPEX_20X2;
           id(hv6_zones).set_zone_pipe_type(4, t);
 
   - platform: template
@@ -1125,19 +1170,28 @@ select:
     id: zone_6_pipe_type
     entity_category: config
     optimistic: false
-    options: ["Unknown", "PEX 16mm", "PEX 20mm", "PERT 16mm", "PERT 20mm"]
+    options: ["PEX 16mm", "PEX 12mm", "PEX 14mm", "PEX 17mm", "PEX 18mm", "PEX 20mm", "ALUPEX 16mm", "ALUPEX 20mm", "Unknown"]
     lambda: |-
       auto t = id(hv6_zones).get_zone_pipe_type(5);
+      if (t == hv6::PipeType::PEX_12X2) return std::string("PEX 12mm");
+      if (t == hv6::PipeType::PEX_14X2) return std::string("PEX 14mm");
+      if (t == hv6::PipeType::PEX_16X2) return std::string("PEX 16mm");
+      if (t == hv6::PipeType::PEX_17X2) return std::string("PEX 17mm");
+      if (t == hv6::PipeType::PEX_18X2) return std::string("PEX 18mm");
       if (t == hv6::PipeType::PEX_20X2) return std::string("PEX 20mm");
-      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("PERT 16mm");
-      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("PERT 20mm");
+      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("ALUPEX 16mm");
+      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("ALUPEX 20mm");
       return std::string("PEX 16mm");
     set_action:
       - lambda: |-
           hv6::PipeType t = hv6::PipeType::PEX_16X2;
-          if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
-          else if (x == "PERT 16mm") t = hv6::PipeType::ALUPEX_16X2;
-          else if (x == "PERT 20mm") t = hv6::PipeType::ALUPEX_20X2;
+          if (x == "PEX 12mm") t = hv6::PipeType::PEX_12X2;
+          else if (x == "PEX 14mm") t = hv6::PipeType::PEX_14X2;
+          else if (x == "PEX 17mm") t = hv6::PipeType::PEX_17X2;
+          else if (x == "PEX 18mm") t = hv6::PipeType::PEX_18X2;
+          else if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
+          else if (x == "ALUPEX 16mm") t = hv6::PipeType::ALUPEX_16X2;
+          else if (x == "ALUPEX 20mm") t = hv6::PipeType::ALUPEX_20X2;
           id(hv6_zones).set_zone_pipe_type(5, t);
 
   - platform: template

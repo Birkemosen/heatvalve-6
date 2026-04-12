@@ -123,10 +123,10 @@ namespace ExteriorWall {
 struct ZoneConfig {
   bool enabled = true;
   float area_m2 = 15.0f;
-  float max_opening_pct = 90.0f;
+  float max_opening_pct = 100.0f;
   PipeType pipe_type = PipeType::PEX_16X2;
   FloorType floor_type = FloorType::TILE;
-  float pipe_spacing_mm = 150.0f;
+  float pipe_spacing_mm = 200.0f;
   float floor_cover_thickness_mm = 15.0f;
   float setpoint_c = 21.0f;
   ControlAlgorithm algorithm = ControlAlgorithm::TANH;
@@ -151,9 +151,9 @@ struct ControlConfig {
 };
 
 struct ProbeConfig {
-  int8_t manifold_flow_probe = 0;
-  int8_t manifold_return_probe = 1;
-  int8_t zone_return_probe[NUM_ZONES] = {2, 3, 4, 5, 6, 7};
+  int8_t manifold_flow_probe = 6;
+  int8_t manifold_return_probe = 7;
+  int8_t zone_return_probe[NUM_ZONES] = {0, 1, 2, 3, 4, 5};
 };
 
 static constexpr uint8_t MQTT_DEVICE_NAME_LEN = 48;
@@ -198,7 +198,7 @@ struct MotorConfig {
   uint32_t pwm_period_ms = 40;
   uint32_t max_runtime_s = 65;
   // Close-direction endstop (higher current at mechanical stop)
-  float close_current_factor = 1.8f;
+  float close_current_factor = 1.7f;
   float close_slope_threshold_ma_per_s = 0.6f;
   float close_slope_current_factor = 1.3f;
   // Open-direction endstop (gentler ramp — spring assist)
