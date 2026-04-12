@@ -153,6 +153,8 @@ SystemSnapshot Hv6ZoneController::get_system_snapshot() const {
   sys.uptime_s = static_cast<uint32_t>(esp_timer_get_time() / 1000000);
   sys.free_heap = esp_get_free_heap_size();
   sys.cycle_count = cycle_count_;
+  sys.controller_state = controller_state_;
+  sys.system_condition_state = system_condition_state_;
   sys.wifi_connected = true;  // ESPHome manages WiFi
 
   return sys;
@@ -695,6 +697,8 @@ void Hv6ZoneController::run_() {
 
     check_failsafes_();
     run_cycle_();
+    update_controller_state_();
+    update_system_condition_state_();
     cycle_count_++;
 
     vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(cycle_interval_ms_));
@@ -1399,6 +1403,123 @@ void Hv6ZoneController::request_zigbee_temperature_(const std::string &device_na
   esphome::mqtt::global_mqtt_client->publish(topic, payload, 0, false);
   ESP_LOGI(TAG, "Requested temperature from '%s'", device_name.c_str());
 #endif
+}
+
+// =============================================================================
+// State Machine Updates
+// =============================================================================
+
+void Hv6ZoneController::update_controller_state_() {
+  if (!config_store_ || !valve_controller_)
+    return;
+
+  ControllerState new_state = ControllerState::UNKNOWN;
+
+  // Determine primary action state
+  if (manual_mode_) {
+    new_state = ControllerState::MANUAL;
+  } else if (DEVELOPMENT_MANUAL_ONLY) {
+    new_state = ControllerState::MANUAL;
+  } else if (!valve_controller_->are_drivers_enabled()) {
+    new_state = ControllerState::OFF;
+  } else {
+    // Check if any zone is calibrating
+    bool any_calibrating = false;
+    for (uint8_t i = 0; i < NUM_ZONES; i++) {
+      auto telem = valve_controller_->get_telemetry(i);
+      if (telem.learned_open_ms == 0 || telem.learned_close_ms == 0) {
+        any_calibrating = true;
+        break;
+      }
+    }
+
+    if (any_calibrating) {
+      new_state = ControllerState::CALIBRATING;
+    } else {
+      // Count active zones and their demand states
+      const auto cfg = config_store_->get_config();
+      uint8_t active_count = 0;
+      uint8_t heating_count = 0;
+
+      xSemaphoreTake(snapshot_mutex_, portMAX_DELAY);
+      for (uint8_t i = 0; i < NUM_ZONES; i++) {
+        if (!cfg.zones[i].enabled)
+          continue;
+        if (snapshots_[i].state == ZoneState::UNKNOWN)
+          continue;
+
+        active_count++;
+        if (snapshots_[i].state == ZoneState::DEMAND)
+          heating_count++;
+      }
+      xSemaphoreGive(snapshot_mutex_);
+
+      // Determine state based on zone activity
+      if (active_count == 0) {
+        new_state = ControllerState::WAITING_INPUT;
+      } else if (heating_count > 0) {
+        if (heating_count == active_count) {
+          new_state = ControllerState::HEATING;
+        } else {
+          new_state = ControllerState::MIXED;
+        }
+      } else {
+        new_state = ControllerState::IDLE;
+      }
+    }
+  }
+
+  if (new_state != controller_state_) {
+    controller_state_ = new_state;
+    ESP_LOGI(TAG, "Controller state: %d", static_cast<int>(new_state));
+  }
+}
+
+void Hv6ZoneController::update_system_condition_state_() {
+  if (!config_store_)
+    return;
+
+  SystemConditionState new_state = SystemConditionState::UNKNOWN;
+
+  const auto cfg = config_store_->get_config();
+  uint8_t active_zones = 0;
+  uint8_t overheated_count = 0;
+  uint8_t above_target_count = 0;
+
+  xSemaphoreTake(snapshot_mutex_, portMAX_DELAY);
+  for (uint8_t i = 0; i < NUM_ZONES; i++) {
+    if (!cfg.zones[i].enabled)
+      continue;
+    if (snapshots_[i].state == ZoneState::UNKNOWN)
+      continue;
+
+    active_zones++;
+
+    // Check condition state of each zone
+    if (snapshots_[i].condition_state == ZoneConditionState::OVERHEATED) {
+      overheated_count++;
+    } else if (snapshots_[i].condition_state == ZoneConditionState::ABOVE_SETPOINT) {
+      above_target_count++;
+    }
+  }
+  xSemaphoreGive(snapshot_mutex_);
+
+  // Determine system-level condition
+  if (active_zones == 0) {
+    new_state = SystemConditionState::UNKNOWN;
+  } else if (overheated_count > 0) {
+    new_state = SystemConditionState::OVERHEATED;
+  } else if (above_target_count == active_zones) {
+    // All active zones are above setpoint
+    new_state = SystemConditionState::ABOVE_SETPOINT;
+  } else {
+    new_state = SystemConditionState::NORMAL;
+  }
+
+  if (new_state != system_condition_state_) {
+    system_condition_state_ = new_state;
+    ESP_LOGD(TAG, "System condition: %d", static_cast<int>(new_state));
+  }
 }
 
 }  // namespace hv6

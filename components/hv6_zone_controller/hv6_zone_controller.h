@@ -65,6 +65,10 @@ class Hv6ZoneController : public esphome::Component {
   void set_manual_mode(bool enabled) { manual_mode_ = enabled; }
   bool is_manual_mode() const { return manual_mode_; }
 
+  // State machine accessors (for dashboard/diagnostics)
+  ControllerState get_controller_state() const { return controller_state_; }
+  SystemConditionState get_system_condition_state() const { return system_condition_state_; }
+
   void set_zone_probe(uint8_t zone, int8_t probe);
   int8_t get_zone_probe(uint8_t zone) const;
   void set_manifold_flow_probe(int8_t probe);
@@ -182,6 +186,10 @@ class Hv6ZoneController : public esphome::Component {
   uint32_t cycle_interval_ms_ = 10000;
   bool manual_mode_ = false;
 
+  // State machine tracking
+  ControllerState controller_state_ = ControllerState::UNKNOWN;
+  SystemConditionState system_condition_state_ = SystemConditionState::UNKNOWN;
+
   TaskHandle_t task_handle_ = nullptr;
 
   // FreeRTOS task
@@ -189,6 +197,10 @@ class Hv6ZoneController : public esphome::Component {
   void run_();
   void run_cycle_();
   void check_failsafes_();
+
+  // State machine updates (called during run_cycle_)
+  void update_controller_state_();
+  void update_system_condition_state_();
 
   // Helpers
   float read_zone_temperature_(uint8_t zone) const;

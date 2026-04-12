@@ -44,6 +44,44 @@ enum class ZoneState : int8_t {
   DEMAND = 2,
 };
 
+enum class ZoneDisplayState : int8_t {
+  UNKNOWN = -1,
+  OFF = 0,
+  MANUAL = 1,
+  CALIBRATING = 2,
+  WAITING_CALIBRATION = 3,
+  WAITING_ROOM_TEMP = 4,
+  HEATING = 5,
+  IDLE = 6,
+  OVERHEATED = 7,
+};
+
+enum class ZoneConditionState : int8_t {
+  UNKNOWN = -1,
+  NORMAL = 0,
+  ABOVE_SETPOINT = 1,
+  OVERHEATED = 2,
+};
+
+enum class SystemConditionState : int8_t {
+  UNKNOWN = -1,
+  NORMAL = 0,
+  ABOVE_SETPOINT = 1,
+  OVERHEATED = 2,
+};
+
+enum class ControllerState : int8_t {
+  UNKNOWN = -1,
+  OFF = 0,
+  MANUAL = 1,
+  CALIBRATING = 2,
+  WAITING_INPUT = 3,
+  IDLE = 4,
+  HEATING = 5,
+  MIXED = 6,
+  FAULT = 7,
+};
+
 enum class MotorDirection : int8_t {
   CLOSE = 0,
   OPEN = 1,
@@ -123,7 +161,7 @@ namespace ExteriorWall {
 struct ZoneConfig {
   bool enabled = true;
   float area_m2 = 15.0f;
-  float max_opening_pct = 100.0f;
+  float max_opening_pct = 90.0f;
   PipeType pipe_type = PipeType::PEX_16X2;
   FloorType floor_type = FloorType::TILE;
   float pipe_spacing_mm = 200.0f;
@@ -151,9 +189,9 @@ struct ControlConfig {
 };
 
 struct ProbeConfig {
-  int8_t manifold_flow_probe = 6;
-  int8_t manifold_return_probe = 7;
-  int8_t zone_return_probe[NUM_ZONES] = {0, 1, 2, 3, 4, 5};
+  int8_t manifold_flow_probe = 0;
+  int8_t manifold_return_probe = 1;
+  int8_t zone_return_probe[NUM_ZONES] = {2, 3, 4, 5, 6, 7};
 };
 
 static constexpr uint8_t MQTT_DEVICE_NAME_LEN = 48;
@@ -197,8 +235,9 @@ struct MotorConfig {
   uint8_t pwm_hold_duty_pct = 70;
   uint32_t pwm_period_ms = 40;
   uint32_t max_runtime_s = 65;
+  uint32_t calibration_timeout_s = 120;
   // Close-direction endstop (higher current at mechanical stop)
-  float close_current_factor = 1.7f;
+  float close_current_factor = 1.8f;
   float close_slope_threshold_ma_per_s = 0.6f;
   float close_slope_current_factor = 1.3f;
   // Open-direction endstop (gentler ramp — spring assist)
@@ -248,6 +287,8 @@ struct ZoneSnapshot {
   float setpoint_c = 21.0f;
   float valve_position_pct = 0.0f;
   ZoneState state = ZoneState::UNKNOWN;
+  ZoneDisplayState display_state = ZoneDisplayState::UNKNOWN;
+  ZoneConditionState condition_state = ZoneConditionState::UNKNOWN;
   float hydraulic_factor = 0.0f;
   bool was_overheated = false;
   float heat_output_w = 0.0f;
@@ -261,6 +302,8 @@ struct ZoneSnapshot {
 
 struct SystemSnapshot {
   std::array<ZoneSnapshot, NUM_ZONES> zones{};
+  ControllerState controller_state = ControllerState::UNKNOWN;
+  SystemConditionState system_condition_state = SystemConditionState::UNKNOWN;
   uint8_t active_zones = 0;
   float avg_valve_pct = 0.0f;
   float manifold_flow_temp_c = NAN;
@@ -281,7 +324,7 @@ struct SystemConfig {
 
 /// Bump this whenever a struct layout or default value changes to force
 /// NVS-stored config to be discarded in favour of fresh C++ defaults.
-static constexpr uint32_t CONFIG_VERSION = 3;
+static constexpr uint32_t CONFIG_VERSION = 4;
 
 struct DeviceConfig {
   uint32_t config_version = CONFIG_VERSION;
@@ -320,6 +363,60 @@ inline const char *zone_state_to_string(ZoneState state) {
     case ZoneState::SATISFIED: return "SATISFIED";
     case ZoneState::DEMAND: return "DEMAND";
     default: return "UNKNOWN";
+  }
+}
+
+inline const char *zone_display_state_to_string(ZoneDisplayState state) {
+  switch (state) {
+    case ZoneDisplayState::OFF: return "OFF";
+    case ZoneDisplayState::MANUAL: return "MANUAL";
+    case ZoneDisplayState::CALIBRATING: return "CALIBRATING";
+    case ZoneDisplayState::WAITING_CALIBRATION: return "WAITING_CALIBRATION";
+    case ZoneDisplayState::WAITING_ROOM_TEMP: return "WAITING_ROOM_TEMP";
+    case ZoneDisplayState::HEATING: return "HEATING";
+    case ZoneDisplayState::IDLE: return "IDLE";
+    case ZoneDisplayState::OVERHEATED: return "OVERHEATED";
+    case ZoneDisplayState::UNKNOWN:
+    default:
+      return "UNKNOWN";
+  }
+}
+
+inline const char *zone_condition_state_to_string(ZoneConditionState state) {
+  switch (state) {
+    case ZoneConditionState::NORMAL: return "NORMAL";
+    case ZoneConditionState::ABOVE_SETPOINT: return "ABOVE_SETPOINT";
+    case ZoneConditionState::OVERHEATED: return "OVERHEATED";
+    case ZoneConditionState::UNKNOWN:
+    default:
+      return "UNKNOWN";
+  }
+}
+
+inline const char *system_condition_state_to_string(SystemConditionState state) {
+  switch (state) {
+    case SystemConditionState::NORMAL: return "NORMAL";
+    case SystemConditionState::ABOVE_SETPOINT: return "ABOVE_SETPOINT";
+    case SystemConditionState::OVERHEATED: return "OVERHEATED";
+    case SystemConditionState::UNKNOWN:
+    default:
+      return "UNKNOWN";
+  }
+}
+
+inline const char *controller_state_to_string(ControllerState state) {
+  switch (state) {
+    case ControllerState::OFF: return "OFF";
+    case ControllerState::MANUAL: return "MANUAL";
+    case ControllerState::CALIBRATING: return "CALIBRATING";
+    case ControllerState::WAITING_INPUT: return "WAITING_INPUT";
+    case ControllerState::IDLE: return "IDLE";
+    case ControllerState::HEATING: return "HEATING";
+    case ControllerState::MIXED: return "MIXED";
+    case ControllerState::FAULT: return "FAULT";
+    case ControllerState::UNKNOWN:
+    default:
+      return "UNKNOWN";
   }
 }
 

@@ -1508,8 +1508,8 @@
     setEntity('switch-motor_drivers_enabled', { value: true });
     setEntity('binary_sensor-motor_fault', { value: false });
     setEntity('select-manifold_type', { state: 'NC (Normally Closed)' });
-    setEntity('select-manifold_flow_probe', { state: 'Probe 1' });
-    setEntity('select-manifold_return_probe', { state: 'Probe 2' });
+    setEntity('select-manifold_flow_probe', { state: 'Probe 7' });
+    setEntity('select-manifold_return_probe', { state: 'Probe 8' });
     setEntity('number-motor_1_target_position', { value: 37 });
     setEntity('sensor-motor_current', { value: 21.4 });
     setEntity('sensor-motor_1_ripple_count', { value: 93 });
