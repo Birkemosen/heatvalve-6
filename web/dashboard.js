@@ -494,11 +494,9 @@
     var r = '<div class="zone-grid">';
     for (var z = 1; z <= NZ; z++) {
       r += '<div class="zone-card" data-zone="' + z + '" onclick="window._hv6.selZone(' + z + ')">' +
-        '<div class="zc-label" id="zc-name-' + z + '">' + zoneLabel(z) + '</div>' +
-        '<div class="zc-fault-pill" id="zc-fault-' + z + '">FAULT</div>' +
-        '<div class="zc-temp" id="zc-temp-' + z + '">---</div>' +
-        '<div class="zc-valve" id="zc-valve-' + z + '">---</div>' +
-        '<div class="zc-badge" id="zc-state-' + z + '"></div>' +
+        '<div class="zc-state-row"><span class="zc-dot" id="zc-state-' + z + '"></span><span class="zc-state-label" id="zc-state-text-' + z + '">---</span></div>' +
+        '<div class="zc-zone-name">Zone ' + z + '</div>' +
+        '<div class="zc-friendly" id="zc-friendly-' + z + '">' + (zoneTag(z) || '') + '</div>' +
       '</div>';
     }
     r += '</div>';
@@ -899,14 +897,51 @@
 
   function updateZoneCardState(z) {
     var st = (es('text_sensor-zone_' + z + '_state') || 'unknown').toUpperCase();
-    var stateEl = h('zc-state-' + z);
-    if (stateEl) {
-      stateEl.className = 'zc-badge';
-      if (st === 'DEMAND') stateEl.style.background = '#EEA111';
-      else if (st === 'SATISFIED') stateEl.style.background = '#7fd489';
-      else if (st === 'OVERHEATED') stateEl.style.background = '#ff6464';
-      else stateEl.style.background = '#555';
+    var enabled = isOn('switch-zone_' + z + '_enabled');
+    var fault = zoneHasFault(z);
+    var card = document.querySelector('.zone-card[data-zone="' + z + '"]');
+    var dotEl = h('zc-state-' + z);
+    var textEl = h('zc-state-text-' + z);
+
+    if (!enabled) st = 'OFF';
+    if (fault) st = 'FAULT';
+
+    var color, stClass, glowOn;
+    if (st === 'FAULT') {
+      color = '#ff6464'; stClass = 'zs-overheat'; glowOn = true;
+    } else if (st === 'HEATING') {
+      color = '#EEA111'; stClass = 'zs-heating'; glowOn = true;
+    } else if (st === 'IDLE') {
+      color = '#79d17e'; stClass = 'zs-idle'; glowOn = false;
+    } else if (st === 'OVERHEATED') {
+      color = '#ff6464'; stClass = 'zs-overheat'; glowOn = false;
+    } else if (st === 'MANUAL') {
+      color = '#53A8FF'; stClass = 'zs-manual'; glowOn = false;
+    } else if (st === 'CALIBRATING') {
+      color = '#a78bfa'; stClass = 'zs-calibrating'; glowOn = true;
+    } else if (st === 'WAITING_CALIBRATION' || st === 'WAITING_ROOM_TEMP') {
+      color = '#f59e0b'; stClass = 'zs-waiting'; glowOn = false;
+    } else if (st === 'OFF') {
+      color = '#4a4a4a'; stClass = 'zs-off'; glowOn = false;
+    } else {
+      color = '#444'; stClass = ''; glowOn = false;
     }
+
+    if (dotEl) {
+      dotEl.style.background = color;
+      dotEl.style.boxShadow = glowOn ? ('0 0 5px ' + color) : '';
+    }
+    if (textEl) {
+      textEl.textContent = st;
+      textEl.style.color = color;
+    }
+    if (card) {
+      var SC = ['zs-heating', 'zs-idle', 'zs-overheat', 'zs-manual', 'zs-calibrating', 'zs-waiting', 'zs-off'];
+      SC.forEach(function (c) { card.classList.remove(c); });
+      if (stClass) card.classList.add(stClass);
+      card.classList.toggle('disabled', !enabled);
+    }
+
     updateZoneFaultVisual(z);
     if (selectedZone === z) updateZonePanel();
   }
@@ -1049,8 +1084,8 @@
     badge.className = 'badge';
     if (zoneHasFault(z)) { badge.textContent = 'MOTOR FAULT'; badge.classList.add('fault'); return; }
     if (!en) { badge.textContent = 'DISABLED'; badge.classList.add('disabled'); return; }
-    if (st === 'DEMAND') { badge.textContent = 'DEMAND'; badge.classList.add('demand'); return; }
-    if (st === 'SATISFIED') { badge.textContent = 'SATISFIED'; badge.classList.add('satisfied'); return; }
+    if (st === 'HEATING') { badge.textContent = 'HEATING'; badge.classList.add('demand'); return; }
+    if (st === 'IDLE') { badge.textContent = 'IDLE'; badge.classList.add('satisfied'); return; }
     if (st === 'OVERHEATED') { badge.textContent = 'OVERHEATED'; badge.classList.add('overheated'); return; }
     badge.textContent = st || '---';
     badge.classList.add('unknown');
@@ -1530,7 +1565,7 @@
       var target = round1(20 + z * 0.4);
       var temp = round1(target + (z % 3 === 0 ? 0.4 : -0.6 + z * 0.08));
       var valve = enabled ? Math.max(0, Math.min(100, 18 + z * 11)) : 0;
-      var state = !enabled ? 'IDLE' : temp < target - 0.2 ? 'DEMAND' : (temp > target + 0.5 ? 'OVERHEATED' : 'SATISFIED');
+      var state = !enabled ? 'IDLE' : temp < target - 0.2 ? 'HEATING' : (temp > target + 0.5 ? 'OVERHEATED' : 'IDLE');
       setEntity('climate-zone_' + z, { target_temperature: target, state: 'heat' });
       setEntity('sensor-zone_' + z + '_temperature', { value: temp });
       setEntity('sensor-zone_' + z + '_valve_position', { value: valve });
@@ -1583,7 +1618,7 @@
       temp = round1(temp + (demand ? 0.05 + valve / 2200 : -0.03 + valve / 3000) + Math.sin((mockStep + z * 2) / 6) * 0.04);
       setEntity('sensor-zone_' + z + '_temperature', { value: temp });
       setEntity('sensor-zone_' + z + '_valve_position', { value: Math.round(valve) });
-      setEntity('text_sensor-zone_' + z + '_state', { state: !enabled ? 'IDLE' : demand ? 'DEMAND' : (temp > target + 0.5 ? 'OVERHEATED' : 'SATISFIED') });
+      setEntity('text_sensor-zone_' + z + '_state', { state: !enabled ? 'IDLE' : demand ? 'HEATING' : (temp > target + 0.5 ? 'OVERHEATED' : 'IDLE') });
       setEntity('sensor-probe_' + z + '_temperature', { value: round1(temp + Math.sin((mockStep + z) / 7) * 0.1) });
 
       if (enabled && valve > 0) {
@@ -1754,8 +1789,8 @@
     sName: function (v) {
       setZoneName(selectedZone, v);
       if (h('zf-name')) h('zf-name').textContent = zoneLabel(selectedZone);
-      var zc = h('zc-name-' + selectedZone);
-      if (zc) zc.textContent = zoneLabel(selectedZone);
+      var zcf = h('zc-friendly-' + selectedZone);
+      if (zcf) zcf.textContent = zoneTag(selectedZone) || '';
       var fdLbl = h('fd-zn' + selectedZone);
       if (fdLbl) fdLbl.textContent = zoneLabel(selectedZone).toUpperCase();
     },
