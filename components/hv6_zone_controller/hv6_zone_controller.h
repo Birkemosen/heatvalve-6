@@ -140,7 +140,7 @@ class Hv6ZoneController : public esphome::Component {
   static constexpr uint32_t MQTT_STALE_MS = 60 * 60 * 1000;
   static constexpr uint32_t MQTT_FALLBACK_MS = 30 * 60 * 1000;
   static constexpr float FALLBACK_SETPOINT_C = 20.0f;
-  static constexpr bool DEVELOPMENT_MANUAL_ONLY = true;
+  static constexpr bool DEVELOPMENT_MANUAL_ONLY = false;
 
   // Component references
   Hv6ConfigStore *config_store_ = nullptr;
@@ -180,7 +180,7 @@ class Hv6ZoneController : public esphome::Component {
 
   uint32_t cycle_count_ = 0;
   uint32_t cycle_interval_ms_ = 10000;
-  bool manual_mode_ = true;
+  bool manual_mode_ = false;
 
   TaskHandle_t task_handle_ = nullptr;
 

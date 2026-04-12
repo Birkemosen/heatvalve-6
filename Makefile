@@ -15,9 +15,9 @@ SERIAL_PORT := $(if $(PORT),$(PORT),$(AUTO_PORT))
 help:
 	@echo "HeatValve-6 ESPHome tasks"
 	@echo "  make config        Validate YAML"
-	@echo "  make build         Compile firmware only (robust PlatformIO flow)"
-	@echo "  make deploy        Build + upload (USB if PORT is set, otherwise OTA)"
-	@echo "  make ota           Build + upload over network to HOST"
+	@echo "  make build         Increment patch version + compile firmware"
+	@echo "  make deploy        Increment patch version + build + upload (USB if PORT is set, otherwise OTA)"
+	@echo "  make ota           Increment patch version + build + upload over network to HOST"
 	@echo "  make logs          Stream logs from HOST"
 	@echo "  make monitor       Open serial monitor on PORT"
 	@echo "  make erase         Erase flash on PORT"
@@ -47,6 +47,7 @@ config: check
 	$(ESPHOME) config $(CONFIG)
 
 build: check
+	@bash bump_patch_version.sh
 	$(ESPHOME) compile --only-generate $(CONFIG)
 	perl -0pi -e 's/" ".join\(cmd\)/" ".join(map(str, cmd))/g' $(BUILD_ROOT)/post_build.py
 	$(PIO) run -d $(BUILD_ROOT)

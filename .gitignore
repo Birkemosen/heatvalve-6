@@ -3,7 +3,7 @@
 
 # ESPHome build artifacts
 .esphome/
-
+traces/
 # IDE
 .vscode/
 .idea/
