@@ -309,7 +309,7 @@ hv6_valve_controller:
   ipropi_pin: 7
   current_sense: motor_current_adc
   trace_sense: motor_trace_stream
-  motor_addresses: [0x30, 0x31, 0x32, 0x35, 0x33, 0x34]
+  motor_addresses: [0x30, 0x31, 0x32, 0x33, 0x34, 0x35]
 
 # Zone controller
 hv6_zone_controller:

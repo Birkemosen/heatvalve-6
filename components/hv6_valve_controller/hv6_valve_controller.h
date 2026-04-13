@@ -83,6 +83,7 @@ class Hv6ValveController : public esphome::Component {
   bool is_calibrating() const { return calibrating_; }
   uint32_t get_live_ripple_count() const { return live_ripple_count_; }
   void request_calibration(uint8_t zone);
+  void request_calibration_all();
   void log_i2c_scan();
   void set_manifold_type(ManifoldType type);
   ManifoldType get_manifold_type() const;
@@ -138,6 +139,7 @@ class Hv6ValveController : public esphome::Component {
   void process_tick_();
   void process_command_queue_();
   void execute_move_(uint8_t zone, float target_pct);
+  void execute_timed_move_(uint8_t zone, uint16_t duration_ms, MotorDirection dir, bool override_drivers);
 
   // Motor start/stop
   bool start_motor_(uint8_t zone, MotorDirection dir, bool override_drivers = false);
@@ -255,6 +257,7 @@ class Hv6ValveController : public esphome::Component {
 
   // Calibration request
   volatile int8_t calibration_request_ = -1;
+  volatile uint8_t calibration_pending_mask_ = 0;
   volatile bool calibrating_ = false;
 
   // Motor config cache

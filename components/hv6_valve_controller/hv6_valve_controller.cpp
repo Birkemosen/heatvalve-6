@@ -320,7 +320,7 @@ bool Hv6ValveController::request_position(uint8_t zone, float target_pct) {
     ESP_LOGW(TAG, "Calibration active/pending, rejecting position request for zone %d", zone + 1);
     return false;
   }
-  ValveCommand cmd = {zone, logical_to_actuator_pct_(target_pct), 0, false, MotorDirection::OPEN};
+  ValveCommand cmd = {zone, logical_to_actuator_pct_(target_pct)};
   return xQueueSend(cmd_queue_, &cmd, pdMS_TO_TICKS(100)) == pdTRUE;
 }
 
@@ -328,10 +328,10 @@ bool Hv6ValveController::request_timed_open(uint8_t zone, uint16_t duration_ms, 
   if (zone >= NUM_ZONES)
     return false;
   if (!override_drivers && !drivers_enabled_) {
-    ESP_LOGW(TAG, "Drivers disabled, rejecting timed open (override=%d)", override_drivers);
+    ESP_LOGW(TAG, "Drivers disabled, rejecting timed open for zone %d", zone + 1);
     return false;
   }
-  if (calibrating_ || calibration_request_ >= 0) {
+  if (calibrating_ || calibration_request_ >= 0 || calibration_pending_mask_ != 0) {
     ESP_LOGW(TAG, "Calibration active/pending, rejecting timed open for zone %d", zone + 1);
     return false;
   }
@@ -343,10 +343,10 @@ bool Hv6ValveController::request_timed_close(uint8_t zone, uint16_t duration_ms,
   if (zone >= NUM_ZONES)
     return false;
   if (!override_drivers && !drivers_enabled_) {
-    ESP_LOGW(TAG, "Drivers disabled, rejecting timed close (override=%d)", override_drivers);
+    ESP_LOGW(TAG, "Drivers disabled, rejecting timed close for zone %d", zone + 1);
     return false;
   }
-  if (calibrating_ || calibration_request_ >= 0) {
+  if (calibrating_ || calibration_request_ >= 0 || calibration_pending_mask_ != 0) {
     ESP_LOGW(TAG, "Calibration active/pending, rejecting timed close for zone %d", zone + 1);
     return false;
   }
@@ -357,9 +357,9 @@ bool Hv6ValveController::request_timed_close(uint8_t zone, uint16_t duration_ms,
 bool Hv6ValveController::request_stop(uint8_t zone) {
   if (zone >= NUM_ZONES)
     return false;
-  // Stop by sending a command with 0 duration - will be handled in execute_move_
-  ValveCommand cmd = {zone, 0.0f, 0, false, MotorDirection::OPEN};
-  return xQueueSend(cmd_queue_, &cmd, pdMS_TO_TICKS(100)) == pdTRUE;
+  if (motor_turning_ && current_zone_ == zone)
+    stop_motor_(true);
+  return true;
 }
 
 void Hv6ValveController::log_i2c_scan() {
@@ -486,6 +486,45 @@ void Hv6ValveController::request_calibration(uint8_t zone) {
   calibration_request_ = static_cast<int8_t>(zone);
 }
 
+void Hv6ValveController::request_calibration_all() {
+  if (!drivers_enabled_)
+    return;
+
+  // Guard against startup replay
+  if (boot_time_ms_ > 0) {
+    uint32_t uptime_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000) - boot_time_ms_;
+    if (uptime_ms < CALIBRATION_REQUEST_GUARD_MS) {
+      ESP_LOGW(TAG, "Calibration all request ignored during startup guard (%" PRIu32 "ms)", uptime_ms);
+      return;
+    }
+  }
+
+  uint8_t mask = 0;
+  for (uint8_t z = 0; z < NUM_ZONES; z++) {
+    bool enabled = true;
+    if (config_store_) {
+      const auto &cfg = config_store_->get_config();
+      enabled = cfg.zones[z].enabled;
+    }
+    if (enabled)
+      mask |= (1u << z);
+  }
+  if (mask == 0) {
+    ESP_LOGW(TAG, "request_calibration_all: no enabled zones");
+    return;
+  }
+  calibration_pending_mask_ = mask;
+  // Prime calibration_request_ with the first pending zone
+  for (uint8_t z = 0; z < NUM_ZONES; z++) {
+    if (calibration_pending_mask_ & (1u << z)) {
+      calibration_pending_mask_ &= ~(1u << z);
+      calibration_request_ = static_cast<int8_t>(z);
+      break;
+    }
+  }
+  ESP_LOGI(TAG, "request_calibration_all: queued zones mask=0x%02X", mask);
+}
+
 bool Hv6ValveController::manifold_is_nc_() const {
   return get_manifold_type() == ManifoldType::NC;
 }
@@ -550,10 +589,18 @@ void Hv6ValveController::run_() {
       uint32_t uptime_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000) - boot_time_ms_;
       if (uptime_ms >= AUTO_START_DELAY_MS) {
         auto_start_done_ = true;
-        ESP_LOGI(TAG, "Auto-start: enabling motor drivers and calibrating all zones");
+        ESP_LOGI(TAG, "Auto-start: enabling motor drivers and calibrating enabled zones");
         set_drivers_enabled(true);
         for (uint8_t z = 0; z < NUM_ZONES; z++) {
+          bool enabled = true;
+          if (config_store_) {
+            const auto &cfg = config_store_->get_config();
+            enabled = cfg.zones[z].enabled;
+          }
+          if (enabled)
           run_calibration_(z);
+          else
+            ESP_LOGI(TAG, "Auto-start: zone %d disabled, skipping calibration", z + 1);
         }
         last_wake = xTaskGetTickCount();  // Resync tick after long calibration run
       }
@@ -575,6 +622,16 @@ void Hv6ValveController::run_() {
         uint8_t zone = static_cast<uint8_t>(calibration_request_);
         calibration_request_ = -1;
         run_calibration_(zone);
+        // Advance to next pending zone in the queue
+        if (calibration_pending_mask_ != 0) {
+          for (uint8_t z = 0; z < NUM_ZONES; z++) {
+            if (calibration_pending_mask_ & (1u << z)) {
+              calibration_pending_mask_ &= ~(1u << z);
+              calibration_request_ = static_cast<int8_t>(z);
+              break;
+            }
+          }
+        }
       }
 
       process_command_queue_();
@@ -588,32 +645,36 @@ void Hv6ValveController::process_command_queue_() {
   ValveCommand cmd;
   if (xQueueReceive(cmd_queue_, &cmd, 0) == pdTRUE) {
     if (cmd.timed_duration_ms > 0) {
-      // Timed movement command
-      if (cmd.zone < NUM_ZONES && telemetry_[cmd.zone].present) {
-        bool can_execute = cmd.override_drivers || drivers_enabled_;
-        if (can_execute) {
-          timed_mode_active_ = true;
-          timed_move_start_ms_ = esp_timer_get_time() / 1000;
-          timed_move_duration_ms_ = cmd.timed_duration_ms;
-          if (!start_motor_(cmd.zone, cmd.timed_direction, cmd.override_drivers)) {
-            timed_mode_active_ = false;
-            ESP_LOGW(TAG, "Zone %d timed %s start failed (override=%d)",
-                     cmd.zone + 1,
-                     cmd.timed_direction == MotorDirection::OPEN ? "OPEN" : "CLOSE",
-                     cmd.override_drivers);
+      execute_timed_move_(cmd.zone, cmd.timed_duration_ms, cmd.timed_direction, cmd.override_drivers);
           } else {
-            ESP_LOGD(TAG, "Zone %d timed %s for %u ms (override=%d)",
-                     cmd.zone + 1,
-                     cmd.timed_direction == MotorDirection::OPEN ? "OPEN" : "CLOSE",
-                     cmd.timed_duration_ms, cmd.override_drivers);
-          }
-        }
-      }
-    } else {
-      // Position-based movement command
       execute_move_(cmd.zone, cmd.target_pct);
     }
   }
+}
+
+void Hv6ValveController::execute_timed_move_(uint8_t zone, uint16_t duration_ms, MotorDirection dir, bool override_drivers) {
+  if (zone >= NUM_ZONES)
+    return;
+  if (!override_drivers) {
+    if (!telemetry_[zone].present || !drivers_enabled_)
+      return;
+  }
+  if (!start_motor_(zone, dir, override_drivers))
+    return;
+
+  ESP_LOGI(TAG, "Motor %d timed %s %" PRIu16 "ms (override=%d)",
+           zone + 1, dir == MotorDirection::OPEN ? "OPEN" : "CLOSE",
+           duration_ms, override_drivers);
+
+  uint32_t elapsed = 0;
+  while (motor_turning_ && elapsed < static_cast<uint32_t>(duration_ms)) {
+    motor_loop_();
+    vTaskDelay(pdMS_TO_TICKS(FAST_TICK_MS));
+    elapsed += FAST_TICK_MS;
+  }
+
+  if (motor_turning_)
+    stop_motor_(true);
 }
 
 void Hv6ValveController::execute_move_(uint8_t zone, float target_pct) {
@@ -1177,6 +1238,9 @@ void Hv6ValveController::trigger_fault_(FaultCode code, const char *reason) {
 // =============================================================================
 
 void Hv6ValveController::check_relearn_triggers_() {
+  if (!config_store_)
+    return;
+
   uint32_t now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
   if (now_ms - last_relearn_check_ms_ < RELEARN_CHECK_INTERVAL_MS)
     return;
@@ -1186,7 +1250,12 @@ void Hv6ValveController::check_relearn_triggers_() {
   if (calibration_request_ >= 0 || calibrating_)
     return;
 
+  const auto cfg = config_store_->get_config();
+
   for (uint8_t z = 0; z < NUM_ZONES; z++) {
+    if (!cfg.zones[z].enabled)
+      continue;
+
     xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
     const auto &t = telemetry_[z];
 
@@ -1424,6 +1493,24 @@ void Hv6ValveController::run_calibration_(uint8_t zone) {
   xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
   bool present = telemetry_[zone].present;
   xSemaphoreGive(telemetry_mutex_);
+
+  // If cached as not-present, do a live re-probe before skipping — startup
+  // I2C scans can miss a motor transiently during driver wakeup.
+  if (!present && i2c_bus_ != nullptr) {
+    esphome::i2c::I2CDevice dev;
+    dev.set_i2c_bus(i2c_bus_);
+    dev.set_i2c_address(motor_addresses_[zone]);
+    if (dev.write(nullptr, 0) == esphome::i2c::ERROR_OK) {
+      xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
+      telemetry_[zone].present = true;
+      telemetry_[zone].presence_known = true;
+      xSemaphoreGive(telemetry_mutex_);
+      present = true;
+      ESP_LOGI(TAG, "Calibration zone %d: motor presence recovered on I2C (addr 0x%02X)",
+               zone + 1, motor_addresses_[zone]);
+    }
+  }
+
   if (!present) {
     ESP_LOGW(TAG, "Calibration zone %d skipped: motor not present on I2C (addr 0x%02X)",
              zone + 1, motor_addresses_[zone]);

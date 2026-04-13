@@ -233,6 +233,49 @@ bool Hv6ZoneController::is_zone_enabled(uint8_t zone) const {
   return config_store_->get_config().zones[zone].enabled;
 }
 
+void Hv6ZoneController::set_control_algorithm(ControlAlgorithm algorithm) {
+  if (!config_store_)
+    return;
+
+  auto cfg = config_store_->get_config();
+  bool changed = false;
+  for (uint8_t zone = 0; zone < NUM_ZONES; zone++) {
+    if (cfg.zones[zone].algorithm == algorithm)
+      continue;
+    cfg.zones[zone].algorithm = algorithm;
+    config_store_->update_zone(zone, cfg.zones[zone]);
+    algorithms_[zone].set_algorithm(algorithm);
+    changed = true;
+  }
+  if (!changed)
+    return;
+
+  const char *algo_name = "Tanh";
+  switch (algorithm) {
+    case ControlAlgorithm::LINEAR:
+      algo_name = "Linear";
+      break;
+    case ControlAlgorithm::PID:
+      algo_name = "PID";
+      break;
+    case ControlAlgorithm::ADAPTIVE:
+      algo_name = "Adaptive";
+      break;
+    case ControlAlgorithm::TANH:
+    default:
+      algo_name = "Tanh";
+      break;
+  }
+
+  ESP_LOGI(TAG, "Control algorithm set to %s for all zones", algo_name);
+}
+
+ControlAlgorithm Hv6ZoneController::get_control_algorithm() const {
+  if (!config_store_)
+    return ControlAlgorithm::TANH;
+  return config_store_->get_config().zones[0].algorithm;
+}
+
 void Hv6ZoneController::set_zone_probe(uint8_t zone, int8_t probe) {
   if (zone >= NUM_ZONES || !config_store_)
     return;
@@ -698,6 +741,7 @@ void Hv6ZoneController::run_() {
     check_failsafes_();
     run_cycle_();
     update_controller_state_();
+    update_zone_display_states_();
     update_system_condition_state_();
     cycle_count_++;
 
@@ -826,6 +870,8 @@ void Hv6ZoneController::run_cycle_() {
 
   for (uint8_t i = 0; i < NUM_ZONES; i++) {
     if (!drivers_enabled)
+      continue;
+    if (!cfg.zones[i].enabled)
       continue;
 
     // Skip zones that haven't been calibrated yet — position estimates
@@ -1425,7 +1471,10 @@ void Hv6ZoneController::update_controller_state_() {
   } else {
     // Check if any zone is calibrating
     bool any_calibrating = false;
+    const auto cfg = config_store_->get_config();
     for (uint8_t i = 0; i < NUM_ZONES; i++) {
+      if (!cfg.zones[i].enabled)
+        continue;
       auto telem = valve_controller_->get_telemetry(i);
       if (telem.learned_open_ms == 0 || telem.learned_close_ms == 0) {
         any_calibrating = true;
@@ -1437,7 +1486,6 @@ void Hv6ZoneController::update_controller_state_() {
       new_state = ControllerState::CALIBRATING;
     } else {
       // Count active zones and their demand states
-      const auto cfg = config_store_->get_config();
       uint8_t active_count = 0;
       uint8_t heating_count = 0;
 
@@ -1520,6 +1568,61 @@ void Hv6ZoneController::update_system_condition_state_() {
     system_condition_state_ = new_state;
     ESP_LOGD(TAG, "System condition: %d", static_cast<int>(new_state));
   }
+}
+
+void Hv6ZoneController::update_zone_display_states_() {
+  if (!config_store_ || !valve_controller_)
+    return;
+
+  const auto cfg = config_store_->get_config();
+  const bool drivers_enabled = valve_controller_->are_drivers_enabled();
+  const bool manual = manual_mode_ || DEVELOPMENT_MANUAL_ONLY;
+
+  xSemaphoreTake(snapshot_mutex_, portMAX_DELAY);
+  for (uint8_t i = 0; i < NUM_ZONES; i++) {
+    if (!cfg.zones[i].enabled) {
+      snapshots_[i].display_state = ZoneDisplayState::OFF;
+      continue;
+    }
+
+    if (manual) {
+      snapshots_[i].display_state = ZoneDisplayState::MANUAL;
+      continue;
+    }
+
+    if (!drivers_enabled) {
+      snapshots_[i].display_state = ZoneDisplayState::OFF;
+      continue;
+    }
+
+    auto telem = valve_controller_->get_telemetry(i);
+    if (telem.learned_open_ms == 0 || telem.learned_close_ms == 0) {
+      snapshots_[i].display_state = ZoneDisplayState::CALIBRATING;
+      continue;
+    }
+
+    if (std::isnan(snapshots_[i].temperature_c)) {
+      snapshots_[i].display_state = ZoneDisplayState::WAITING_ROOM_TEMP;
+      continue;
+    }
+
+    switch (snapshots_[i].state) {
+      case ZoneState::DEMAND:
+        snapshots_[i].display_state = ZoneDisplayState::HEATING;
+        break;
+      case ZoneState::SATISFIED:
+        snapshots_[i].display_state = ZoneDisplayState::IDLE;
+        break;
+      case ZoneState::OVERHEATED:
+        snapshots_[i].display_state = ZoneDisplayState::OVERHEATED;
+        break;
+      case ZoneState::UNKNOWN:
+      default:
+        snapshots_[i].display_state = ZoneDisplayState::WAITING_ROOM_TEMP;
+        break;
+    }
+  }
+  xSemaphoreGive(snapshot_mutex_);
 }
 
 }  // namespace hv6

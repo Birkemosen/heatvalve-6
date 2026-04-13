@@ -47,9 +47,7 @@ button:
     name: "Calibrate All Motors"
     on_press:
       - lambda: |-
-          for (int z = 0; z < 6; z++) {
-            id(hv6_valves).request_calibration(z);
-          }
+          id(hv6_valves).request_calibration_all();
 
   - platform: template
     name: "Motor 1 Open Flow (100%)"
@@ -960,6 +958,32 @@ number:
           id(hv6_valves).reload_motor_config();
 
 select:
+  - platform: template
+    name: "Control Algorithm"
+    id: control_algorithm_select
+    entity_category: config
+    optimistic: false
+    options:
+      - Tanh
+      - Linear
+      - PID
+      - Adaptive
+    lambda: |-
+      switch (id(hv6_zones).get_control_algorithm()) {
+        case hv6::ControlAlgorithm::LINEAR: return std::string("Linear");
+        case hv6::ControlAlgorithm::PID: return std::string("PID");
+        case hv6::ControlAlgorithm::ADAPTIVE: return std::string("Adaptive");
+        case hv6::ControlAlgorithm::TANH:
+        default: return std::string("Tanh");
+      }
+    set_action:
+      - lambda: |-
+          hv6::ControlAlgorithm algo = hv6::ControlAlgorithm::TANH;
+          if (x == "Linear") algo = hv6::ControlAlgorithm::LINEAR;
+          else if (x == "PID") algo = hv6::ControlAlgorithm::PID;
+          else if (x == "Adaptive") algo = hv6::ControlAlgorithm::ADAPTIVE;
+          id(hv6_zones).set_control_algorithm(algo);
+
   - platform: template
     name: "Manifold Type"
     id: manifold_type_select

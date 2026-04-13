@@ -499,8 +499,8 @@
     for (var z = 1; z <= NZ; z++) {
       r += '<div class="zone-card" data-zone="' + z + '" onclick="window._hv6.selZone(' + z + ')">' +
         '<div class="zc-state-row"><span class="zc-dot" id="zc-state-' + z + '"></span><span class="zc-state-label" id="zc-state-text-' + z + '">---</span></div>' +
-        '<div class="zc-zone-name">Zone ' + z + '</div>' +
-        '<div class="zc-friendly" id="zc-friendly-' + z + '">' + (zoneTag(z) || '') + '</div>' +
+        '<div class="zc-zone-name">Zone ' + z + 
+        '<span class="zc-friendly" id="zc-friendly-' + z + '">' + (zoneTag(z) || '') + '</span></div>' +
       '</div>';
     }
     r += '</div>';
@@ -825,8 +825,8 @@
       if (!msg) return;
       
       // Filter out debug noise patterns
-      if (/\[0;36m\[D\]\[(?:select|text|number):\d+\]:|^\[0m$/.test(msg)) return;
-      msg = msg.replace(/\[0;36m|\[0m/g, '');
+      if (/\[0;??m\[D\]\[(?:select|text|number):\d+\]:|^\[0m$/.test(msg)) return;
+      msg = msg.replace(/\[0;??m|\[0m/g, '');
       msg = msg.trim();
       if (!msg) return;
       

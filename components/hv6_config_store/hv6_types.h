@@ -359,8 +359,7 @@ inline const char *fault_code_to_string(FaultCode code) {
 
 inline const char *zone_state_to_string(ZoneState state) {
   switch (state) {
-    case ZoneState::OVERHEATED: return "OVERHEATED";
-    case ZoneState::SATISFIED: return "SATISFIED";
+    case ZoneState::IDLE: return "IDLE";
     case ZoneState::DEMAND: return "DEMAND";
     default: return "UNKNOWN";
   }
@@ -388,17 +387,6 @@ inline const char *zone_condition_state_to_string(ZoneConditionState state) {
     case ZoneConditionState::ABOVE_SETPOINT: return "ABOVE_SETPOINT";
     case ZoneConditionState::OVERHEATED: return "OVERHEATED";
     case ZoneConditionState::UNKNOWN:
-    default:
-      return "UNKNOWN";
-  }
-}
-
-inline const char *system_condition_state_to_string(SystemConditionState state) {
-  switch (state) {
-    case SystemConditionState::NORMAL: return "NORMAL";
-    case SystemConditionState::ABOVE_SETPOINT: return "ABOVE_SETPOINT";
-    case SystemConditionState::OVERHEATED: return "OVERHEATED";
-    case SystemConditionState::UNKNOWN:
     default:
       return "UNKNOWN";
   }

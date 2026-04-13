@@ -59,6 +59,8 @@ class Hv6ZoneController : public esphome::Component {
   /// Enable or disable a zone. Disabled zones close their valve and persist to NVS.
   void set_zone_enabled(uint8_t zone, bool enabled);
   bool is_zone_enabled(uint8_t zone) const;
+  void set_control_algorithm(ControlAlgorithm algorithm);
+  ControlAlgorithm get_control_algorithm() const;
 
   /// Manual mode: suppresses automatic valve positioning.
   /// Manual commands (open/close/calibrate via UI) still work.
@@ -201,6 +203,7 @@ class Hv6ZoneController : public esphome::Component {
   // State machine updates (called during run_cycle_)
   void update_controller_state_();
   void update_system_condition_state_();
+  void update_zone_display_states_();
 
   // Helpers
   float read_zone_temperature_(uint8_t zone) const;
