@@ -135,12 +135,12 @@ void Hv6ValveController::setup() {
 
   log_startup_self_test_();
 
-  // Safe boot default: keep drivers logically disabled until explicitly enabled from UI.
+  // Boot default: keep motor drivers enabled.
   // In development mode we keep nSLEEP high to avoid brownout/reset when toggling it.
   if (!DEVELOPMENT_KEEP_NSLEEP_AWAKE)
-    set_nsleep_(false);
-  drivers_enabled_ = false;
-  ESP_LOGI(TAG, "Motors will auto-enable and calibrate all zones in %" PRIu32 "s",
+    set_nsleep_(true);
+  drivers_enabled_ = true;
+  ESP_LOGI(TAG, "Motors start enabled; auto-calibration will run in %" PRIu32 "s",
            AUTO_START_DELAY_MS / 1000);
   if (DEVELOPMENT_KEEP_NSLEEP_AWAKE)
     ESP_LOGW(TAG, "Development mode: nSLEEP kept HIGH to avoid enable-time reboot");
