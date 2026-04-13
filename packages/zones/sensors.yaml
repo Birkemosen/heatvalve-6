@@ -224,7 +224,7 @@ text_sensor:
     update_interval: 5s
     lambda: |-
       auto snap = id(hv6_zones).get_zone_snapshot(0);
-      return std::string(hv6::zone_state_to_string(snap.state));
+      return std::string(hv6::zone_display_state_to_string(snap.display_state));
 
   - platform: template
     name: "Zone 2 State"
@@ -232,7 +232,7 @@ text_sensor:
     update_interval: 5s
     lambda: |-
       auto snap = id(hv6_zones).get_zone_snapshot(1);
-      return std::string(hv6::zone_state_to_string(snap.state));
+      return std::string(hv6::zone_display_state_to_string(snap.display_state));
 
   - platform: template
     name: "Zone 3 State"
@@ -240,7 +240,7 @@ text_sensor:
     update_interval: 5s
     lambda: |-
       auto snap = id(hv6_zones).get_zone_snapshot(2);
-      return std::string(hv6::zone_state_to_string(snap.state));
+      return std::string(hv6::zone_display_state_to_string(snap.display_state));
 
   - platform: template
     name: "Zone 4 State"
@@ -248,7 +248,7 @@ text_sensor:
     update_interval: 5s
     lambda: |-
       auto snap = id(hv6_zones).get_zone_snapshot(3);
-      return std::string(hv6::zone_state_to_string(snap.state));
+      return std::string(hv6::zone_display_state_to_string(snap.display_state));
 
   - platform: template
     name: "Zone 5 State"
@@ -256,7 +256,7 @@ text_sensor:
     update_interval: 5s
     lambda: |-
       auto snap = id(hv6_zones).get_zone_snapshot(4);
-      return std::string(hv6::zone_state_to_string(snap.state));
+      return std::string(hv6::zone_display_state_to_string(snap.display_state));
 
   - platform: template
     name: "Zone 6 State"
@@ -264,4 +264,4 @@ text_sensor:
     update_interval: 5s
     lambda: |-
       auto snap = id(hv6_zones).get_zone_snapshot(5);
-      return std::string(hv6::zone_state_to_string(snap.state));
+      return std::string(hv6::zone_display_state_to_string(snap.display_state));
