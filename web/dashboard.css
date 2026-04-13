@@ -378,6 +378,7 @@ body {
   padding-bottom: 10px;
   border-bottom: 1px solid rgba(255,255,255,.08);
 }
+.zone-diag-grid .card-title { margin-bottom: 8px; padding-bottom: 6px; }
 
 .status-card, .sensors-card {
   background: linear-gradient(180deg, rgba(20,26,39,.98), rgba(18,22,33,.95));
@@ -676,6 +677,7 @@ body {
   font-size: .78rem;
   font-weight: 600;
 }
+.zone-diag-grid .target-toggle { margin: 4px 0; }
 
 .override-actions {
   display: none;
@@ -851,8 +853,10 @@ body {
 .st td { padding: 10px 0; font-size: .88rem; }
 .st td:first-child { color: var(--muted); font-weight: 500; width: 48%; }
 .st td:last-child { text-align: right; font-weight: 600; }
+.zone-diag-grid .st td { padding: 6px 0; font-size: .81rem; }
 
 .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.zone-diag-grid .btn-row { margin-top: 8px; gap: 6px; }
 .btn-row-sep { padding-top: 12px; border-top: 1px solid rgba(255,255,255,.08); }
 .probe-action-row { flex-wrap: nowrap; }
 .probe-action-row .btn { flex: 1 1 0; }
@@ -940,6 +944,7 @@ body {
 }
 .cfg-row:last-child { border-bottom: none; }
 .cfg-row .lbl { color: var(--muted); font-size: .86rem; font-weight: 600; }
+.zone-diag-grid .cfg-row { padding: 6px 0; }
 .cfg-probe-wrap {
   display: inline-flex;
   align-items: center;
@@ -1068,7 +1073,9 @@ body {
 /* ── Diagnostics layout ────────────────────────────────────────── */
 .diag-col { display: flex; flex-direction: column; gap: 14px; }
 .diag-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.diag-manual-card .target-toggle { font-size: .9rem; }
 .zone-diag-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.zone-diag-grid .card { padding: 16px; }
 
 /* I2C pre block */
 .diag-pre {
@@ -1105,6 +1112,7 @@ body {
 /* Zone diag card compact table */
 .st-tight td { padding: 5px 0; font-size: .82rem; }
 .diag-sub { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 10px 0 4px; }
+.zone-diag-grid .diag-sub { margin: 6px 0 2px; }
 
 /* ── OTA Update card ───────────────────────────────────────────── */
 .cfg-hint { font-size: .82rem; color: var(--muted); margin: 0 0 14px; line-height: 1.5; }

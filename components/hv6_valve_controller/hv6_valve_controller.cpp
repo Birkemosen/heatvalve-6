@@ -320,7 +320,45 @@ bool Hv6ValveController::request_position(uint8_t zone, float target_pct) {
     ESP_LOGW(TAG, "Calibration active/pending, rejecting position request for zone %d", zone + 1);
     return false;
   }
-  ValveCommand cmd = {zone, logical_to_actuator_pct_(target_pct)};
+  ValveCommand cmd = {zone, logical_to_actuator_pct_(target_pct), 0, false, MotorDirection::OPEN};
+  return xQueueSend(cmd_queue_, &cmd, pdMS_TO_TICKS(100)) == pdTRUE;
+}
+
+bool Hv6ValveController::request_timed_open(uint8_t zone, uint16_t duration_ms, bool override_drivers) {
+  if (zone >= NUM_ZONES)
+    return false;
+  if (!override_drivers && !drivers_enabled_) {
+    ESP_LOGW(TAG, "Drivers disabled, rejecting timed open (override=%d)", override_drivers);
+    return false;
+  }
+  if (calibrating_ || calibration_request_ >= 0) {
+    ESP_LOGW(TAG, "Calibration active/pending, rejecting timed open for zone %d", zone + 1);
+    return false;
+  }
+  ValveCommand cmd = {zone, 0.0f, duration_ms, override_drivers, MotorDirection::OPEN};
+  return xQueueSend(cmd_queue_, &cmd, pdMS_TO_TICKS(100)) == pdTRUE;
+}
+
+bool Hv6ValveController::request_timed_close(uint8_t zone, uint16_t duration_ms, bool override_drivers) {
+  if (zone >= NUM_ZONES)
+    return false;
+  if (!override_drivers && !drivers_enabled_) {
+    ESP_LOGW(TAG, "Drivers disabled, rejecting timed close (override=%d)", override_drivers);
+    return false;
+  }
+  if (calibrating_ || calibration_request_ >= 0) {
+    ESP_LOGW(TAG, "Calibration active/pending, rejecting timed close for zone %d", zone + 1);
+    return false;
+  }
+  ValveCommand cmd = {zone, 0.0f, duration_ms, override_drivers, MotorDirection::CLOSE};
+  return xQueueSend(cmd_queue_, &cmd, pdMS_TO_TICKS(100)) == pdTRUE;
+}
+
+bool Hv6ValveController::request_stop(uint8_t zone) {
+  if (zone >= NUM_ZONES)
+    return false;
+  // Stop by sending a command with 0 duration - will be handled in execute_move_
+  ValveCommand cmd = {zone, 0.0f, 0, false, MotorDirection::OPEN};
   return xQueueSend(cmd_queue_, &cmd, pdMS_TO_TICKS(100)) == pdTRUE;
 }
 
@@ -549,7 +587,32 @@ void Hv6ValveController::run_() {
 void Hv6ValveController::process_command_queue_() {
   ValveCommand cmd;
   if (xQueueReceive(cmd_queue_, &cmd, 0) == pdTRUE) {
-    execute_move_(cmd.zone, cmd.target_pct);
+    if (cmd.timed_duration_ms > 0) {
+      // Timed movement command
+      if (cmd.zone < NUM_ZONES && telemetry_[cmd.zone].present) {
+        bool can_execute = cmd.override_drivers || drivers_enabled_;
+        if (can_execute) {
+          timed_mode_active_ = true;
+          timed_move_start_ms_ = esp_timer_get_time() / 1000;
+          timed_move_duration_ms_ = cmd.timed_duration_ms;
+          if (!start_motor_(cmd.zone, cmd.timed_direction, cmd.override_drivers)) {
+            timed_mode_active_ = false;
+            ESP_LOGW(TAG, "Zone %d timed %s start failed (override=%d)",
+                     cmd.zone + 1,
+                     cmd.timed_direction == MotorDirection::OPEN ? "OPEN" : "CLOSE",
+                     cmd.override_drivers);
+          } else {
+            ESP_LOGD(TAG, "Zone %d timed %s for %u ms (override=%d)",
+                     cmd.zone + 1,
+                     cmd.timed_direction == MotorDirection::OPEN ? "OPEN" : "CLOSE",
+                     cmd.timed_duration_ms, cmd.override_drivers);
+          }
+        }
+      }
+    } else {
+      // Position-based movement command
+      execute_move_(cmd.zone, cmd.target_pct);
+    }
   }
 }
 
@@ -710,13 +773,21 @@ float Hv6ValveController::estimate_travel_time_ms_(uint8_t zone, float from_pct,
 // Motor Control
 // =============================================================================
 
-bool Hv6ValveController::start_motor_(uint8_t zone, MotorDirection dir) {
-  if (motor_turning_ || !drivers_enabled_)
+bool Hv6ValveController::start_motor_(uint8_t zone, MotorDirection dir, bool override_drivers) {
+  if (motor_turning_ || (!drivers_enabled_ && !override_drivers))
     return false;
 
   DRV8215 *driver = drivers_[zone];
   if (!driver)
     return false;
+
+  // If drivers are physically asleep and we're overriding, temporarily wake nSLEEP
+  nsleep_overridden_ = false;
+  if (override_drivers && !drivers_enabled_ && !DEVELOPMENT_KEEP_NSLEEP_AWAKE) {
+    set_nsleep_(true);
+    vTaskDelay(pdMS_TO_TICKS(5));  // DRV8215 wakeup time
+    nsleep_overridden_ = true;
+  }
 
   driver->clear_fault();
 
@@ -795,6 +866,13 @@ void Hv6ValveController::stop_motor_(bool record_event) {
 
   motor_turning_ = false;
   fsm_state_ = MotorFsmState::IDLE;
+  timed_mode_active_ = false;
+  timed_move_duration_ms_ = 0;
+  // If nSLEEP was raised for an override move, restore it to sleep
+  if (nsleep_overridden_ && !DEVELOPMENT_KEEP_NSLEEP_AWAKE) {
+    set_nsleep_(false);
+    nsleep_overridden_ = false;
+  }
   ESP_LOGI(TAG, "Motor %d stopped (%" PRIu32 "ms)", current_zone_ + 1, motor_run_time_ms_);
 }
 
@@ -805,6 +883,19 @@ void Hv6ValveController::stop_motor_(bool record_event) {
 void Hv6ValveController::process_tick_() {
   if (!motor_turning_)
     return;
+
+  // Check if timed move duration has elapsed
+  if (timed_mode_active_) {
+    uint32_t now_ms = esp_timer_get_time() / 1000;
+    uint32_t elapsed_ms = now_ms - timed_move_start_ms_;
+    if (elapsed_ms >= timed_move_duration_ms_) {
+      ESP_LOGI(TAG, "Zone %d timed move completed (%u ms)",
+               current_zone_ + 1, elapsed_ms);
+      stop_motor_(true);
+      timed_mode_active_ = false;
+      return;
+    }
+  }
 
   motor_run_time_ms_ += TICK_MS;
   drive_phase_elapsed_ms_ += TICK_MS;

@@ -24,7 +24,7 @@
   var prevZoneEnabled = {};
   var prevZoneTarget = {};
   var zoneFaultLatched = {};
-  var zoneManualOverride = { 1: false, 2: false, 3: false, 4: false, 5: false, 6: false };
+  var manualMode = false;
   var calibrationActive = false;
   var calibrationClearTimer = null;
   var prevDriversOn = null;
@@ -220,6 +220,9 @@
   function entityPath(domain, objectId) {
     return '/' + domain + '/' + encodeURIComponent(entityNameFromObjectId(domain, objectId));
   }
+  function buttonPressPath(entityName) {
+    return '/button/' + encodeURIComponent(entityName) + '/press';
+  }
   function es(id) { var e = E[id]; return e ? e.state : ""; }
   function isOn(id) {
     var e = E[id];
@@ -403,6 +406,7 @@
   }
 
   function canIssueMotorUiCommand(zone) {
+    if (manualMode) return true;
     if (!calibrationActive) return true;
     addActivity('Blocked UI motor command for ' + zoneLabel(zone) + ' while calibration is active', zone);
     return false;
@@ -517,12 +521,6 @@
         '</div>' +
         '<div class="target-hint">Use +/- to adjust target setpoint</div>' +
         '<div class="target-toggle"><span>Zone Enabled</span><div class="sw" id="zf-sw" onclick="window._hv6.tZoneSel()"></div></div>' +
-        '<div class="target-toggle"><span>Manual Motor Override</span><div class="sw" id="zf-ovr" onclick="window._hv6.tOverrideSel()"></div></div>' +
-        '<div class="btn-row override-actions" id="zf-ovr-actions">' +
-          '<button class="btn accent" onclick="window._hv6.openMotor(selectedZone)">Open 100%</button>' +
-          '<button class="btn accent" onclick="window._hv6.closeMotor(selectedZone)">Close 0%</button>' +
-          '<button class="btn warn" onclick="window._hv6.stopMotor(selectedZone)">Stop</button>' +
-        '</div>' +
       '</div>' +
       '<div class="zone-detail-grid">' +
         '<div class="zone-detail-stat"><span>Current Temperature</span><strong id="zf-temp">---</strong></div>' +
@@ -763,6 +761,14 @@
       '<div class="btn-row"><button class="btn warn" onclick="if(confirm(\'Clear all zone fault indicators?\'))window._hv6.clearZoneFaults()">Clear Fault Indicators</button></div>' +
       '<div class="diag-log" id="dg-activity-log"><div class="diag-log-empty">No activity yet.</div></div></div></div>';
 
+    r += '<div class="card diag-manual-card">' +
+      '<div class="card-title">Manual Motor Override</div>' +
+      '<div class="target-toggle">' +
+        '<span>Enable manual mode — suspends automatic zone management</span>' +
+        '<div class="sw" id="dg-manual-mode" onclick="window._hv6.tManualMode()"></div>' +
+      '</div>' +
+    '</div>';
+
     r += '<div class="zone-diag-grid">';
     for (var z = 1; z <= NZ; z++) {
       r += '<div class="card zone-diag-card">' +
@@ -778,9 +784,9 @@
           '<tr><td>Learned Close</td><td id="dz-close-rp-' + z + '">---</td></tr>' +
         '</table>' +
         '<div class="cfg-row"><span class="lbl">Set Motor Target</span><div class="mn-wrap"><input type="number" class="mn-inp" id="dz-mset-' + z + '" min="0" max="100" step="1" onchange="window._hv6.sMotor(' + z + ', this.value)"><span class="mn-unit">%</span></div></div>' +
-        '<div class="btn-row">' +
-          '<button class="btn accent" onclick="window._hv6.openMotor(' + z + ')">Open 100%</button>' +
-          '<button class="btn accent" onclick="window._hv6.closeMotor(' + z + ')">Close 0%</button>' +
+        '<div class="btn-row" id="dz-manual-buttons-' + z + '" style="display:none;">' +
+          '<button class="btn accent" onclick="window._hv6.openMotorTimed(' + z + ')">Open 10S</button>' +
+          '<button class="btn accent" onclick="window._hv6.closeMotorTimed(' + z + ')">Close 10S</button>' +
           '<button class="btn warn" onclick="window._hv6.stopMotor(' + z + ')">Stop</button>' +
         '</div>' +
         '<div class="diag-sub">Latest Zone Events</div>' +
@@ -817,6 +823,13 @@
       }
       msg = (msg || '').trim();
       if (!msg) return;
+      
+      // Filter out debug noise patterns
+      if (/\[0;36m\[D\]\[(?:select|text|number):\d+\]:|^\[0m$/.test(msg)) return;
+      msg = msg.replace(/\[0;36m|\[0m/g, '');
+      msg = msg.trim();
+      if (!msg) return;
+      
       updateCalibrationStateFromLog(msg);
       var z = detectZoneFromLog(msg);
       updateZoneFaultFromLog(msg, z);
@@ -1032,8 +1045,6 @@
       h('zf-valve').style.color = vv == null ? '' : vv < 30 ? '#42A5F5' : vv > 80 ? '#EF5350' : '#66BB6A';
     }
     if (h('zf-sw')) h('zf-sw').className = en ? 'sw on' : 'sw';
-    if (h('zf-ovr')) h('zf-ovr').className = zoneManualOverride[z] ? 'sw on' : 'sw';
-    if (h('zf-ovr-actions')) h('zf-ovr-actions').style.display = zoneManualOverride[z] ? 'flex' : 'none';
     if (h('zf-cal-lock')) h('zf-cal-lock').className = calibrationActive ? 'calib-lock show' : 'calib-lock';
 
     var lockCmds = calibrationActive;
@@ -1041,11 +1052,6 @@
     var plusBtn = h('zf-plus');
     if (minusBtn) minusBtn.disabled = lockCmds;
     if (plusBtn) plusBtn.disabled = lockCmds;
-
-    if (h('zf-ovr-actions')) {
-      var oBtns = h('zf-ovr-actions').querySelectorAll('button');
-      for (var bi = 0; bi < oBtns.length; bi++) oBtns[bi].disabled = lockCmds;
-    }
 
     if (h('zf-probe') && probe) h('zf-probe').value = probe.state || 'Probe 1';
 
@@ -1314,8 +1320,20 @@
   }
 
   function updateZoneDiagnostics() {
-    for (var z = 1; z <= NZ; z++) updateZoneDiagCard(z);
+    for (var z = 1; z <= NZ; z++) {
+      updateZoneDiagCard(z);
+    }
+    updateManualModeUI();
     if (h('dg-i2c-result')) h('dg-i2c-result').textContent = i2cLastResult;
+  }
+
+  function updateManualModeUI() {
+    var sw = h('dg-manual-mode');
+    if (sw) sw.classList.toggle('on', manualMode);
+    for (var z = 1; z <= NZ; z++) {
+      var btns = h('dz-manual-buttons-' + z);
+      if (btns) btns.style.display = manualMode ? 'flex' : 'none';
+    }
   }
 
   function updateSelect(name) {
@@ -1758,7 +1776,7 @@
         setI2CResult('Scanning I2C bus...');
         addActivity('I2C scan started');
       }
-      var buttonPath = '/button/' + encodeURIComponent(BUTTON_ENTITY_NAMES[n] || n);
+      var buttonPath = buttonPressPath(BUTTON_ENTITY_NAMES[n] || n);
       postAPI(buttonPath);
     },
     sS: function (n, v) {
@@ -1811,16 +1829,24 @@
     openMotor: function (z) {
       if (!canIssueMotorUiCommand(z)) return;
       setEntity('number-motor_' + z + '_target_position', { value: 100 });
-      postAPI('/button/' + encodeURIComponent('Zone ' + z + ' Open 100%'));
+      postAPI(buttonPressPath('Zone ' + z + ' Open 100%'));
+    },
+    openMotorTimed: function (z) {
+      if (!canIssueMotorUiCommand(z)) return;
+      postAPI(buttonPressPath('Zone ' + z + ' Open 10S'));
     },
     closeMotor: function (z) {
       if (!canIssueMotorUiCommand(z)) return;
       setEntity('number-motor_' + z + '_target_position', { value: 0 });
-      postAPI('/button/' + encodeURIComponent('Zone ' + z + ' Close 0%'));
+      postAPI(buttonPressPath('Zone ' + z + ' Close 0%'));
+    },
+    closeMotorTimed: function (z) {
+      if (!canIssueMotorUiCommand(z)) return;
+      postAPI(buttonPressPath('Zone ' + z + ' Close 10S'));
     },
     stopMotor: function (z) {
       if (!canIssueMotorUiCommand(z)) return;
-      postAPI('/button/' + encodeURIComponent('Zone ' + z + ' Stop'));
+      postAPI(buttonPressPath('Zone ' + z + ' Stop'));
     },
     tEWSel: function (dir) { window._hv6.tEW(selectedZone, dir); },
     otaUpload: function () {
@@ -1888,11 +1914,12 @@
     clearZoneFaults: function () {
       clearZoneFaultIndicators();
     },
-    tOverrideSel: function () {
-      zoneManualOverride[selectedZone] = !zoneManualOverride[selectedZone];
-      addActivity((zoneManualOverride[selectedZone] ? 'Enabled' : 'Disabled') + ' manual override for ' + zoneLabel(selectedZone), selectedZone);
-      updateZonePanel();
-    }
+    tManualMode: function () {
+      manualMode = !manualMode;
+      addActivity((manualMode ? 'Enabled' : 'Disabled') + ' manual mode — auto management ' + (manualMode ? 'suspended' : 'resumed'));
+      updateManualModeUI();
+      postAPI(entityPath('switch', 'manual_mode') + '/' + (manualMode ? 'turn_on' : 'turn_off'));
+    },
   };
 
   function init() {

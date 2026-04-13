@@ -219,6 +219,91 @@ button:
     on_press:
       - lambda: id(hv6_valves).set_drivers_enabled(false);
 
+  # Timed 10-second manual mode buttons
+  - platform: template
+    name: "Zone 1 Open 10S"
+    icon: "mdi:valve-open"
+    entity_category: config
+    on_press:
+      - lambda: id(hv6_valves).request_timed_open(0, 10000, true);
+
+  - platform: template
+    name: "Zone 1 Close 10S"
+    icon: "mdi:valve-closed"
+    entity_category: config
+    on_press:
+      - lambda: id(hv6_valves).request_timed_close(0, 10000, true);
+
+  - platform: template
+    name: "Zone 2 Open 10S"
+    icon: "mdi:valve-open"
+    entity_category: config
+    on_press:
+      - lambda: id(hv6_valves).request_timed_open(1, 10000, true);
+
+  - platform: template
+    name: "Zone 2 Close 10S"
+    icon: "mdi:valve-closed"
+    entity_category: config
+    on_press:
+      - lambda: id(hv6_valves).request_timed_close(1, 10000, true);
+
+  - platform: template
+    name: "Zone 3 Open 10S"
+    icon: "mdi:valve-open"
+    entity_category: config
+    on_press:
+      - lambda: id(hv6_valves).request_timed_open(2, 10000, true);
+
+  - platform: template
+    name: "Zone 3 Close 10S"
+    icon: "mdi:valve-closed"
+    entity_category: config
+    on_press:
+      - lambda: id(hv6_valves).request_timed_close(2, 10000, true);
+
+  - platform: template
+    name: "Zone 4 Open 10S"
+    icon: "mdi:valve-open"
+    entity_category: config
+    on_press:
+      - lambda: id(hv6_valves).request_timed_open(3, 10000, true);
+
+  - platform: template
+    name: "Zone 4 Close 10S"
+    icon: "mdi:valve-closed"
+    entity_category: config
+    on_press:
+      - lambda: id(hv6_valves).request_timed_close(3, 10000, true);
+
+  - platform: template
+    name: "Zone 5 Open 10S"
+    icon: "mdi:valve-open"
+    entity_category: config
+    on_press:
+      - lambda: id(hv6_valves).request_timed_open(4, 10000, true);
+
+  - platform: template
+    name: "Zone 5 Close 10S"
+    icon: "mdi:valve-closed"
+    entity_category: config
+    on_press:
+      - lambda: id(hv6_valves).request_timed_close(4, 10000, true);
+
+  - platform: template
+    name: "Zone 6 Open 10S"
+    icon: "mdi:valve-open"
+    entity_category: config
+    on_press:
+      - lambda: id(hv6_valves).request_timed_open(5, 10000, true);
+
+  - platform: template
+    name: "Zone 6 Close 10S"
+    icon: "mdi:valve-closed"
+    entity_category: config
+    on_press:
+      - lambda: id(hv6_valves).request_timed_close(5, 10000, true);
+
   - platform: template
     name: "I2C Scan"
     icon: "mdi:bus-alert"

@@ -28,6 +28,9 @@ namespace hv6 {
 struct ValveCommand {
   uint8_t zone;
   float target_pct;
+  uint16_t timed_duration_ms = 0;  // 0 = position-based, >0 = timed duration
+  bool override_drivers = false;    // Bypass drivers_enabled check (manual mode)
+  MotorDirection timed_direction = MotorDirection::OPEN;  // Direction for timed moves
 };
 
 /// Software ripple counter state — reset each motor start.
@@ -70,6 +73,9 @@ class Hv6ValveController : public esphome::Component {
 
   // Thread-safe public API
   bool request_position(uint8_t zone, float target_pct);
+  bool request_timed_open(uint8_t zone, uint16_t duration_ms, bool override_drivers = false);
+  bool request_timed_close(uint8_t zone, uint16_t duration_ms, bool override_drivers = false);
+  bool request_stop(uint8_t zone);
   float get_position(uint8_t zone) const;
   MotorTelemetry get_telemetry(uint8_t zone) const;
   FaultCode get_last_fault() const { return current_fault_code_; }
@@ -134,7 +140,7 @@ class Hv6ValveController : public esphome::Component {
   void execute_move_(uint8_t zone, float target_pct);
 
   // Motor start/stop
-  bool start_motor_(uint8_t zone, MotorDirection dir);
+  bool start_motor_(uint8_t zone, MotorDirection dir, bool override_drivers = false);
   void stop_motor_(bool record_event);
   void apply_drive_output_();
 
@@ -201,6 +207,12 @@ class Hv6ValveController : public esphome::Component {
   uint32_t motor_run_time_ms_ = 0;
   uint32_t drive_phase_elapsed_ms_ = 0;
   bool drive_output_enabled_ = false;
+  
+  // Timed movement state
+  bool timed_mode_active_ = false;
+  uint32_t timed_move_start_ms_ = 0;
+  uint16_t timed_move_duration_ms_ = 0;
+  bool nsleep_overridden_ = false;  // nSLEEP raised temporarily for override move
 
   // Current sensing
   float current_raw_ma_ = 0.0f;
