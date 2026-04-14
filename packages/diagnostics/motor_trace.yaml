@@ -18,6 +18,10 @@ text_sensor:
     # and automatically published to MQTT by ESPHome
 
 # Buttons for manual control
+# Note: reset_fault, reset_and_relearn, reset_learned_factors are exposed as
+# API services (motor_reset_fault, motor_reset_and_relearn,
+# motor_reset_learned_factors) with a zone integer parameter (0-5).
+# Use Developer Tools → Services in Home Assistant to invoke them.
 button:
   - platform: template
     name: "Clear Motor Trace"
@@ -29,5 +33,4 @@ button:
         - lambda: |-
             id(hv6_valves).clear_motor_trace();
             ESP_LOGI("motor_trace", "Trace buffer cleared");
-
 

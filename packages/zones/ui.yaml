@@ -1,3 +1,9 @@
+globals:
+  - id: ui_selected_zone_index
+    type: uint8_t
+    restore_value: false
+    initial_value: '0'
+
 text_sensor:
   - platform: template
     name: "Firmware Version"
@@ -386,6 +392,27 @@ switch:
       - lambda: id(hv6_valves).set_drivers_enabled(false);
 
   - platform: template
+    name: "Auto Apply Learned Factors"
+    id: auto_apply_learned_factors
+    icon: "mdi:brain"
+    entity_category: config
+    optimistic: false
+    lambda: |-
+      return id(hv6_config).get_config().motor.auto_apply_learned_factors;
+    turn_on_action:
+      - lambda: |-
+          auto cfg = id(hv6_config).get_config();
+          cfg.motor.auto_apply_learned_factors = true;
+          id(hv6_config).update_motor(cfg.motor);
+          id(hv6_valves).reload_motor_config();
+    turn_off_action:
+      - lambda: |-
+          auto cfg = id(hv6_config).get_config();
+          cfg.motor.auto_apply_learned_factors = false;
+          id(hv6_config).update_motor(cfg.motor);
+          id(hv6_valves).reload_motor_config();
+
+  - platform: template
     name: "Manual Mode"
     id: manual_mode
     icon: "mdi:hand-back-right"
@@ -589,8 +616,26 @@ number:
           id(hv6_valves).request_position(5, x);
 
   - platform: template
-    name: "Zone 1 Area M2"
-    id: zone_1_area_m2
+    name: "Settings Zone"
+    id: selected_zone
+    entity_category: config
+    mode: box
+    min_value: 1
+    max_value: 6
+    step: 1
+    optimistic: false
+    lambda: |-
+      return static_cast<float>(id(ui_selected_zone_index) + 1);
+    set_action:
+      - lambda: |-
+          int zi = static_cast<int>(x) - 1;
+          if (zi < 0) zi = 0;
+          if (zi > 5) zi = 5;
+          id(ui_selected_zone_index) = static_cast<uint8_t>(zi);
+
+  - platform: template
+    name: "Zone Area M2"
+    id: zone_area_m2
     entity_category: config
     mode: box
     unit_of_measurement: "m2"
@@ -599,88 +644,16 @@ number:
     step: 0.1
     optimistic: false
     lambda: |-
-      return id(hv6_zones).get_zone_area_m2(0);
+      uint8_t zi = id(ui_selected_zone_index);
+      return id(hv6_zones).get_zone_area_m2(zi);
     set_action:
-      - lambda: id(hv6_zones).set_zone_area_m2(0, x);
+      - lambda: |-
+          uint8_t zi = id(ui_selected_zone_index);
+          id(hv6_zones).set_zone_area_m2(zi, x);
 
   - platform: template
-    name: "Zone 2 Area M2"
-    id: zone_2_area_m2
-    entity_category: config
-    mode: box
-    unit_of_measurement: "m2"
-    min_value: 1
-    max_value: 120
-    step: 0.1
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_area_m2(1);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_area_m2(1, x);
-
-  - platform: template
-    name: "Zone 3 Area M2"
-    id: zone_3_area_m2
-    entity_category: config
-    mode: box
-    unit_of_measurement: "m2"
-    min_value: 1
-    max_value: 120
-    step: 0.1
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_area_m2(2);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_area_m2(2, x);
-
-  - platform: template
-    name: "Zone 4 Area M2"
-    id: zone_4_area_m2
-    entity_category: config
-    mode: box
-    unit_of_measurement: "m2"
-    min_value: 1
-    max_value: 120
-    step: 0.1
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_area_m2(3);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_area_m2(3, x);
-
-  - platform: template
-    name: "Zone 5 Area M2"
-    id: zone_5_area_m2
-    entity_category: config
-    mode: box
-    unit_of_measurement: "m2"
-    min_value: 1
-    max_value: 120
-    step: 0.1
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_area_m2(4);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_area_m2(4, x);
-
-  - platform: template
-    name: "Zone 6 Area M2"
-    id: zone_6_area_m2
-    entity_category: config
-    mode: box
-    unit_of_measurement: "m2"
-    min_value: 1
-    max_value: 120
-    step: 0.1
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_area_m2(5);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_area_m2(5, x);
-
-  - platform: template
-    name: "Zone 1 Pipe Spacing Mm"
-    id: zone_1_pipe_spacing_mm
+    name: "Zone Pipe Spacing Mm"
+    id: zone_pipe_spacing_mm
     entity_category: config
     mode: box
     unit_of_measurement: "mm"
@@ -689,84 +662,12 @@ number:
     step: 5
     optimistic: false
     lambda: |-
-      return id(hv6_zones).get_zone_pipe_spacing_mm(0);
+      uint8_t zi = id(ui_selected_zone_index);
+      return id(hv6_zones).get_zone_pipe_spacing_mm(zi);
     set_action:
-      - lambda: id(hv6_zones).set_zone_pipe_spacing_mm(0, x);
-
-  - platform: template
-    name: "Zone 2 Pipe Spacing Mm"
-    id: zone_2_pipe_spacing_mm
-    entity_category: config
-    mode: box
-    unit_of_measurement: "mm"
-    min_value: 50
-    max_value: 500
-    step: 5
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_pipe_spacing_mm(1);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_pipe_spacing_mm(1, x);
-
-  - platform: template
-    name: "Zone 3 Pipe Spacing Mm"
-    id: zone_3_pipe_spacing_mm
-    entity_category: config
-    mode: box
-    unit_of_measurement: "mm"
-    min_value: 50
-    max_value: 500
-    step: 5
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_pipe_spacing_mm(2);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_pipe_spacing_mm(2, x);
-
-  - platform: template
-    name: "Zone 4 Pipe Spacing Mm"
-    id: zone_4_pipe_spacing_mm
-    entity_category: config
-    mode: box
-    unit_of_measurement: "mm"
-    min_value: 50
-    max_value: 500
-    step: 5
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_pipe_spacing_mm(3);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_pipe_spacing_mm(3, x);
-
-  - platform: template
-    name: "Zone 5 Pipe Spacing Mm"
-    id: zone_5_pipe_spacing_mm
-    entity_category: config
-    mode: box
-    unit_of_measurement: "mm"
-    min_value: 50
-    max_value: 500
-    step: 5
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_pipe_spacing_mm(4);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_pipe_spacing_mm(4, x);
-
-  - platform: template
-    name: "Zone 6 Pipe Spacing Mm"
-    id: zone_6_pipe_spacing_mm
-    entity_category: config
-    mode: box
-    unit_of_measurement: "mm"
-    min_value: 50
-    max_value: 500
-    step: 5
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_pipe_spacing_mm(5);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_pipe_spacing_mm(5, x);
+      - lambda: |-
+          uint8_t zi = id(ui_selected_zone_index);
+          id(hv6_zones).set_zone_pipe_spacing_mm(zi, x);
 
   - platform: template
     name: "Close Endstop Threshold"
@@ -957,7 +858,113 @@ number:
           id(hv6_config).update_motor(cfg.motor);
           id(hv6_valves).reload_motor_config();
 
+  - platform: template
+    name: "Generic Runtime Limit"
+    id: generic_runtime_limit_seconds
+    icon: "mdi:timer-outline"
+    entity_category: config
+    disabled_by_default: false
+    mode: box
+    unit_of_measurement: "s"
+    min_value: 10
+    max_value: 90
+    step: 1
+    optimistic: false
+    lambda: |-
+      return id(hv6_config).get_config().motor.generic_profile_runtime_limit_s;
+    set_action:
+      - lambda: |-
+          auto cfg = id(hv6_config).get_config();
+          cfg.motor.generic_profile_runtime_limit_s = static_cast<uint32_t>(x);
+          id(hv6_config).update_motor(cfg.motor);
+          id(hv6_valves).reload_motor_config();
+
+  - platform: template
+    name: "HmIP Runtime Limit"
+    id: hmip_runtime_limit_seconds
+    icon: "mdi:timer-alert-outline"
+    entity_category: config
+    disabled_by_default: false
+    mode: box
+    unit_of_measurement: "s"
+    min_value: 10
+    max_value: 45
+    step: 1
+    optimistic: false
+    lambda: |-
+      return id(hv6_config).get_config().motor.hmip_vdmot_runtime_limit_s;
+    set_action:
+      - lambda: |-
+          auto cfg = id(hv6_config).get_config();
+          cfg.motor.hmip_vdmot_runtime_limit_s = static_cast<uint32_t>(x);
+          id(hv6_config).update_motor(cfg.motor);
+          id(hv6_valves).reload_motor_config();
+
+  - platform: template
+    name: "Learned Factor Min Samples"
+    id: learned_factor_min_samples
+    icon: "mdi:counter"
+    entity_category: config
+    disabled_by_default: false
+    mode: box
+    min_value: 1
+    max_value: 10
+    step: 1
+    optimistic: false
+    lambda: |-
+      return id(hv6_config).get_config().motor.learned_factor_min_samples;
+    set_action:
+      - lambda: |-
+          auto cfg = id(hv6_config).get_config();
+          cfg.motor.learned_factor_min_samples = static_cast<uint8_t>(x);
+          id(hv6_config).update_motor(cfg.motor);
+          id(hv6_valves).reload_motor_config();
+
+  - platform: template
+    name: "Learned Factor Max Deviation"
+    id: learned_factor_max_deviation_pct
+    icon: "mdi:tune-variant"
+    entity_category: config
+    disabled_by_default: false
+    mode: box
+    unit_of_measurement: "%"
+    min_value: 2
+    max_value: 40
+    step: 1
+    optimistic: false
+    lambda: |-
+      return id(hv6_config).get_config().motor.learned_factor_max_deviation_pct * 100.0f;
+    set_action:
+      - lambda: |-
+          auto cfg = id(hv6_config).get_config();
+          cfg.motor.learned_factor_max_deviation_pct = x / 100.0f;
+          id(hv6_config).update_motor(cfg.motor);
+          id(hv6_valves).reload_motor_config();
+
 select:
+  - platform: template
+    name: "Motor Profile Default"
+    id: motor_profile_default
+    entity_category: config
+    optimistic: false
+    options:
+      - Generic
+      - "HmIP VdMot"
+    lambda: |-
+      switch (id(hv6_config).get_config().motor.default_profile) {
+        case hv6::MotorProfile::GENERIC:
+          return std::string("Generic");
+        case hv6::MotorProfile::HMIP_VDMOT:
+        default:
+          return std::string("HmIP VdMot");
+      }
+    set_action:
+      - lambda: |-
+          auto cfg = id(hv6_config).get_config();
+          cfg.motor.default_profile = (x == "Generic") ? hv6::MotorProfile::GENERIC : hv6::MotorProfile::HMIP_VDMOT;
+          id(hv6_config).update_motor(cfg.motor);
+          id(hv6_valves).reload_motor_config();
+
   - platform: template
     name: "Control Algorithm"
     id: control_algorithm_select
@@ -983,6 +990,27 @@ select:
           else if (x == "PID") algo = hv6::ControlAlgorithm::PID;
           else if (x == "Adaptive") algo = hv6::ControlAlgorithm::ADAPTIVE;
           id(hv6_zones).set_control_algorithm(algo);
+
+  - platform: template
+    name: "Zone Motor Profile"
+    id: zone_motor_profile
+    entity_category: config
+    optimistic: false
+    options: [Inherit, Generic, "HmIP VdMot"]
+    lambda: |-
+      uint8_t zi = id(ui_selected_zone_index);
+      switch (id(hv6_config).get_config().zones[zi].motor_profile_override) {
+        case hv6::MotorProfile::GENERIC: return std::string("Generic");
+        case hv6::MotorProfile::HMIP_VDMOT: return std::string("HmIP VdMot");
+        default: return std::string("Inherit");
+      }
+    set_action:
+      - lambda: |-
+          uint8_t zi = id(ui_selected_zone_index);
+          auto cfg = id(hv6_config).get_config();
+          cfg.zones[zi].motor_profile_override = (x == "Generic") ? hv6::MotorProfile::GENERIC : (x == "HmIP VdMot") ? hv6::MotorProfile::HMIP_VDMOT : hv6::MotorProfile::INHERIT;
+          id(hv6_config).update_zone(zi, cfg.zones[zi]);
+          id(hv6_valves).reload_motor_config();
 
   - platform: template
     name: "Manifold Type"
@@ -1046,97 +1074,30 @@ select:
           id(hv6_zones).set_manifold_return_probe(probe);
 
   - platform: template
-    name: "Zone 1 Probe"
-    id: zone_1_probe_select
+    name: "Zone Probe"
+    id: zone_probe
     entity_category: config
     optimistic: false
     options: [Probe 1, Probe 2, Probe 3, Probe 4, Probe 5, Probe 6, Probe 7, Probe 8]
     lambda: |-
-      int probe = id(hv6_zones).get_zone_probe(0);
+      uint8_t zi = id(ui_selected_zone_index);
+      int probe = id(hv6_zones).get_zone_probe(zi);
       return std::string("Probe ") + std::to_string(probe + 1);
     set_action:
       - lambda: |-
+          uint8_t zi = id(ui_selected_zone_index);
           int probe = static_cast<int>(x[x.size() - 1] - '1');
-          id(hv6_zones).set_zone_probe(0, probe);
+          id(hv6_zones).set_zone_probe(zi, probe);
 
   - platform: template
-    name: "Zone 2 Probe"
-    id: zone_2_probe_select
-    entity_category: config
-    optimistic: false
-    options: [Probe 1, Probe 2, Probe 3, Probe 4, Probe 5, Probe 6, Probe 7, Probe 8]
-    lambda: |-
-      int probe = id(hv6_zones).get_zone_probe(1);
-      return std::string("Probe ") + std::to_string(probe + 1);
-    set_action:
-      - lambda: |-
-          int probe = static_cast<int>(x[x.size() - 1] - '1');
-          id(hv6_zones).set_zone_probe(1, probe);
-
-  - platform: template
-    name: "Zone 3 Probe"
-    id: zone_3_probe_select
-    entity_category: config
-    optimistic: false
-    options: [Probe 1, Probe 2, Probe 3, Probe 4, Probe 5, Probe 6, Probe 7, Probe 8]
-    lambda: |-
-      int probe = id(hv6_zones).get_zone_probe(2);
-      return std::string("Probe ") + std::to_string(probe + 1);
-    set_action:
-      - lambda: |-
-          int probe = static_cast<int>(x[x.size() - 1] - '1');
-          id(hv6_zones).set_zone_probe(2, probe);
-
-  - platform: template
-    name: "Zone 4 Probe"
-    id: zone_4_probe_select
-    entity_category: config
-    optimistic: false
-    options: [Probe 1, Probe 2, Probe 3, Probe 4, Probe 5, Probe 6, Probe 7, Probe 8]
-    lambda: |-
-      int probe = id(hv6_zones).get_zone_probe(3);
-      return std::string("Probe ") + std::to_string(probe + 1);
-    set_action:
-      - lambda: |-
-          int probe = static_cast<int>(x[x.size() - 1] - '1');
-          id(hv6_zones).set_zone_probe(3, probe);
-
-  - platform: template
-    name: "Zone 5 Probe"
-    id: zone_5_probe_select
-    entity_category: config
-    optimistic: false
-    options: [Probe 1, Probe 2, Probe 3, Probe 4, Probe 5, Probe 6, Probe 7, Probe 8]
-    lambda: |-
-      int probe = id(hv6_zones).get_zone_probe(4);
-      return std::string("Probe ") + std::to_string(probe + 1);
-    set_action:
-      - lambda: |-
-          int probe = static_cast<int>(x[x.size() - 1] - '1');
-          id(hv6_zones).set_zone_probe(4, probe);
-
-  - platform: template
-    name: "Zone 6 Probe"
-    id: zone_6_probe_select
-    entity_category: config
-    optimistic: false
-    options: [Probe 1, Probe 2, Probe 3, Probe 4, Probe 5, Probe 6, Probe 7, Probe 8]
-    lambda: |-
-      int probe = id(hv6_zones).get_zone_probe(5);
-      return std::string("Probe ") + std::to_string(probe + 1);
-    set_action:
-      - lambda: |-
-          int probe = static_cast<int>(x[x.size() - 1] - '1');
-          id(hv6_zones).set_zone_probe(5, probe);
-
-  - platform: template
-    name: "Zone 1 Pipe Type"
-    id: zone_1_pipe_type
+    name: "Zone Pipe Type"
+    id: zone_pipe_type
     entity_category: config
     optimistic: false
     options: ["PEX 16mm", "PEX 12mm", "PEX 14mm", "PEX 17mm", "PEX 18mm", "PEX 20mm", "ALUPEX 16mm", "ALUPEX 20mm", "Unknown"]
     lambda: |-
-      auto t = id(hv6_zones).get_zone_pipe_type(0);
+      uint8_t zi = id(ui_selected_zone_index);
+      auto t = id(hv6_zones).get_zone_pipe_type(zi);
       if (t == hv6::PipeType::PEX_12X2) return std::string("PEX 12mm");
       if (t == hv6::PipeType::PEX_14X2) return std::string("PEX 14mm");
       if (t == hv6::PipeType::PEX_16X2) return std::string("PEX 16mm");
@@ -1148,6 +1109,7 @@ select:
       return std::string("PEX 16mm");
     set_action:
       - lambda: |-
+          uint8_t zi = id(ui_selected_zone_index);
           hv6::PipeType t = hv6::PipeType::PEX_16X2;
           if (x == "PEX 12mm") t = hv6::PipeType::PEX_12X2;
           else if (x == "PEX 14mm") t = hv6::PipeType::PEX_14X2;
@@ -1156,530 +1118,92 @@ select:
           else if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
           else if (x == "ALUPEX 16mm") t = hv6::PipeType::ALUPEX_16X2;
           else if (x == "ALUPEX 20mm") t = hv6::PipeType::ALUPEX_20X2;
-          id(hv6_zones).set_zone_pipe_type(0, t);
+          id(hv6_zones).set_zone_pipe_type(zi, t);
 
   - platform: template
-    name: "Zone 2 Pipe Type"
-    id: zone_2_pipe_type
-    entity_category: config
-    optimistic: false
-    options: ["PEX 16mm", "PEX 12mm", "PEX 14mm", "PEX 17mm", "PEX 18mm", "PEX 20mm", "ALUPEX 16mm", "ALUPEX 20mm", "Unknown"]
-    lambda: |-
-      auto t = id(hv6_zones).get_zone_pipe_type(1);
-      if (t == hv6::PipeType::PEX_12X2) return std::string("PEX 12mm");
-      if (t == hv6::PipeType::PEX_14X2) return std::string("PEX 14mm");
-      if (t == hv6::PipeType::PEX_16X2) return std::string("PEX 16mm");
-      if (t == hv6::PipeType::PEX_17X2) return std::string("PEX 17mm");
-      if (t == hv6::PipeType::PEX_18X2) return std::string("PEX 18mm");
-      if (t == hv6::PipeType::PEX_20X2) return std::string("PEX 20mm");
-      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("ALUPEX 16mm");
-      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("ALUPEX 20mm");
-      return std::string("PEX 16mm");
-    set_action:
-      - lambda: |-
-          hv6::PipeType t = hv6::PipeType::PEX_16X2;
-          if (x == "PEX 12mm") t = hv6::PipeType::PEX_12X2;
-          else if (x == "PEX 14mm") t = hv6::PipeType::PEX_14X2;
-          else if (x == "PEX 17mm") t = hv6::PipeType::PEX_17X2;
-          else if (x == "PEX 18mm") t = hv6::PipeType::PEX_18X2;
-          else if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
-          else if (x == "ALUPEX 16mm") t = hv6::PipeType::ALUPEX_16X2;
-          else if (x == "ALUPEX 20mm") t = hv6::PipeType::ALUPEX_20X2;
-          id(hv6_zones).set_zone_pipe_type(1, t);
-
-  - platform: template
-    name: "Zone 3 Pipe Type"
-    id: zone_3_pipe_type
-    entity_category: config
-    optimistic: false
-    options: ["PEX 16mm", "PEX 12mm", "PEX 14mm", "PEX 17mm", "PEX 18mm", "PEX 20mm", "ALUPEX 16mm", "ALUPEX 20mm", "Unknown"]
-    lambda: |-
-      auto t = id(hv6_zones).get_zone_pipe_type(2);
-      if (t == hv6::PipeType::PEX_12X2) return std::string("PEX 12mm");
-      if (t == hv6::PipeType::PEX_14X2) return std::string("PEX 14mm");
-      if (t == hv6::PipeType::PEX_16X2) return std::string("PEX 16mm");
-      if (t == hv6::PipeType::PEX_17X2) return std::string("PEX 17mm");
-      if (t == hv6::PipeType::PEX_18X2) return std::string("PEX 18mm");
-      if (t == hv6::PipeType::PEX_20X2) return std::string("PEX 20mm");
-      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("ALUPEX 16mm");
-      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("ALUPEX 20mm");
-      return std::string("PEX 16mm");
-    set_action:
-      - lambda: |-
-          hv6::PipeType t = hv6::PipeType::PEX_16X2;
-          if (x == "PEX 12mm") t = hv6::PipeType::PEX_12X2;
-          else if (x == "PEX 14mm") t = hv6::PipeType::PEX_14X2;
-          else if (x == "PEX 17mm") t = hv6::PipeType::PEX_17X2;
-          else if (x == "PEX 18mm") t = hv6::PipeType::PEX_18X2;
-          else if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
-          else if (x == "ALUPEX 16mm") t = hv6::PipeType::ALUPEX_16X2;
-          else if (x == "ALUPEX 20mm") t = hv6::PipeType::ALUPEX_20X2;
-          id(hv6_zones).set_zone_pipe_type(2, t);
-
-  - platform: template
-    name: "Zone 4 Pipe Type"
-    id: zone_4_pipe_type
-    entity_category: config
-    optimistic: false
-    options: ["PEX 16mm", "PEX 12mm", "PEX 14mm", "PEX 17mm", "PEX 18mm", "PEX 20mm", "ALUPEX 16mm", "ALUPEX 20mm", "Unknown"]
-    lambda: |-
-      auto t = id(hv6_zones).get_zone_pipe_type(3);
-      if (t == hv6::PipeType::PEX_12X2) return std::string("PEX 12mm");
-      if (t == hv6::PipeType::PEX_14X2) return std::string("PEX 14mm");
-      if (t == hv6::PipeType::PEX_16X2) return std::string("PEX 16mm");
-      if (t == hv6::PipeType::PEX_17X2) return std::string("PEX 17mm");
-      if (t == hv6::PipeType::PEX_18X2) return std::string("PEX 18mm");
-      if (t == hv6::PipeType::PEX_20X2) return std::string("PEX 20mm");
-      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("ALUPEX 16mm");
-      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("ALUPEX 20mm");
-      return std::string("PEX 16mm");
-    set_action:
-      - lambda: |-
-          hv6::PipeType t = hv6::PipeType::PEX_16X2;
-          if (x == "PEX 12mm") t = hv6::PipeType::PEX_12X2;
-          else if (x == "PEX 14mm") t = hv6::PipeType::PEX_14X2;
-          else if (x == "PEX 17mm") t = hv6::PipeType::PEX_17X2;
-          else if (x == "PEX 18mm") t = hv6::PipeType::PEX_18X2;
-          else if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
-          else if (x == "ALUPEX 16mm") t = hv6::PipeType::ALUPEX_16X2;
-          else if (x == "ALUPEX 20mm") t = hv6::PipeType::ALUPEX_20X2;
-          id(hv6_zones).set_zone_pipe_type(3, t);
-
-  - platform: template
-    name: "Zone 5 Pipe Type"
-    id: zone_5_pipe_type
-    entity_category: config
-    optimistic: false
-    options: ["PEX 16mm", "PEX 12mm", "PEX 14mm", "PEX 17mm", "PEX 18mm", "PEX 20mm", "ALUPEX 16mm", "ALUPEX 20mm", "Unknown"]
-    lambda: |-
-      auto t = id(hv6_zones).get_zone_pipe_type(4);
-      if (t == hv6::PipeType::PEX_12X2) return std::string("PEX 12mm");
-      if (t == hv6::PipeType::PEX_14X2) return std::string("PEX 14mm");
-      if (t == hv6::PipeType::PEX_16X2) return std::string("PEX 16mm");
-      if (t == hv6::PipeType::PEX_17X2) return std::string("PEX 17mm");
-      if (t == hv6::PipeType::PEX_18X2) return std::string("PEX 18mm");
-      if (t == hv6::PipeType::PEX_20X2) return std::string("PEX 20mm");
-      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("ALUPEX 16mm");
-      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("ALUPEX 20mm");
-      return std::string("PEX 16mm");
-    set_action:
-      - lambda: |-
-          hv6::PipeType t = hv6::PipeType::PEX_16X2;
-          if (x == "PEX 12mm") t = hv6::PipeType::PEX_12X2;
-          else if (x == "PEX 14mm") t = hv6::PipeType::PEX_14X2;
-          else if (x == "PEX 17mm") t = hv6::PipeType::PEX_17X2;
-          else if (x == "PEX 18mm") t = hv6::PipeType::PEX_18X2;
-          else if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
-          else if (x == "ALUPEX 16mm") t = hv6::PipeType::ALUPEX_16X2;
-          else if (x == "ALUPEX 20mm") t = hv6::PipeType::ALUPEX_20X2;
-          id(hv6_zones).set_zone_pipe_type(4, t);
-
-  - platform: template
-    name: "Zone 6 Pipe Type"
-    id: zone_6_pipe_type
-    entity_category: config
-    optimistic: false
-    options: ["PEX 16mm", "PEX 12mm", "PEX 14mm", "PEX 17mm", "PEX 18mm", "PEX 20mm", "ALUPEX 16mm", "ALUPEX 20mm", "Unknown"]
-    lambda: |-
-      auto t = id(hv6_zones).get_zone_pipe_type(5);
-      if (t == hv6::PipeType::PEX_12X2) return std::string("PEX 12mm");
-      if (t == hv6::PipeType::PEX_14X2) return std::string("PEX 14mm");
-      if (t == hv6::PipeType::PEX_16X2) return std::string("PEX 16mm");
-      if (t == hv6::PipeType::PEX_17X2) return std::string("PEX 17mm");
-      if (t == hv6::PipeType::PEX_18X2) return std::string("PEX 18mm");
-      if (t == hv6::PipeType::PEX_20X2) return std::string("PEX 20mm");
-      if (t == hv6::PipeType::ALUPEX_16X2) return std::string("ALUPEX 16mm");
-      if (t == hv6::PipeType::ALUPEX_20X2) return std::string("ALUPEX 20mm");
-      return std::string("PEX 16mm");
-    set_action:
-      - lambda: |-
-          hv6::PipeType t = hv6::PipeType::PEX_16X2;
-          if (x == "PEX 12mm") t = hv6::PipeType::PEX_12X2;
-          else if (x == "PEX 14mm") t = hv6::PipeType::PEX_14X2;
-          else if (x == "PEX 17mm") t = hv6::PipeType::PEX_17X2;
-          else if (x == "PEX 18mm") t = hv6::PipeType::PEX_18X2;
-          else if (x == "PEX 20mm") t = hv6::PipeType::PEX_20X2;
-          else if (x == "ALUPEX 16mm") t = hv6::PipeType::ALUPEX_16X2;
-          else if (x == "ALUPEX 20mm") t = hv6::PipeType::ALUPEX_20X2;
-          id(hv6_zones).set_zone_pipe_type(5, t);
-
-  - platform: template
-    name: "Zone 1 Temp Source"
-    id: zone_1_temp_source
+    name: "Zone Temp Source"
+    id: zone_temp_source
     entity_category: config
     optimistic: false
     options: ["Local Probe", "Zigbee MQTT", "BLE Sensor"]
     lambda: |-
-      auto src = id(hv6_zones).get_zone_temp_source(0);
+      uint8_t zi = id(ui_selected_zone_index);
+      auto src = id(hv6_zones).get_zone_temp_source(zi);
       if (src == hv6::TempSource::MQTT_EXTERNAL) return std::string("Zigbee MQTT");
       if (src == hv6::TempSource::BLE_SENSOR) return std::string("BLE Sensor");
       return std::string("Local Probe");
     set_action:
       - lambda: |-
+          uint8_t zi = id(ui_selected_zone_index);
           hv6::TempSource src = hv6::TempSource::LOCAL_PROBE;
           if (x == "Zigbee MQTT") src = hv6::TempSource::MQTT_EXTERNAL;
           else if (x == "BLE Sensor") src = hv6::TempSource::BLE_SENSOR;
-          id(hv6_zones).set_zone_temp_source(0, src);
+          id(hv6_zones).set_zone_temp_source(zi, src);
 
   - platform: template
-    name: "Zone 2 Temp Source"
-    id: zone_2_temp_source
-    entity_category: config
-    optimistic: false
-    options: ["Local Probe", "Zigbee MQTT", "BLE Sensor"]
-    lambda: |-
-      auto src = id(hv6_zones).get_zone_temp_source(1);
-      if (src == hv6::TempSource::MQTT_EXTERNAL) return std::string("Zigbee MQTT");
-      if (src == hv6::TempSource::BLE_SENSOR) return std::string("BLE Sensor");
-      return std::string("Local Probe");
-    set_action:
-      - lambda: |-
-          hv6::TempSource src = hv6::TempSource::LOCAL_PROBE;
-          if (x == "Zigbee MQTT") src = hv6::TempSource::MQTT_EXTERNAL;
-          else if (x == "BLE Sensor") src = hv6::TempSource::BLE_SENSOR;
-          id(hv6_zones).set_zone_temp_source(1, src);
-
-  - platform: template
-    name: "Zone 3 Temp Source"
-    id: zone_3_temp_source
-    entity_category: config
-    optimistic: false
-    options: ["Local Probe", "Zigbee MQTT", "BLE Sensor"]
-    lambda: |-
-      auto src = id(hv6_zones).get_zone_temp_source(2);
-      if (src == hv6::TempSource::MQTT_EXTERNAL) return std::string("Zigbee MQTT");
-      if (src == hv6::TempSource::BLE_SENSOR) return std::string("BLE Sensor");
-      return std::string("Local Probe");
-    set_action:
-      - lambda: |-
-          hv6::TempSource src = hv6::TempSource::LOCAL_PROBE;
-          if (x == "Zigbee MQTT") src = hv6::TempSource::MQTT_EXTERNAL;
-          else if (x == "BLE Sensor") src = hv6::TempSource::BLE_SENSOR;
-          id(hv6_zones).set_zone_temp_source(2, src);
-
-  - platform: template
-    name: "Zone 4 Temp Source"
-    id: zone_4_temp_source
-    entity_category: config
-    optimistic: false
-    options: ["Local Probe", "Zigbee MQTT", "BLE Sensor"]
-    lambda: |-
-      auto src = id(hv6_zones).get_zone_temp_source(3);
-      if (src == hv6::TempSource::MQTT_EXTERNAL) return std::string("Zigbee MQTT");
-      if (src == hv6::TempSource::BLE_SENSOR) return std::string("BLE Sensor");
-      return std::string("Local Probe");
-    set_action:
-      - lambda: |-
-          hv6::TempSource src = hv6::TempSource::LOCAL_PROBE;
-          if (x == "Zigbee MQTT") src = hv6::TempSource::MQTT_EXTERNAL;
-          else if (x == "BLE Sensor") src = hv6::TempSource::BLE_SENSOR;
-          id(hv6_zones).set_zone_temp_source(3, src);
-
-  - platform: template
-    name: "Zone 5 Temp Source"
-    id: zone_5_temp_source
-    entity_category: config
-    optimistic: false
-    options: ["Local Probe", "Zigbee MQTT", "BLE Sensor"]
-    lambda: |-
-      auto src = id(hv6_zones).get_zone_temp_source(4);
-      if (src == hv6::TempSource::MQTT_EXTERNAL) return std::string("Zigbee MQTT");
-      if (src == hv6::TempSource::BLE_SENSOR) return std::string("BLE Sensor");
-      return std::string("Local Probe");
-    set_action:
-      - lambda: |-
-          hv6::TempSource src = hv6::TempSource::LOCAL_PROBE;
-          if (x == "Zigbee MQTT") src = hv6::TempSource::MQTT_EXTERNAL;
-          else if (x == "BLE Sensor") src = hv6::TempSource::BLE_SENSOR;
-          id(hv6_zones).set_zone_temp_source(4, src);
-
-  - platform: template
-    name: "Zone 6 Temp Source"
-    id: zone_6_temp_source
-    entity_category: config
-    optimistic: false
-    options: ["Local Probe", "Zigbee MQTT", "BLE Sensor"]
-    lambda: |-
-      auto src = id(hv6_zones).get_zone_temp_source(5);
-      if (src == hv6::TempSource::MQTT_EXTERNAL) return std::string("Zigbee MQTT");
-      if (src == hv6::TempSource::BLE_SENSOR) return std::string("BLE Sensor");
-      return std::string("Local Probe");
-    set_action:
-      - lambda: |-
-          hv6::TempSource src = hv6::TempSource::LOCAL_PROBE;
-          if (x == "Zigbee MQTT") src = hv6::TempSource::MQTT_EXTERNAL;
-          else if (x == "BLE Sensor") src = hv6::TempSource::BLE_SENSOR;
-          id(hv6_zones).set_zone_temp_source(5, src);
-
-  - platform: template
-    name: "Zone 1 Sync To"
-    id: zone_1_sync_to
+    name: "Zone Sync To"
+    id: zone_sync_to
     entity_category: config
     icon: "mdi:link-variant"
     optimistic: false
-    options: ["None", "Zone 2", "Zone 3", "Zone 4", "Zone 5", "Zone 6"]
+    options: ["None", "Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5", "Zone 6"]
     lambda: |-
-      int8_t s = id(hv6_zones).get_zone_sync(0);
+      uint8_t zi = id(ui_selected_zone_index);
+      int8_t s = id(hv6_zones).get_zone_sync(zi);
       if (s < 0) return std::string("None");
       return std::string("Zone ") + std::to_string(s + 1);
     set_action:
       - lambda: |-
+          uint8_t zi = id(ui_selected_zone_index);
           int8_t z = -1;
           if (x.size() >= 6 && x[0] == 'Z') z = static_cast<int8_t>(x[5] - '1');
-          id(hv6_zones).set_zone_sync(0, z);
-
-  - platform: template
-    name: "Zone 2 Sync To"
-    id: zone_2_sync_to
-    entity_category: config
-    icon: "mdi:link-variant"
-    optimistic: false
-    options: ["None", "Zone 1", "Zone 3", "Zone 4", "Zone 5", "Zone 6"]
-    lambda: |-
-      int8_t s = id(hv6_zones).get_zone_sync(1);
-      if (s < 0) return std::string("None");
-      return std::string("Zone ") + std::to_string(s + 1);
-    set_action:
-      - lambda: |-
-          int8_t z = -1;
-          if (x.size() >= 6 && x[0] == 'Z') z = static_cast<int8_t>(x[5] - '1');
-          id(hv6_zones).set_zone_sync(1, z);
-
-  - platform: template
-    name: "Zone 3 Sync To"
-    id: zone_3_sync_to
-    entity_category: config
-    icon: "mdi:link-variant"
-    optimistic: false
-    options: ["None", "Zone 1", "Zone 2", "Zone 4", "Zone 5", "Zone 6"]
-    lambda: |-
-      int8_t s = id(hv6_zones).get_zone_sync(2);
-      if (s < 0) return std::string("None");
-      return std::string("Zone ") + std::to_string(s + 1);
-    set_action:
-      - lambda: |-
-          int8_t z = -1;
-          if (x.size() >= 6 && x[0] == 'Z') z = static_cast<int8_t>(x[5] - '1');
-          id(hv6_zones).set_zone_sync(2, z);
-
-  - platform: template
-    name: "Zone 4 Sync To"
-    id: zone_4_sync_to
-    entity_category: config
-    icon: "mdi:link-variant"
-    optimistic: false
-    options: ["None", "Zone 1", "Zone 2", "Zone 3", "Zone 5", "Zone 6"]
-    lambda: |-
-      int8_t s = id(hv6_zones).get_zone_sync(3);
-      if (s < 0) return std::string("None");
-      return std::string("Zone ") + std::to_string(s + 1);
-    set_action:
-      - lambda: |-
-          int8_t z = -1;
-          if (x.size() >= 6 && x[0] == 'Z') z = static_cast<int8_t>(x[5] - '1');
-          id(hv6_zones).set_zone_sync(3, z);
-
-  - platform: template
-    name: "Zone 5 Sync To"
-    id: zone_5_sync_to
-    entity_category: config
-    icon: "mdi:link-variant"
-    optimistic: false
-    options: ["None", "Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 6"]
-    lambda: |-
-      int8_t s = id(hv6_zones).get_zone_sync(4);
-      if (s < 0) return std::string("None");
-      return std::string("Zone ") + std::to_string(s + 1);
-    set_action:
-      - lambda: |-
-          int8_t z = -1;
-          if (x.size() >= 6 && x[0] == 'Z') z = static_cast<int8_t>(x[5] - '1');
-          id(hv6_zones).set_zone_sync(4, z);
-
-  - platform: template
-    name: "Zone 6 Sync To"
-    id: zone_6_sync_to
-    entity_category: config
-    icon: "mdi:link-variant"
-    optimistic: false
-    options: ["None", "Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5"]
-    lambda: |-
-      int8_t s = id(hv6_zones).get_zone_sync(5);
-      if (s < 0) return std::string("None");
-      return std::string("Zone ") + std::to_string(s + 1);
-    set_action:
-      - lambda: |-
-          int8_t z = -1;
-          if (x.size() >= 6 && x[0] == 'Z') z = static_cast<int8_t>(x[5] - '1');
-          id(hv6_zones).set_zone_sync(5, z);
+          if (z == static_cast<int8_t>(zi)) z = -1;
+          id(hv6_zones).set_zone_sync(zi, z);
 
 text:
   - platform: template
-    name: "Zone 1 Zigbee Device"
-    id: zone_1_zigbee_device
+    name: "Zone Zigbee Device"
+    id: zone_zigbee_device
     entity_category: config
     mode: text
     min_length: 0
     max_length: 47
     optimistic: false
     lambda: |-
-      return id(hv6_zones).get_zone_mqtt_device(0);
+      uint8_t zi = id(ui_selected_zone_index);
+      return id(hv6_zones).get_zone_mqtt_device(zi);
     set_action:
-      - lambda: id(hv6_zones).set_zone_mqtt_device(0, x);
+      - lambda: |-
+          uint8_t zi = id(ui_selected_zone_index);
+          id(hv6_zones).set_zone_mqtt_device(zi, x);
 
   - platform: template
-    name: "Zone 2 Zigbee Device"
-    id: zone_2_zigbee_device
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 47
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_mqtt_device(1);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_mqtt_device(1, x);
-
-  - platform: template
-    name: "Zone 3 Zigbee Device"
-    id: zone_3_zigbee_device
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 47
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_mqtt_device(2);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_mqtt_device(2, x);
-
-  - platform: template
-    name: "Zone 4 Zigbee Device"
-    id: zone_4_zigbee_device
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 47
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_mqtt_device(3);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_mqtt_device(3, x);
-
-  - platform: template
-    name: "Zone 5 Zigbee Device"
-    id: zone_5_zigbee_device
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 47
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_mqtt_device(4);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_mqtt_device(4, x);
-
-  - platform: template
-    name: "Zone 6 Zigbee Device"
-    id: zone_6_zigbee_device
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 47
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_mqtt_device(5);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_mqtt_device(5, x);
-
-  - platform: template
-    name: "Zone 1 BLE MAC"
-    id: zone_1_ble_mac
+    name: "Zone BLE MAC"
+    id: zone_ble_mac
     entity_category: config
     mode: text
     min_length: 0
     max_length: 17
     optimistic: false
     lambda: |-
-      return id(hv6_zones).get_zone_ble_mac(0);
+      uint8_t zi = id(ui_selected_zone_index);
+      return id(hv6_zones).get_zone_ble_mac(zi);
     set_action:
-      - lambda: id(hv6_zones).set_zone_ble_mac(0, x);
+      - lambda: |-
+          uint8_t zi = id(ui_selected_zone_index);
+          id(hv6_zones).set_zone_ble_mac(zi, x);
 
   - platform: template
-    name: "Zone 2 BLE MAC"
-    id: zone_2_ble_mac
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 17
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_ble_mac(1);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_ble_mac(1, x);
-
-  - platform: template
-    name: "Zone 3 BLE MAC"
-    id: zone_3_ble_mac
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 17
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_ble_mac(2);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_ble_mac(2, x);
-
-  - platform: template
-    name: "Zone 4 BLE MAC"
-    id: zone_4_ble_mac
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 17
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_ble_mac(3);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_ble_mac(3, x);
-
-  - platform: template
-    name: "Zone 5 BLE MAC"
-    id: zone_5_ble_mac
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 17
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_ble_mac(4);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_ble_mac(4, x);
-
-  - platform: template
-    name: "Zone 6 BLE MAC"
-    id: zone_6_ble_mac
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 17
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_zone_ble_mac(5);
-    set_action:
-      - lambda: id(hv6_zones).set_zone_ble_mac(5, x);
-
-  - platform: template
-    name: "Zone 1 Exterior Walls"
-    id: zone_1_exterior_walls
+    name: "Zone Exterior Walls"
+    id: zone_exterior_walls
     entity_category: config
     mode: text
     min_length: 0
     max_length: 7
     optimistic: false
     lambda: |-
-      uint8_t w = id(hv6_zones).get_zone_exterior_walls(0);
+      uint8_t zi = id(ui_selected_zone_index);
+      uint8_t w = id(hv6_zones).get_zone_exterior_walls(zi);
       std::string s;
       if (w & hv6::ExteriorWall::NORTH) s += "N";
       if (w & hv6::ExteriorWall::EAST)  s += "E";
@@ -1688,6 +1212,7 @@ text:
       return s.empty() ? std::string("None") : s;
     set_action:
       - lambda: |-
+          uint8_t zi = id(ui_selected_zone_index);
           uint8_t w = 0;
           for (char c : x) {
             if (c == 'N' || c == 'n') w |= hv6::ExteriorWall::NORTH;
@@ -1695,142 +1220,7 @@ text:
             if (c == 'S' || c == 's') w |= hv6::ExteriorWall::SOUTH;
             if (c == 'W' || c == 'w') w |= hv6::ExteriorWall::WEST;
           }
-          id(hv6_zones).set_zone_exterior_walls(0, w);
-
-  - platform: template
-    name: "Zone 2 Exterior Walls"
-    id: zone_2_exterior_walls
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 7
-    optimistic: false
-    lambda: |-
-      uint8_t w = id(hv6_zones).get_zone_exterior_walls(1);
-      std::string s;
-      if (w & hv6::ExteriorWall::NORTH) s += "N";
-      if (w & hv6::ExteriorWall::EAST)  s += "E";
-      if (w & hv6::ExteriorWall::SOUTH) s += "S";
-      if (w & hv6::ExteriorWall::WEST)  s += "W";
-      return s.empty() ? std::string("None") : s;
-    set_action:
-      - lambda: |-
-          uint8_t w = 0;
-          for (char c : x) {
-            if (c == 'N' || c == 'n') w |= hv6::ExteriorWall::NORTH;
-            if (c == 'E' || c == 'e') w |= hv6::ExteriorWall::EAST;
-            if (c == 'S' || c == 's') w |= hv6::ExteriorWall::SOUTH;
-            if (c == 'W' || c == 'w') w |= hv6::ExteriorWall::WEST;
-          }
-          id(hv6_zones).set_zone_exterior_walls(1, w);
-
-  - platform: template
-    name: "Zone 3 Exterior Walls"
-    id: zone_3_exterior_walls
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 7
-    optimistic: false
-    lambda: |-
-      uint8_t w = id(hv6_zones).get_zone_exterior_walls(2);
-      std::string s;
-      if (w & hv6::ExteriorWall::NORTH) s += "N";
-      if (w & hv6::ExteriorWall::EAST)  s += "E";
-      if (w & hv6::ExteriorWall::SOUTH) s += "S";
-      if (w & hv6::ExteriorWall::WEST)  s += "W";
-      return s.empty() ? std::string("None") : s;
-    set_action:
-      - lambda: |-
-          uint8_t w = 0;
-          for (char c : x) {
-            if (c == 'N' || c == 'n') w |= hv6::ExteriorWall::NORTH;
-            if (c == 'E' || c == 'e') w |= hv6::ExteriorWall::EAST;
-            if (c == 'S' || c == 's') w |= hv6::ExteriorWall::SOUTH;
-            if (c == 'W' || c == 'w') w |= hv6::ExteriorWall::WEST;
-          }
-          id(hv6_zones).set_zone_exterior_walls(2, w);
-
-  - platform: template
-    name: "Zone 4 Exterior Walls"
-    id: zone_4_exterior_walls
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 7
-    optimistic: false
-    lambda: |-
-      uint8_t w = id(hv6_zones).get_zone_exterior_walls(3);
-      std::string s;
-      if (w & hv6::ExteriorWall::NORTH) s += "N";
-      if (w & hv6::ExteriorWall::EAST)  s += "E";
-      if (w & hv6::ExteriorWall::SOUTH) s += "S";
-      if (w & hv6::ExteriorWall::WEST)  s += "W";
-      return s.empty() ? std::string("None") : s;
-    set_action:
-      - lambda: |-
-          uint8_t w = 0;
-          for (char c : x) {
-            if (c == 'N' || c == 'n') w |= hv6::ExteriorWall::NORTH;
-            if (c == 'E' || c == 'e') w |= hv6::ExteriorWall::EAST;
-            if (c == 'S' || c == 's') w |= hv6::ExteriorWall::SOUTH;
-            if (c == 'W' || c == 'w') w |= hv6::ExteriorWall::WEST;
-          }
-          id(hv6_zones).set_zone_exterior_walls(3, w);
-
-  - platform: template
-    name: "Zone 5 Exterior Walls"
-    id: zone_5_exterior_walls
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 7
-    optimistic: false
-    lambda: |-
-      uint8_t w = id(hv6_zones).get_zone_exterior_walls(4);
-      std::string s;
-      if (w & hv6::ExteriorWall::NORTH) s += "N";
-      if (w & hv6::ExteriorWall::EAST)  s += "E";
-      if (w & hv6::ExteriorWall::SOUTH) s += "S";
-      if (w & hv6::ExteriorWall::WEST)  s += "W";
-      return s.empty() ? std::string("None") : s;
-    set_action:
-      - lambda: |-
-          uint8_t w = 0;
-          for (char c : x) {
-            if (c == 'N' || c == 'n') w |= hv6::ExteriorWall::NORTH;
-            if (c == 'E' || c == 'e') w |= hv6::ExteriorWall::EAST;
-            if (c == 'S' || c == 's') w |= hv6::ExteriorWall::SOUTH;
-            if (c == 'W' || c == 'w') w |= hv6::ExteriorWall::WEST;
-          }
-          id(hv6_zones).set_zone_exterior_walls(4, w);
-
-  - platform: template
-    name: "Zone 6 Exterior Walls"
-    id: zone_6_exterior_walls
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 7
-    optimistic: false
-    lambda: |-
-      uint8_t w = id(hv6_zones).get_zone_exterior_walls(5);
-      std::string s;
-      if (w & hv6::ExteriorWall::NORTH) s += "N";
-      if (w & hv6::ExteriorWall::EAST)  s += "E";
-      if (w & hv6::ExteriorWall::SOUTH) s += "S";
-      if (w & hv6::ExteriorWall::WEST)  s += "W";
-      return s.empty() ? std::string("None") : s;
-    set_action:
-      - lambda: |-
-          uint8_t w = 0;
-          for (char c : x) {
-            if (c == 'N' || c == 'n') w |= hv6::ExteriorWall::NORTH;
-            if (c == 'E' || c == 'e') w |= hv6::ExteriorWall::EAST;
-            if (c == 'S' || c == 's') w |= hv6::ExteriorWall::SOUTH;
-            if (c == 'W' || c == 'w') w |= hv6::ExteriorWall::WEST;
-          }
-          id(hv6_zones).set_zone_exterior_walls(5, w);
+          id(hv6_zones).set_zone_exterior_walls(zi, w);
 
   # ---------------------------------------------------------------------------
   # MQTT Broker Configuration (NVS-persisted overrides)

@@ -158,6 +158,19 @@ void Hv6ValveController::setup() {
         telemetry_[i].movement_count = saved.movement_count;
         telemetry_[i].movements_since_learn = saved.movements_since_learn;
         telemetry_[i].last_learn_ms = saved.last_learn_ms;
+        telemetry_[i].learned_open_ripples = saved.learned_open_ripples;
+        telemetry_[i].learned_close_ripples = saved.learned_close_ripples;
+        telemetry_[i].pin_engage_close_ripples = saved.pin_engage_close_ripples;
+        telemetry_[i].learned_open_current_factor = saved.learned_open_current_factor;
+        telemetry_[i].learned_close_current_factor = saved.learned_close_current_factor;
+        telemetry_[i].learned_open_confidence = saved.learned_open_confidence;
+        telemetry_[i].learned_close_confidence = saved.learned_close_confidence;
+        telemetry_[i].last_open_candidate_factor = saved.last_open_candidate_factor;
+        telemetry_[i].last_close_candidate_factor = saved.last_close_candidate_factor;
+        telemetry_[i].last_open_peak_ma = saved.last_open_peak_ma;
+        telemetry_[i].last_close_peak_ma = saved.last_close_peak_ma;
+        telemetry_[i].last_learning_sample_valid = saved.last_learning_sample_valid;
+        telemetry_[i].last_fault_code = saved.last_fault_code;
         mean_currents_[i] = saved.mean_current_ma;
         xSemaphoreGive(telemetry_mutex_);
       }
@@ -299,14 +312,121 @@ void Hv6ValveController::set_drivers_enabled(bool enabled) {
 void Hv6ValveController::reload_motor_config() {
   if (config_store_)
     motor_cfg_ = config_store_->get_config().motor;
-  ESP_LOGI(TAG, "Motor config: close(%.2fx, slope %.2f mA/s, floor %.2fx) "
+  ESP_LOGI(TAG, "Motor config: profile=%s runtime(user=%" PRIu32 "s generic=%" PRIu32 "s hmip=%" PRIu32 "s) close(%.2fx, slope %.2f mA/s, floor %.2fx) "
            "open(%.2fx, slope %.2f mA/s, floor %.2fx, ripple_lim %.2f) "
-           "pin(step %.1f mA, margin %" PRIu16 ")",
+           "pin(step %.1f mA, margin %" PRIu16 ") learning(samples=%u, dev=%.0f%%, auto=%s)",
+           motor_profile_to_string(motor_cfg_.default_profile),
+           motor_cfg_.max_runtime_s, motor_cfg_.generic_profile_runtime_limit_s,
+           motor_cfg_.hmip_vdmot_runtime_limit_s,
            motor_cfg_.close_current_factor, motor_cfg_.close_slope_threshold_ma_per_s,
            motor_cfg_.close_slope_current_factor,
            motor_cfg_.open_current_factor, motor_cfg_.open_slope_threshold_ma_per_s,
            motor_cfg_.open_slope_current_factor, motor_cfg_.open_ripple_limit_factor,
-           motor_cfg_.pin_engage_step_ma, motor_cfg_.pin_engage_margin_ripples);
+           motor_cfg_.pin_engage_step_ma, motor_cfg_.pin_engage_margin_ripples,
+           motor_cfg_.learned_factor_min_samples,
+           motor_cfg_.learned_factor_max_deviation_pct * 100.0f,
+           motor_cfg_.auto_apply_learned_factors ? "yes" : "no");
+}
+
+MotorProfile Hv6ValveController::effective_motor_profile_(uint8_t zone) const {
+  if (!config_store_ || zone >= NUM_ZONES)
+    return motor_cfg_.default_profile;
+  const auto cfg = config_store_->get_config();
+  MotorProfile profile = cfg.zones[zone].motor_profile_override;
+  if (profile == MotorProfile::INHERIT)
+    profile = cfg.motor.default_profile;
+  if (profile == MotorProfile::INHERIT)
+    profile = MotorProfile::HMIP_VDMOT;
+  return profile;
+}
+
+uint32_t Hv6ValveController::effective_runtime_limit_s_(uint8_t zone) const {
+  uint32_t profile_limit = motor_cfg_.generic_profile_runtime_limit_s;
+  switch (effective_motor_profile_(zone)) {
+    case MotorProfile::HMIP_VDMOT:
+      profile_limit = motor_cfg_.hmip_vdmot_runtime_limit_s;
+      break;
+    case MotorProfile::GENERIC:
+    case MotorProfile::INHERIT:
+    default:
+      profile_limit = motor_cfg_.generic_profile_runtime_limit_s;
+      break;
+  }
+  profile_limit = std::max<uint32_t>(1, profile_limit);
+  return std::min(std::max<uint32_t>(1, motor_cfg_.max_runtime_s), profile_limit);
+}
+
+float Hv6ValveController::effective_current_factor_(uint8_t zone, MotorDirection dir) const {
+  bool is_opening = (dir == MotorDirection::OPEN);
+  float factor = is_opening ? motor_cfg_.open_current_factor : motor_cfg_.close_current_factor;
+
+  if (config_store_ && zone < NUM_ZONES) {
+    const auto cfg = config_store_->get_config();
+    const auto &zone_cfg = cfg.zones[zone];
+    float manual_override = is_opening ? zone_cfg.motor_open_current_factor_override
+                                       : zone_cfg.motor_close_current_factor_override;
+    if (manual_override > 0.0f)
+      return manual_override;
+  }
+
+  if (!motor_cfg_.auto_apply_learned_factors || zone >= NUM_ZONES)
+    return factor;
+
+  xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
+  const auto &t = telemetry_[zone];
+  float learned_factor = is_opening ? t.learned_open_current_factor : t.learned_close_current_factor;
+  uint8_t confidence = is_opening ? t.learned_open_confidence : t.learned_close_confidence;
+  xSemaphoreGive(telemetry_mutex_);
+
+  if (learned_factor > 0.0f && confidence >= motor_cfg_.learned_factor_min_samples)
+    factor = learned_factor;
+  return factor;
+}
+
+void Hv6ValveController::update_learned_factor_(uint8_t zone, MotorDirection dir, float average_ma,
+                                                float peak_ma, bool sample_valid) {
+  if (zone >= NUM_ZONES)
+    return;
+
+  xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
+  auto &t = telemetry_[zone];
+  t.last_learning_sample_valid = sample_valid;
+
+  if (!sample_valid || average_ma <= 0.5f || peak_ma <= average_ma) {
+    xSemaphoreGive(telemetry_mutex_);
+    return;
+  }
+
+  float candidate = std::clamp(peak_ma / average_ma, 1.0f, 3.0f);
+  float &learned_factor = (dir == MotorDirection::OPEN) ? t.learned_open_current_factor : t.learned_close_current_factor;
+  uint8_t &confidence = (dir == MotorDirection::OPEN) ? t.learned_open_confidence : t.learned_close_confidence;
+  float &last_candidate = (dir == MotorDirection::OPEN) ? t.last_open_candidate_factor : t.last_close_candidate_factor;
+  float &last_peak = (dir == MotorDirection::OPEN) ? t.last_open_peak_ma : t.last_close_peak_ma;
+
+  last_candidate = candidate;
+  last_peak = peak_ma;
+
+  if (candidate < 1.05f || candidate > 2.8f) {
+    xSemaphoreGive(telemetry_mutex_);
+    return;
+  }
+
+  if (learned_factor <= 0.0f) {
+    learned_factor = candidate;
+    confidence = 1;
+  } else {
+    float deviation = std::fabs(candidate - learned_factor) / learned_factor;
+    if (deviation <= motor_cfg_.learned_factor_max_deviation_pct) {
+      learned_factor = learned_factor * 0.7f + candidate * 0.3f;
+      if (confidence < 255)
+        confidence++;
+    } else {
+      learned_factor = candidate;
+      confidence = 1;
+    }
+  }
+
+  xSemaphoreGive(telemetry_mutex_);
 }
 
 bool Hv6ValveController::request_position(uint8_t zone, float target_pct) {
@@ -432,6 +552,8 @@ void Hv6ValveController::log_i2c_scan() {
 float Hv6ValveController::get_position(uint8_t zone) const {
   if (zone >= NUM_ZONES)
     return 0.0f;
+  if (telemetry_mutex_ == nullptr)
+    return 0.0f;
   xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
   float pos = telemetry_[zone].current_position_pct;
   xSemaphoreGive(telemetry_mutex_);
@@ -463,6 +585,8 @@ ManifoldType Hv6ValveController::get_manifold_type() const {
 
 MotorTelemetry Hv6ValveController::get_telemetry(uint8_t zone) const {
   if (zone >= NUM_ZONES)
+    return {};
+  if (telemetry_mutex_ == nullptr)
     return {};
   xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
   MotorTelemetry copy = telemetry_[zone];
@@ -523,6 +647,63 @@ void Hv6ValveController::request_calibration_all() {
     }
   }
   ESP_LOGI(TAG, "request_calibration_all: queued zones mask=0x%02X", mask);
+}
+
+bool Hv6ValveController::reset_fault(uint8_t zone) {
+  if (zone >= NUM_ZONES)
+    return false;
+  if (motor_turning_ || calibrating_) {
+    ESP_LOGW(TAG, "Reset fault denied for zone %d: controller busy", zone + 1);
+    return false;
+  }
+
+  if (drivers_[zone] != nullptr)
+    drivers_[zone]->clear_fault();
+
+  xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
+  auto &t = telemetry_[zone];
+  t.blocked = false;
+  t.calibration_retries = 0;
+  t.last_fault_code = FaultCode::NONE;
+  t.last_learning_sample_valid = false;
+  xSemaphoreGive(telemetry_mutex_);
+
+  current_fault_code_ = FaultCode::NONE;
+  save_telemetry_(zone);
+  ESP_LOGI(TAG, "Zone %d fault state reset", zone + 1);
+  return true;
+}
+
+bool Hv6ValveController::reset_and_relearn(uint8_t zone) {
+  if (!drivers_enabled_) {
+    ESP_LOGW(TAG, "Reset+relearn denied for zone %d: drivers disabled", zone + 1);
+    return false;
+  }
+  if (!reset_fault(zone))
+    return false;
+  request_calibration(zone);
+  ESP_LOGI(TAG, "Zone %d reset and relearn requested", zone + 1);
+  return true;
+}
+
+bool Hv6ValveController::reset_learned_factors(uint8_t zone) {
+  if (zone >= NUM_ZONES)
+    return false;
+  xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
+  auto &t = telemetry_[zone];
+  t.learned_open_current_factor = 0.0f;
+  t.learned_close_current_factor = 0.0f;
+  t.learned_open_confidence = 0;
+  t.learned_close_confidence = 0;
+  t.last_open_candidate_factor = 0.0f;
+  t.last_close_candidate_factor = 0.0f;
+  t.last_open_peak_ma = 0.0f;
+  t.last_close_peak_ma = 0.0f;
+  t.last_learning_sample_valid = false;
+  xSemaphoreGive(telemetry_mutex_);
+  save_telemetry_(zone);
+  ESP_LOGI(TAG, "Zone %d learned factors reset", zone + 1);
+  return true;
 }
 
 bool Hv6ValveController::manifold_is_nc_() const {
@@ -859,6 +1040,7 @@ bool Hv6ValveController::start_motor_(uint8_t zone, MotorDirection dir, bool ove
   drive_output_enabled_ = false;
   current_filtered_ma_ = 0.0f;
   current_raw_ma_ = 0.0f;
+  current_peak_ma_ = 0.0f;
   current_sum_ = 0.0f;
   current_count_ = 0;
   debounce_count_ = 0;
@@ -981,7 +1163,7 @@ void Hv6ValveController::process_tick_() {
   }
 
   // Runtime timeout
-  float base_runtime_ms = static_cast<float>(motor_cfg_.max_runtime_s) * 1000.0f;
+  float base_runtime_ms = static_cast<float>(effective_runtime_limit_s_(current_zone_)) * 1000.0f;
   float max_runtime_ms = base_runtime_ms;
   xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
   uint32_t lo = telemetry_[current_zone_].learned_open_ms;
@@ -1007,7 +1189,8 @@ void Hv6ValveController::process_tick_() {
              "Motor %d timeout context: run=%" PRIu32 "ms limit=%.0fms base=%.0fms adaptive_cap=%" PRIu32 "ms adaptive=%s learned_open=%" PRIu32 "ms learned_close=%" PRIu32 "ms",
              current_zone_ + 1, motor_run_time_ms_, max_runtime_ms, base_runtime_ms,
              adaptive_cap, adaptive_applied ? "applied" : "not_applied", lo, lc);
-    trigger_fault_(FaultCode::TIMEOUT, "runtime timeout");
+    trigger_fault_(FaultCode::MECHANICAL_OVERRUN,
+                   "runtime safety cutoff (possible actuator pop-off)");
     return;
   }
 
@@ -1016,6 +1199,7 @@ void Hv6ValveController::process_tick_() {
   current_raw_ma_ = raw_ma;
   current_filtered_ma_ = current_filtered_ma_ * (1.0f - CURRENT_FILTER_ALPHA) +
                           raw_ma * CURRENT_FILTER_ALPHA;
+  current_peak_ma_ = std::max(current_peak_ma_, current_filtered_ma_);
 
   current_sum_ += current_filtered_ma_;
   current_count_++;
@@ -1078,24 +1262,11 @@ void Hv6ValveController::detect_endstop_() {
 
   // Select per-direction parameters
   bool is_opening = (current_dir_ == MotorDirection::OPEN);
-  float cfg_current_factor = is_opening ? motor_cfg_.open_current_factor
-                                        : motor_cfg_.close_current_factor;
+  float cfg_current_factor = effective_current_factor_(current_zone_, current_dir_);
   float cfg_slope_thr      = is_opening ? motor_cfg_.open_slope_threshold_ma_per_s
                                         : motor_cfg_.close_slope_threshold_ma_per_s;
   float cfg_slope_cur_fac  = is_opening ? motor_cfg_.open_slope_current_factor
                                         : motor_cfg_.close_slope_current_factor;
-
-  // Apply per-motor overrides if configured (0.0 = use default)
-  if (config_store_) {
-    const auto &cfg = config_store_->get_config();
-    if (current_zone_ < NUM_ZONES) {
-      if (is_opening && cfg.zones[current_zone_].motor_open_current_factor_override > 0.0f) {
-        cfg_current_factor = cfg.zones[current_zone_].motor_open_current_factor_override;
-      } else if (!is_opening && cfg.zones[current_zone_].motor_close_current_factor_override > 0.0f) {
-        cfg_current_factor = cfg.zones[current_zone_].motor_close_current_factor_override;
-      }
-    }
-  }
 
   // --- Slope tracking (dI/dt) ---
   // Initialize on first call after startup guard so slope_prev starts from
@@ -1239,7 +1410,13 @@ void Hv6ValveController::trigger_fault_(FaultCode code, const char *reason) {
            fault_code_to_string(code), reason);
   current_fault_code_ = code;
 
-  if (code == FaultCode::BLOCKED || code == FaultCode::OPEN_CIRCUIT) {
+  xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
+  telemetry_[current_zone_].last_fault_code = code;
+  telemetry_[current_zone_].last_learning_sample_valid = false;
+  xSemaphoreGive(telemetry_mutex_);
+
+  if (code == FaultCode::BLOCKED || code == FaultCode::OPEN_CIRCUIT ||
+      code == FaultCode::MECHANICAL_OVERRUN) {
     xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
     telemetry_[current_zone_].blocked = true;
     xSemaphoreGive(telemetry_mutex_);
@@ -1481,6 +1658,9 @@ uint32_t Hv6ValveController::calibration_pass_(uint8_t zone, MotorDirection dir)
 
   // If a fault occurred (open circuit, timeout, etc.) return 0 to signal failure
   if (current_fault_code_ != FaultCode::NONE) {
+    xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
+    telemetry_[zone].last_learning_sample_valid = false;
+    xSemaphoreGive(telemetry_mutex_);
     ESP_LOGW(TAG, "Calibration pass %s zone %d fault: %s",
              dir == MotorDirection::CLOSE ? "CLOSE" : "OPEN",
              zone + 1, fault_code_to_string(current_fault_code_));
@@ -1491,6 +1671,7 @@ uint32_t Hv6ValveController::calibration_pass_(uint8_t zone, MotorDirection dir)
   if (current_count_ > 0) {
     float avg = current_sum_ / static_cast<float>(current_count_);
     mean_currents_[zone] = (mean_currents_[zone] + avg) / 2.0f;
+    update_learned_factor_(zone, dir, avg, current_peak_ma_, true);
   }
 
   ESP_LOGI(TAG, "Calibration pass %s zone %d: %" PRIu32 "ms, %" PRIu32 " ripples",

@@ -80,6 +80,12 @@ enum class MotorDirection : int8_t {
   OPEN = 1,
 };
 
+enum class MotorProfile : uint8_t {
+  INHERIT = 0,
+  GENERIC = 1,
+  HMIP_VDMOT = 2,
+};
+
 enum class FaultCode : uint8_t {
   NONE = 0,
   OPEN_CIRCUIT = 1,
@@ -89,6 +95,7 @@ enum class FaultCode : uint8_t {
   THERMAL = 5,
   STALL = 6,
   UNKNOWN_FAULT = 7,
+  MECHANICAL_OVERRUN = 8,
 };
 
 enum class MotorFsmState : uint8_t {
@@ -169,6 +176,7 @@ struct ZoneConfig {
   uint8_t exterior_walls = ExteriorWall::NONE;  // Bitmask: N|E|S|W
   ProbeRole probe_role = ProbeRole::ROOM_TEMPERATURE;
   int8_t sync_to_zone = -1;  ///< -1 = independent, 0–5 = synced to that zone (shares setpoint + avg temp)
+  MotorProfile motor_profile_override = MotorProfile::INHERIT;
   // Motor-specific endstop tuning (0.0 = use global default from MotorConfig)
   float motor_close_current_factor_override = 0.0f;  ///< Per-motor close threshold (slower motors may need 1.6x vs 1.7x to avoid premature pop-off)
   float motor_open_current_factor_override = 0.0f;   ///< Per-motor open threshold
@@ -228,10 +236,13 @@ struct PIDParams {
 };
 
 struct MotorConfig {
+  MotorProfile default_profile = MotorProfile::HMIP_VDMOT;
   uint32_t pwm_boost_ms = 350;
   uint8_t pwm_hold_duty_pct = 70;
   uint32_t pwm_period_ms = 40;
   uint32_t max_runtime_s = 45;  // Reduced from 65s to prevent piston lock/socket pop-off (mechanical limit ~40s)
+  uint32_t generic_profile_runtime_limit_s = 45;
+  uint32_t hmip_vdmot_runtime_limit_s = 40;
   uint32_t calibration_timeout_s = 120;
   // Close-direction endstop (higher current at mechanical stop)
   float close_current_factor = 1.7f;
@@ -254,6 +265,9 @@ struct MotorConfig {
   uint32_t relearn_after_hours = 168;
   float drift_relearn_threshold_pct = 15.0f;
   uint32_t presence_test_duration_ms = 800;
+  bool auto_apply_learned_factors = true;
+  uint8_t learned_factor_min_samples = 3;
+  float learned_factor_max_deviation_pct = 0.12f;
 };
 
 struct MotorTelemetry {
@@ -277,6 +291,16 @@ struct MotorTelemetry {
   float mean_current_ma = 20.0f;
   float current_position_pct = 0.0f;
   uint32_t pin_engage_close_ripples = 0;  // Ripples from open end at pin contact (close pass)
+  float learned_open_current_factor = 0.0f;
+  float learned_close_current_factor = 0.0f;
+  uint8_t learned_open_confidence = 0;
+  uint8_t learned_close_confidence = 0;
+  float last_open_candidate_factor = 0.0f;
+  float last_close_candidate_factor = 0.0f;
+  float last_open_peak_ma = 0.0f;
+  float last_close_peak_ma = 0.0f;
+  bool last_learning_sample_valid = false;
+  FaultCode last_fault_code = FaultCode::NONE;
 };
 
 struct ZoneSnapshot {
@@ -322,7 +346,8 @@ struct SystemConfig {
 /// NVS-stored config to be discarded in favour of fresh C++ defaults.
 /// v7 adds per-zone motor endstop current-factor overrides.
 /// v8 updates default probe mapping: zones 1..6 -> probes 1..6, flow=7, return=8.
-static constexpr uint32_t CONFIG_VERSION = 8;
+/// v9 adds motor profiles, runtime safety preset fields, and learned factor confidence controls.
+static constexpr uint32_t CONFIG_VERSION = 9;
 
 struct DeviceConfig {
   uint32_t config_version = CONFIG_VERSION;
@@ -351,6 +376,16 @@ inline const char *fault_code_to_string(FaultCode code) {
     case FaultCode::OVERCURRENT: return "OVERCURRENT";
     case FaultCode::THERMAL: return "THERMAL";
     case FaultCode::STALL: return "STALL";
+    case FaultCode::MECHANICAL_OVERRUN: return "MECHANICAL_OVERRUN";
+    default: return "UNKNOWN";
+  }
+}
+
+inline const char *motor_profile_to_string(MotorProfile profile) {
+  switch (profile) {
+    case MotorProfile::INHERIT: return "INHERIT";
+    case MotorProfile::GENERIC: return "GENERIC";
+    case MotorProfile::HMIP_VDMOT: return "HMIP_VDMOT";
     default: return "UNKNOWN";
   }
 }

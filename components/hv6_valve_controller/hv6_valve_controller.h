@@ -84,6 +84,9 @@ class Hv6ValveController : public esphome::Component {
   uint32_t get_live_ripple_count() const { return live_ripple_count_; }
   void request_calibration(uint8_t zone);
   void request_calibration_all();
+  bool reset_fault(uint8_t zone);
+  bool reset_and_relearn(uint8_t zone);
+  bool reset_learned_factors(uint8_t zone);
   void log_i2c_scan();
   void set_manifold_type(ManifoldType type);
   ManifoldType get_manifold_type() const;
@@ -152,6 +155,10 @@ class Hv6ValveController : public esphome::Component {
   void detect_open_circuit_();
   void detect_pin_engagement_();
   void check_relearn_triggers_();
+  MotorProfile effective_motor_profile_(uint8_t zone) const;
+  uint32_t effective_runtime_limit_s_(uint8_t zone) const;
+  float effective_current_factor_(uint8_t zone, MotorDirection dir) const;
+  void update_learned_factor_(uint8_t zone, MotorDirection dir, float average_ma, float peak_ma, bool sample_valid);
 
   // Ripple counting
   void motor_loop_();
@@ -219,6 +226,7 @@ class Hv6ValveController : public esphome::Component {
   // Current sensing
   float current_raw_ma_ = 0.0f;
   float current_filtered_ma_ = 0.0f;
+  float current_peak_ma_ = 0.0f;
   float current_sum_ = 0.0f;
   int current_count_ = 0;
   int debounce_count_ = 0;

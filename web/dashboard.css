@@ -856,8 +856,13 @@ body {
 .st td:last-child { text-align: right; font-weight: 600; }
 .zone-diag-grid .st td { padding: 6px 0; font-size: .81rem; }
 
+/* Learned-factor confidence color coding */
+.conf-ready    { color: #6dcc7a; font-weight: 700; }
+.conf-partial  { color: #f2c77b; font-weight: 700; }
+
 .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
 .zone-diag-grid .btn-row { margin-top: 8px; gap: 6px; }
+.diag-recovery-row .btn { flex: 1 1 0; font-size: .77rem; }
 .btn-row-sep { padding-top: 12px; border-top: 1px solid rgba(255,255,255,.08); }
 .probe-action-row { flex-wrap: nowrap; }
 .probe-action-row .btn { flex: 1 1 0; }
@@ -889,6 +894,7 @@ body {
 .sel { width: 220px; }
 .txt { width: 220px; }
 .sel:focus, .txt:focus { border-color: rgba(238,161,17,.6); }
+.compact-sel { width: 188px; }
 
 /* Settings subsection header */
 .cfg-section {
@@ -918,6 +924,16 @@ body {
 }
 .mn-inp:focus { border-color: rgba(238,161,17,.6); }
 .mn-unit { font-size: .78rem; color: var(--muted); min-width: 62px; }
+.cfg-note {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(238,161,17,.18);
+  background: linear-gradient(180deg, rgba(238,161,17,.08), rgba(238,161,17,.03));
+  color: rgba(255,245,226,.82);
+  font-size: .77rem;
+  line-height: 1.5;
+}
 
 
 .sl-grp { margin-top: 12px; }

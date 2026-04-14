@@ -138,6 +138,126 @@ sensor:
     lambda: |-
       return static_cast<float>(id(hv6_valves).get_telemetry(5).learned_close_ripples);
 
+  - platform: template
+    name: "Motor 1 Learned Open Factor"
+    id: motor_1_learned_open_factor
+    unit_of_measurement: "x"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return id(hv6_valves).get_telemetry(0).learned_open_current_factor;
+
+  - platform: template
+    name: "Motor 1 Learned Close Factor"
+    id: motor_1_learned_close_factor
+    unit_of_measurement: "x"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return id(hv6_valves).get_telemetry(0).learned_close_current_factor;
+
+  - platform: template
+    name: "Motor 2 Learned Open Factor"
+    id: motor_2_learned_open_factor
+    unit_of_measurement: "x"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return id(hv6_valves).get_telemetry(1).learned_open_current_factor;
+
+  - platform: template
+    name: "Motor 2 Learned Close Factor"
+    id: motor_2_learned_close_factor
+    unit_of_measurement: "x"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return id(hv6_valves).get_telemetry(1).learned_close_current_factor;
+
+  - platform: template
+    name: "Motor 3 Learned Open Factor"
+    id: motor_3_learned_open_factor
+    unit_of_measurement: "x"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return id(hv6_valves).get_telemetry(2).learned_open_current_factor;
+
+  - platform: template
+    name: "Motor 3 Learned Close Factor"
+    id: motor_3_learned_close_factor
+    unit_of_measurement: "x"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return id(hv6_valves).get_telemetry(2).learned_close_current_factor;
+
+  - platform: template
+    name: "Motor 4 Learned Open Factor"
+    id: motor_4_learned_open_factor
+    unit_of_measurement: "x"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return id(hv6_valves).get_telemetry(3).learned_open_current_factor;
+
+  - platform: template
+    name: "Motor 4 Learned Close Factor"
+    id: motor_4_learned_close_factor
+    unit_of_measurement: "x"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return id(hv6_valves).get_telemetry(3).learned_close_current_factor;
+
+  - platform: template
+    name: "Motor 5 Learned Open Factor"
+    id: motor_5_learned_open_factor
+    unit_of_measurement: "x"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return id(hv6_valves).get_telemetry(4).learned_open_current_factor;
+
+  - platform: template
+    name: "Motor 5 Learned Close Factor"
+    id: motor_5_learned_close_factor
+    unit_of_measurement: "x"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return id(hv6_valves).get_telemetry(4).learned_close_current_factor;
+
+  - platform: template
+    name: "Motor 6 Learned Open Factor"
+    id: motor_6_learned_open_factor
+    unit_of_measurement: "x"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return id(hv6_valves).get_telemetry(5).learned_open_current_factor;
+
+  - platform: template
+    name: "Motor 6 Learned Close Factor"
+    id: motor_6_learned_close_factor
+    unit_of_measurement: "x"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return id(hv6_valves).get_telemetry(5).learned_close_current_factor;
+
   - platform: wifi_signal
     name: "WiFi Signal"
     id: wifi_signal_dbm
@@ -146,3 +266,52 @@ sensor:
   - platform: uptime
     name: "Uptime"
     update_interval: 60s
+
+text_sensor:
+  - platform: template
+    name: "Motor 1 Last Fault"
+    id: motor_1_last_fault
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return {hv6::fault_code_to_string(id(hv6_valves).get_telemetry(0).last_fault_code)};
+
+  - platform: template
+    name: "Motor 2 Last Fault"
+    id: motor_2_last_fault
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return {hv6::fault_code_to_string(id(hv6_valves).get_telemetry(1).last_fault_code)};
+
+  - platform: template
+    name: "Motor 3 Last Fault"
+    id: motor_3_last_fault
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return {hv6::fault_code_to_string(id(hv6_valves).get_telemetry(2).last_fault_code)};
+
+  - platform: template
+    name: "Motor 4 Last Fault"
+    id: motor_4_last_fault
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return {hv6::fault_code_to_string(id(hv6_valves).get_telemetry(3).last_fault_code)};
+
+  - platform: template
+    name: "Motor 5 Last Fault"
+    id: motor_5_last_fault
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return {hv6::fault_code_to_string(id(hv6_valves).get_telemetry(4).last_fault_code)};
+
+  - platform: template
+    name: "Motor 6 Last Fault"
+    id: motor_6_last_fault
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return {hv6::fault_code_to_string(id(hv6_valves).get_telemetry(5).last_fault_code)};
