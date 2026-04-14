@@ -230,7 +230,7 @@ struct MotorConfig {
   uint32_t max_runtime_s = 65;
   uint32_t calibration_timeout_s = 120;
   // Close-direction endstop (higher current at mechanical stop)
-  float close_current_factor = 1.8f;
+  float close_current_factor = 1.7f;
   float close_slope_threshold_ma_per_s = 0.6f;
   float close_slope_current_factor = 1.3f;
   // Open-direction endstop (gentler ramp — spring assist)

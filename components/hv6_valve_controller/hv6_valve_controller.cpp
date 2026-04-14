@@ -990,7 +990,10 @@ void Hv6ValveController::process_tick_() {
 
   uint32_t adaptive_cap = 0;
   bool adaptive_applied = false;
-  if (lo > 0 && lc > 0) {
+  // During calibration passes, always use the full runtime safety window.
+  // Adaptive caps based on previous learned times can be too tight and cause
+  // false TIMEOUTs while relearning a drifting or slow valve.
+  if (!calibrating_ && lo > 0 && lc > 0) {
     uint32_t learned_max = std::max(lo, lc);
     adaptive_cap = learned_max + 5000;
     if (adaptive_cap > 1000 && static_cast<float>(adaptive_cap) < max_runtime_ms) {
@@ -1619,10 +1622,20 @@ void Hv6ValveController::run_calibration_(uint8_t zone) {
              zone + 1, attempt + 1, open_ms, close2_ms, min_travel);
   }
 
+  bool has_previous_learning = false;
   xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
-  telemetry_[zone].blocked = true;
+  has_previous_learning = telemetry_[zone].learned_open_ms > 0 && telemetry_[zone].learned_close_ms > 0;
+  // Keep previously working zones operational if relearn fails.
+  // Only hard-block when we have no learned fallback for this valve.
+  telemetry_[zone].blocked = !has_previous_learning;
   xSemaphoreGive(telemetry_mutex_);
-  ESP_LOGE(TAG, "Calibration zone %d FAILED after %d attempts", zone + 1, max_retries + 1);
+
+  if (has_previous_learning) {
+    ESP_LOGW(TAG, "Calibration zone %d FAILED after %d attempts; keeping previous learned profile and leaving zone unblocked",
+             zone + 1, max_retries + 1);
+  } else {
+    ESP_LOGE(TAG, "Calibration zone %d FAILED after %d attempts", zone + 1, max_retries + 1);
+  }
   calibrating_ = false;
   if (boosted_prio != original_prio)
     vTaskPrioritySet(nullptr, original_prio);
