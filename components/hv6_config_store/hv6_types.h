@@ -174,7 +174,7 @@ struct ZoneConfig {
 struct ControlConfig {
   float comfort_band_c = 0.5f;
   float min_valve_opening_pct = 25.0f;
-  float maintenance_base_pct = 45.0f;
+  float maintenance_base_pct = 15.0f;
   float demand_boost_pct = 30.0f;
   float boost_factor = 1.0f;
   float min_movement_pct = 5.0f;
@@ -316,7 +316,7 @@ struct SystemConfig {
 
 /// Bump this whenever a struct layout or default value changes to force
 /// NVS-stored config to be discarded in favour of fresh C++ defaults.
-static constexpr uint32_t CONFIG_VERSION = 5;
+static constexpr uint32_t CONFIG_VERSION = 6;
 
 struct DeviceConfig {
   uint32_t config_version = CONFIG_VERSION;

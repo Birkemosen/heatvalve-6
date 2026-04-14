@@ -924,10 +924,8 @@
       color = '#ff6464'; stClass = 'zs-overheat'; glowOn = true;
     } else if (st === 'HEATING') {
       color = '#EEA111'; stClass = 'zs-heating'; glowOn = true;
-    } else if (st === 'IDLE') {
+    } else if (st === 'IDLE' || st === 'OVERHEATED') {
       color = '#79d17e'; stClass = 'zs-idle'; glowOn = false;
-    } else if (st === 'OVERHEATED') {
-      color = '#ff6464'; stClass = 'zs-overheat'; glowOn = false;
     } else if (st === 'MANUAL') {
       color = '#53A8FF'; stClass = 'zs-manual'; glowOn = false;
     } else if (st === 'CALIBRATING') {

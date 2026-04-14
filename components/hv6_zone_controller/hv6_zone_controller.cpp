@@ -1611,10 +1611,8 @@ void Hv6ZoneController::update_zone_display_states_() {
         snapshots_[i].display_state = ZoneDisplayState::HEATING;
         break;
       case ZoneState::SATISFIED:
-        snapshots_[i].display_state = ZoneDisplayState::IDLE;
-        break;
       case ZoneState::OVERHEATED:
-        snapshots_[i].display_state = ZoneDisplayState::OVERHEATED;
+        snapshots_[i].display_state = ZoneDisplayState::IDLE;
         break;
       case ZoneState::UNKNOWN:
       default:

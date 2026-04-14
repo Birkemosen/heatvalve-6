@@ -28,7 +28,7 @@ substitutions:
   # Control parameters — defaults (adjustable at runtime via HA or MQTT)
   default_comfort_band: "0.5"        # °C dead-band around setpoint
   default_min_valve_opening: "25.0"  # % minimum total valve opening (heat-pump protection)
-  default_maintenance_base: "45.0"   # % valve position when zone is satisfied
+  default_maintenance_base: "15.0"   # % valve position when zone is satisfied (idle/minimal flow)
   default_demand_boost: "30.0"       # % added to calculated position when zone has demand
 
   # Zone controller timing
