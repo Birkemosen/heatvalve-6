@@ -264,10 +264,14 @@ void Hv6ConfigStore::load_config_() {
       if (stored_version != CONFIG_VERSION) {
         ESP_LOGW(TAG, "Config version mismatch (stored %" PRIu32 " vs expected %" PRIu32 "), using defaults",
                  stored_version, CONFIG_VERSION);
+      } else if (read_size != sizeof(DeviceConfig)) {
+        ESP_LOGW(TAG,
+                 "Config size mismatch for version %" PRIu32 " (stored %u vs expected %u), using defaults",
+                 stored_version, static_cast<unsigned>(read_size),
+                 static_cast<unsigned>(sizeof(DeviceConfig)));
       } else {
-        size_t copy_size = std::min(read_size, sizeof(DeviceConfig));
         xSemaphoreTake(mutex_, portMAX_DELAY);
-        memcpy(&config_, raw.data(), copy_size);
+        memcpy(&config_, raw.data(), sizeof(DeviceConfig));
         xSemaphoreGive(mutex_);
         ESP_LOGI(TAG, "Config loaded (%u bytes, version %" PRIu32 ")", (unsigned) read_size, stored_version);
       }

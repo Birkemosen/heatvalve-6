@@ -1085,6 +1085,18 @@ void Hv6ValveController::detect_endstop_() {
   float cfg_slope_cur_fac  = is_opening ? motor_cfg_.open_slope_current_factor
                                         : motor_cfg_.close_slope_current_factor;
 
+  // Apply per-motor overrides if configured (0.0 = use default)
+  if (config_store_) {
+    const auto &cfg = config_store_->get_config();
+    if (current_zone_ < NUM_ZONES) {
+      if (is_opening && cfg.zones[current_zone_].motor_open_current_factor_override > 0.0f) {
+        cfg_current_factor = cfg.zones[current_zone_].motor_open_current_factor_override;
+      } else if (!is_opening && cfg.zones[current_zone_].motor_close_current_factor_override > 0.0f) {
+        cfg_current_factor = cfg.zones[current_zone_].motor_close_current_factor_override;
+      }
+    }
+  }
+
   // --- Slope tracking (dI/dt) ---
   // Initialize on first call after startup guard so slope_prev starts from
   // a settled current reading, not zero.

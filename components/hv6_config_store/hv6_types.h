@@ -169,6 +169,9 @@ struct ZoneConfig {
   uint8_t exterior_walls = ExteriorWall::NONE;  // Bitmask: N|E|S|W
   ProbeRole probe_role = ProbeRole::ROOM_TEMPERATURE;
   int8_t sync_to_zone = -1;  ///< -1 = independent, 0–5 = synced to that zone (shares setpoint + avg temp)
+  // Motor-specific endstop tuning (0.0 = use global default from MotorConfig)
+  float motor_close_current_factor_override = 0.0f;  ///< Per-motor close threshold (slower motors may need 1.6x vs 1.7x to avoid premature pop-off)
+  float motor_open_current_factor_override = 0.0f;   ///< Per-motor open threshold
 };
 
 struct ControlConfig {
@@ -182,9 +185,10 @@ struct ControlConfig {
 };
 
 struct ProbeConfig {
-  int8_t manifold_flow_probe = 0;
-  int8_t manifold_return_probe = 1;
-  int8_t zone_return_probe[NUM_ZONES] = {2, 3, 4, 5, 6, 7};
+  // Probe indices are 0-based (Probe 1 = index 0).
+  int8_t manifold_flow_probe = 6;    // Probe 7
+  int8_t manifold_return_probe = 7;  // Probe 8
+  int8_t zone_return_probe[NUM_ZONES] = {0, 1, 2, 3, 4, 5};  // Zone N -> Probe N
 };
 
 static constexpr uint8_t MQTT_DEVICE_NAME_LEN = 48;
@@ -227,7 +231,7 @@ struct MotorConfig {
   uint32_t pwm_boost_ms = 350;
   uint8_t pwm_hold_duty_pct = 70;
   uint32_t pwm_period_ms = 40;
-  uint32_t max_runtime_s = 65;
+  uint32_t max_runtime_s = 45;  // Reduced from 65s to prevent piston lock/socket pop-off (mechanical limit ~40s)
   uint32_t calibration_timeout_s = 120;
   // Close-direction endstop (higher current at mechanical stop)
   float close_current_factor = 1.7f;
@@ -316,7 +320,9 @@ struct SystemConfig {
 
 /// Bump this whenever a struct layout or default value changes to force
 /// NVS-stored config to be discarded in favour of fresh C++ defaults.
-static constexpr uint32_t CONFIG_VERSION = 6;
+/// v7 adds per-zone motor endstop current-factor overrides.
+/// v8 updates default probe mapping: zones 1..6 -> probes 1..6, flow=7, return=8.
+static constexpr uint32_t CONFIG_VERSION = 8;
 
 struct DeviceConfig {
   uint32_t config_version = CONFIG_VERSION;
