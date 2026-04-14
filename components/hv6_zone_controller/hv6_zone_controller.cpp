@@ -1408,7 +1408,7 @@ void Hv6ZoneController::handle_zigbee_mqtt_(const std::string &topic, const std:
   float temperature = NAN;
 #ifdef USE_MQTT
   esphome::json::parse_json(payload, [&temperature](JsonObject root) -> bool {
-    if (root.containsKey("temperature")) {
+    if (root["temperature"].is<float>()) {
       temperature = root["temperature"].as<float>();
       return true;
     }
@@ -1543,10 +1543,10 @@ void Hv6ZoneController::update_system_condition_state_() {
 
     active_zones++;
 
-    // Check condition state of each zone
-    if (snapshots_[i].condition_state == ZoneConditionState::OVERHEATED) {
+    // Derive system condition directly from control state.
+    if (snapshots_[i].state == ZoneState::OVERHEATED) {
       overheated_count++;
-    } else if (snapshots_[i].condition_state == ZoneConditionState::ABOVE_SETPOINT) {
+    } else if (snapshots_[i].state == ZoneState::SATISFIED) {
       above_target_count++;
     }
   }

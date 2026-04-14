@@ -56,13 +56,6 @@ enum class ZoneDisplayState : int8_t {
   OVERHEATED = 7,
 };
 
-enum class ZoneConditionState : int8_t {
-  UNKNOWN = -1,
-  NORMAL = 0,
-  ABOVE_SETPOINT = 1,
-  OVERHEATED = 2,
-};
-
 enum class SystemConditionState : int8_t {
   UNKNOWN = -1,
   NORMAL = 0,
@@ -288,7 +281,6 @@ struct ZoneSnapshot {
   float valve_position_pct = 0.0f;
   ZoneState state = ZoneState::UNKNOWN;
   ZoneDisplayState display_state = ZoneDisplayState::UNKNOWN;
-  ZoneConditionState condition_state = ZoneConditionState::UNKNOWN;
   float hydraulic_factor = 0.0f;
   bool was_overheated = false;
   float heat_output_w = 0.0f;
@@ -324,7 +316,7 @@ struct SystemConfig {
 
 /// Bump this whenever a struct layout or default value changes to force
 /// NVS-stored config to be discarded in favour of fresh C++ defaults.
-static constexpr uint32_t CONFIG_VERSION = 4;
+static constexpr uint32_t CONFIG_VERSION = 5;
 
 struct DeviceConfig {
   uint32_t config_version = CONFIG_VERSION;
@@ -359,8 +351,10 @@ inline const char *fault_code_to_string(FaultCode code) {
 
 inline const char *zone_state_to_string(ZoneState state) {
   switch (state) {
-    case ZoneState::IDLE: return "IDLE";
+    case ZoneState::OVERHEATED: return "OVERHEATED";
+    case ZoneState::SATISFIED: return "SATISFIED";
     case ZoneState::DEMAND: return "DEMAND";
+    case ZoneState::UNKNOWN:
     default: return "UNKNOWN";
   }
 }
@@ -376,17 +370,6 @@ inline const char *zone_display_state_to_string(ZoneDisplayState state) {
     case ZoneDisplayState::IDLE: return "IDLE";
     case ZoneDisplayState::OVERHEATED: return "OVERHEATED";
     case ZoneDisplayState::UNKNOWN:
-    default:
-      return "UNKNOWN";
-  }
-}
-
-inline const char *zone_condition_state_to_string(ZoneConditionState state) {
-  switch (state) {
-    case ZoneConditionState::NORMAL: return "NORMAL";
-    case ZoneConditionState::ABOVE_SETPOINT: return "ABOVE_SETPOINT";
-    case ZoneConditionState::OVERHEATED: return "OVERHEATED";
-    case ZoneConditionState::UNKNOWN:
     default:
       return "UNKNOWN";
   }
