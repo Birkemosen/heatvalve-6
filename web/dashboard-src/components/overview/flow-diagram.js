@@ -1,5 +1,5 @@
 import { component, subscribe } from '../../core/component.js';
-import { ev, es, subscribeDashboard, zoneTag } from '../../core/store.js';
+import { ev, es, isEntityOn, subscribeDashboard, zoneTag } from '../../core/store.js';
 import { fmtT, fmtV } from '../../utils/format.js';
 import { injectStyle } from '../../core/style.js';
 import { key, gkey } from '../../utils/keys.js';
@@ -128,7 +128,6 @@ function flowColorByPercent(pct, enabled) {
 function buildFlowDiagram() {
   var W = 1160, H = 460;
     var by = FD_MYC - FD_BH / 2;
-    var lbW = FD_BX;
     var p = [];
     p.push('<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet">');
     p.push('<defs>');
@@ -210,73 +209,82 @@ component({
   render: template,
 
   onMount(ctx, el) {
+    const refs = {
+      flowEl: el.querySelector('#fd-flow-temp'),
+      retEl: el.querySelector('#fd-ret-temp'),
+      dtEl: el.querySelector('#fd-dt'),
+      zones: new Array(ZONES + 1)
+    };
+
+    for (let zone = 1; zone <= ZONES; zone++) {
+      refs.zones[zone] = {
+        textTemp: el.querySelector('#fd-zt' + zone),
+        textFlow: el.querySelector('#fd-zv' + zone),
+        textRet: el.querySelector('#fd-zr' + zone),
+        label: el.querySelector('#fd-zn' + zone),
+        friendly: el.querySelector('#fd-zf' + zone),
+        path: el.querySelector('#fd-path-' + zone)
+      };
+    }
+
     function update() {
       const flow = ev(gkey.flow);
       const ret = ev(gkey.ret);
-      const flowEl = el.querySelector('#fd-flow-temp');
-      const retEl = el.querySelector('#fd-ret-temp');
-      const dtEl = el.querySelector('#fd-dt');
+      const flowEl = refs.flowEl;
+      const retEl = refs.retEl;
+      const dtEl = refs.dtEl;
 
-      if (flowEl) flowEl.textContent = fmtT(flow);
-      if (retEl) retEl.textContent = 'RET ' + fmtT(ret);
-      if (dtEl) {
-        if (flow != null && ret != null) {
-          const dt = Number(flow) - Number(ret);
-          dtEl.textContent = dt.toFixed(1) + '°C';
-          dtEl.setAttribute('fill', dt < 3 ? FD_COLOR_DT_LOW : dt > 8 ? FD_COLOR_DT_HIGH : FD_COLOR_DT_OK);
-        } else {
-          dtEl.textContent = '---';
-        }
+      flowEl.textContent = fmtT(flow);
+      retEl.textContent = 'RET ' + fmtT(ret);
+      if (flow != null && ret != null) {
+        const dt = Number(flow) - Number(ret);
+        dtEl.textContent = dt.toFixed(1) + '°C';
+        dtEl.setAttribute('fill', dt < 3 ? FD_COLOR_DT_LOW : dt > 8 ? FD_COLOR_DT_HIGH : FD_COLOR_DT_OK);
+      } else {
+        dtEl.textContent = '---';
       }
 
       for (let zone = 1; zone <= ZONES; zone++) {
         const temp = ev(key.temp(zone));
         const valve = ev(key.valve(zone));
-        const enabled = String(es(key.enabled(zone))).toLowerCase() === 'on';
+        const enabled = isEntityOn(key.enabled(zone));
         const source = String(es(key.tempSource(zone)) || 'Local Probe');
         const probe = parseProbeIndex(es(key.probe(zone)) || '');
         const returnTemp = probe ? ev(key.probeTemp(probe)) : null;
-        const textTemp = el.querySelector('#fd-zt' + zone);
-        const textFlow = el.querySelector('#fd-zv' + zone);
-        const textRet = el.querySelector('#fd-zr' + zone);
-        const label = el.querySelector('#fd-zn' + zone);
-        const friendly = el.querySelector('#fd-zf' + zone);
-        const path = el.querySelector('#fd-path-' + zone);
+        const zoneRefs = refs.zones[zone];
+        const textTemp = zoneRefs.textTemp;
+        const textFlow = zoneRefs.textFlow;
+        const textRet = zoneRefs.textRet;
+        const label = zoneRefs.label;
+        const friendly = zoneRefs.friendly;
+        const path = zoneRefs.path;
         const pct = valve != null ? Math.max(0, Math.min(100, Number(valve))) / 100 : 0;
 
-        if (label) label.textContent = 'ZONE ' + zone;
-        if (friendly) {
-          const tag = compactFriendlyName(zone);
-          friendly.textContent = tag || '---';
+        label.textContent = 'ZONE ' + zone;
+        const tag = compactFriendlyName(zone);
+        friendly.textContent = tag || '---';
+        label.setAttribute('fill', enabled ? FD_COLOR_ZONE_ON : FD_COLOR_ZONE_OFF);
+        friendly.setAttribute('fill', enabled ? FD_COLOR_FRIENDLY_ON : FD_COLOR_FRIENDLY_OFF);
+        textTemp.textContent = fmtT(temp);
+        textFlow.textContent = fmtV(valve);
+        textFlow.setAttribute('fill', flowColorByPercent(pct, enabled));
+        if (source !== 'Local Probe' && returnTemp != null && !Number.isNaN(Number(returnTemp))) {
+          textRet.textContent = fmtT(returnTemp);
+          textRet.setAttribute('fill', enabled ? FD_COLOR_RETURN : FD_COLOR_DISABLED);
+        } else {
+          textRet.textContent = '---';
+          textRet.setAttribute('fill', FD_COLOR_EMPTY);
         }
-        if (label) label.setAttribute('fill', enabled ? FD_COLOR_ZONE_ON : FD_COLOR_ZONE_OFF);
-        if (friendly) friendly.setAttribute('fill', enabled ? FD_COLOR_FRIENDLY_ON : FD_COLOR_FRIENDLY_OFF);
-        if (textTemp) textTemp.textContent = fmtT(temp);
-        if (textFlow) {
-          textFlow.textContent = fmtV(valve);
-          textFlow.setAttribute('fill', flowColorByPercent(pct, enabled));
-        }
-        if (textRet) {
-          if (source !== 'Local Probe' && returnTemp != null && !Number.isNaN(Number(returnTemp))) {
-            textRet.textContent = fmtT(returnTemp);
-            textRet.setAttribute('fill', enabled ? FD_COLOR_RETURN : FD_COLOR_DISABLED);
-          } else {
-            textRet.textContent = '---';
-            textRet.setAttribute('fill', FD_COLOR_EMPTY);
-          }
-        }
-        if (path) {
-          if (!enabled) {
-            path.setAttribute('d', fdRibbon(zone - 1, 1, 2));
-            path.setAttribute('fill', '#2A2D38');
-            path.setAttribute('opacity', '0.4');
-          } else {
-            const dstHW = Math.max(3, pct * FD_BG_DST_HW);
-            const srcHW = Math.max(1.5, pct * FD_SRC_HW);
-            path.setAttribute('d', fdRibbon(zone - 1, srcHW, dstHW));
-            path.setAttribute('fill', 'url(#rg' + zone + ')');
-            path.setAttribute('opacity', '1');
-          }
+        if (!enabled) {
+          path.setAttribute('d', fdRibbon(zone - 1, 1, 2));
+          path.setAttribute('fill', '#2A2D38');
+          path.setAttribute('opacity', '0.4');
+        } else {
+          const dstHW = Math.max(3, pct * FD_BG_DST_HW);
+          const srcHW = Math.max(1.5, pct * FD_SRC_HW);
+          path.setAttribute('d', fdRibbon(zone - 1, srcHW, dstHW));
+          path.setAttribute('fill', 'url(#rg' + zone + ')');
+          path.setAttribute('opacity', '1');
         }
       }
     }

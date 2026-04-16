@@ -1,6 +1,6 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { es, getDashboardValue, subscribeDashboard } from '../../core/store.js';
+import { getDashboardValue, isEntityOn, subscribeDashboard } from '../../core/store.js';
 import { setDriversEnabled } from '../../core/api.js';
 import { gkey } from '../../utils/keys.js';
 
@@ -135,28 +135,35 @@ export default component({
   }),
   render: template,
   methods: {
-    update(el) {
-      this.motorDriversOn = String(es(gkey.drivers)).toLowerCase() === 'on';
+    update(refs) {
+      this.motorDriversOn = isEntityOn(gkey.drivers);
       this.motorDrivers = this.motorDriversOn ? 'ON' : 'OFF';
-      this.motorFault = String(es(gkey.fault)).toLowerCase() === 'on' ? 'FAULT' : 'OK';
+      this.motorFault = isEntityOn(gkey.fault) ? 'FAULT' : 'OK';
       this.connOn = getDashboardValue('live') === true;
-      const drvEl = el.querySelector('#sys-drv');
-      drvEl.textContent = this.motorDrivers;
-      drvEl.style.color = this.motorDriversOn ? 'var(--blue)' : 'var(--state-danger)';
-      const faultEl = el.querySelector('#sys-fault');
+
+      refs.drv.textContent = this.motorDrivers;
+      refs.drv.style.color = this.motorDriversOn ? 'var(--blue)' : 'var(--state-danger)';
+
       const isFault = this.motorFault === 'FAULT';
-      faultEl.textContent = this.motorFault;
-      faultEl.style.color = isFault ? 'var(--state-danger)' : 'var(--state-ok)';
-      el.querySelector('#sys-dot').classList.toggle('on', this.connOn);
-      el.querySelector('#sw-drv').className = 'sw ' + (this.motorDriversOn ? 'on' : 'off');
+      refs.fault.textContent = this.motorFault;
+      refs.fault.style.color = isFault ? 'var(--state-danger)' : 'var(--state-ok)';
+      refs.dot.classList.toggle('on', this.connOn);
+      refs.sw.className = 'sw ' + (this.motorDriversOn ? 'on' : 'off');
     }
   },
   onMount(ctx, el) {
-    const update = () => ctx.update(el);
+    const refs = {
+      drv: el.querySelector('#sys-drv'),
+      fault: el.querySelector('#sys-fault'),
+      dot: el.querySelector('#sys-dot'),
+      sw: el.querySelector('#sw-drv')
+    };
+
+    const update = () => ctx.update(refs);
     subscribe(gkey.drivers, update);
     subscribe(gkey.fault, update);
     subscribeDashboard('live', update);
-    el.querySelector('#sw-drv').onclick = () => {
+    refs.sw.onclick = () => {
       setDriversEnabled(!ctx.motorDriversOn);
     };
     update();

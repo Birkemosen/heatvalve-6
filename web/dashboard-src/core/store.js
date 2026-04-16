@@ -54,6 +54,10 @@ function dashboardKey(key) {
   return '$dashboard:' + key;
 }
 
+function normalizeZone(zone) {
+  return Math.max(1, Math.min(NZ, Number(zone) || 1));
+}
+
 function toNumber(value) {
   if (value == null) return null;
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
@@ -87,6 +91,16 @@ export function es(id) {
   if (entity.value === true) return 'ON';
   if (entity.value === false) return 'OFF';
   return '';
+}
+
+export function isOnState(value) {
+  if (value === true) return true;
+  if (value === false) return false;
+  return String(value || '').toLowerCase() === 'on';
+}
+
+export function isEntityOn(id) {
+  return isOnState(es(id));
 }
 
 export function setEntity(id, patch) {
@@ -145,7 +159,7 @@ export function setSection(section) {
 }
 
 export function setSelectedZone(zone) {
-  const next = Math.max(1, Math.min(NZ, Number(zone) || 1));
+  const next = normalizeZone(zone);
   if (D.selectedZone === next) return;
   D.selectedZone = next;
   notify(dashboardKey('selectedZone'));
@@ -169,18 +183,18 @@ export function endPendingWrite() {
 }
 
 export function setZoneName(zone, value) {
-  const index = Math.max(1, Math.min(NZ, Number(zone) || 1)) - 1;
+  const index = normalizeZone(zone) - 1;
   D.zoneNames[index] = String(value || '').trim();
   persistZoneNames();
   notify(dashboardKey('zoneNames'));
 }
 
 export function zoneTag(zone) {
-  return D.zoneNames[Math.max(1, Math.min(NZ, Number(zone) || 1)) - 1] || '';
+  return D.zoneNames[normalizeZone(zone) - 1] || '';
 }
 
 export function zoneLabel(zone) {
-  const index = Math.max(1, Math.min(NZ, Number(zone) || 1));
+  const index = normalizeZone(zone);
   const tag = zoneTag(index);
   return tag ? 'Zone ' + index + ' · ' + tag : 'Zone ' + index;
 }

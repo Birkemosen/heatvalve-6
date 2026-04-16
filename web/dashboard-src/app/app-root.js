@@ -250,9 +250,11 @@ component({
     diagLayout.appendChild(mountComponent('diag-zone-motor-card', { zone: selectedZone }));
     diagLayout.appendChild(mountComponent('diag-zone-recovery-card', { zone: selectedZone }));
 
+    const sectionNodes = el.querySelectorAll('.sec');
+
     function updateSection() {
       const section = getDashboardValue('section');
-      el.querySelectorAll('.sec').forEach((node) => {
+      sectionNodes.forEach((node) => {
         node.classList.toggle('active', node.getAttribute('data-section') === section);
       });
     }

@@ -68,7 +68,7 @@ injectStyle('zone-sensor-card', css);
 // TEMPLATE
 // ========================================
 const template = () => {
-  let probeOptions = '';
+  let probeOptions = '<option>None</option>';
   for (let probe = 1; probe <= 8; probe++) probeOptions += '<option>Probe ' + probe + '</option>';
 
   return `
@@ -104,18 +104,12 @@ const template = () => {
 
 function buildSyncOptions(selectEl, zone) {
   const current = selectEl.value;
-  selectEl.innerHTML = '';
-  const none = document.createElement('option');
-  none.value = 'None';
-  none.textContent = 'None';
-  selectEl.appendChild(none);
+  let html = '<option>None</option>';
   for (let z = 1; z <= 6; z++) {
     if (z === zone) continue;
-    const option = document.createElement('option');
-    option.value = 'Zone ' + z;
-    option.textContent = 'Zone ' + z;
-    selectEl.appendChild(option);
+    html += '<option>Zone ' + z + '</option>';
   }
+  selectEl.innerHTML = html;
   selectEl.value = current || 'None';
 }
 
@@ -133,6 +127,7 @@ export default component({
     const syncEl = el.querySelector('.zs-sync');
     const rowZigbee = el.querySelector('.zs-row-zigbee');
     const rowBle = el.querySelector('.zs-row-ble');
+    let syncZone = 0;
 
     function selectedZone() {
       return getDashboardValue('selectedZone');
@@ -140,7 +135,10 @@ export default component({
 
     function update() {
       const zone = selectedZone();
-      buildSyncOptions(syncEl, zone);
+      if (syncZone !== zone) {
+        buildSyncOptions(syncEl, zone);
+        syncZone = zone;
+      }
 
       const probe = es(key.probe(zone));
       const source = es(key.tempSource(zone)) || 'Local Probe';
@@ -155,6 +153,19 @@ export default component({
       if (document.activeElement !== bleEl) bleEl.value = ble;
       rowZigbee.style.display = source === 'Zigbee MQTT' ? '' : 'none';
       rowBle.style.display = source === 'BLE Sensor' ? '' : 'none';
+    }
+
+    function updateIfSelectedZone(id) {
+      const zone = selectedZone();
+      if (
+        id === key.probe(zone) ||
+        id === key.tempSource(zone) ||
+        id === key.syncTo(zone) ||
+        id === key.zigbee(zone) ||
+        id === key.ble(zone)
+      ) {
+        update();
+      }
     }
 
     probeEl.addEventListener('change', () => {
@@ -175,11 +186,11 @@ export default component({
 
     subscribeDashboard('selectedZone', update);
     for (let zone = 1; zone <= 6; zone++) {
-      subscribe(key.probe(zone), update);
-      subscribe(key.tempSource(zone), update);
-      subscribe(key.syncTo(zone), update);
-      subscribe(key.zigbee(zone), update);
-      subscribe(key.ble(zone), update);
+      subscribe(key.probe(zone), updateIfSelectedZone);
+      subscribe(key.tempSource(zone), updateIfSelectedZone);
+      subscribe(key.syncTo(zone), updateIfSelectedZone);
+      subscribe(key.zigbee(zone), updateIfSelectedZone);
+      subscribe(key.ble(zone), updateIfSelectedZone);
     }
     update();
   }

@@ -65,10 +65,10 @@ function seed() {
   setEntity(gkey.manifoldReturnProbe, { state: 'Probe 8' });
   setEntity(gkey.manifoldType, { state: 'NC (Normally Closed)' });
   setEntity(gkey.motorProfileDefault, { state: 'HmIP VdMot' });
-  setEntity(gkey.closeThresholdMultiplier, { value: 1.8 });
+  setEntity(gkey.closeThresholdMultiplier, { value: 1.7 });
   setEntity(gkey.closeSlopeThreshold, { value: 1.0 });
   setEntity(gkey.closeSlopeCurrentFactor, { value: 1.4 });
-  setEntity(gkey.openThresholdMultiplier, { value: 1.8 });
+  setEntity(gkey.openThresholdMultiplier, { value: 1.7 });
   setEntity(gkey.openSlopeThreshold, { value: 0.8 });
   setEntity(gkey.openSlopeCurrentFactor, { value: 1.3 });
   setEntity(gkey.openRippleLimitFactor, { value: 1.0 });

@@ -1,8 +1,10 @@
 #!/bin/bash
-# Increment patch version in version.yaml
-# E.g., v0.1.1 → v0.1.2
+# Increment semantic version in version.yaml
+# Usage: ./bump_patch_version.sh [patch|minor|major]
+# Default: patch
 
 VERSION_FILE="version.yaml"
+PART=${1:-patch}
 
 if [ ! -f "$VERSION_FILE" ]; then
     echo "Error: $VERSION_FILE not found"
@@ -24,11 +26,32 @@ MAJOR=$(echo "$CURRENT" | cut -d. -f1 | sed 's/v//')
 MINOR=$(echo "$CURRENT" | cut -d. -f2)
 PATCH=$(echo "$CURRENT" | cut -d. -f3)
 
-# Increment patch
-NEW_PATCH=$((PATCH + 1))
-NEW_VERSION="v${MAJOR}.${MINOR}.${NEW_PATCH}"
+# Increment according to requested part
+case "$PART" in
+    patch)
+        NEW_MAJOR=$MAJOR
+        NEW_MINOR=$MINOR
+        NEW_PATCH=$((PATCH + 1))
+        ;;
+    minor)
+        NEW_MAJOR=$MAJOR
+        NEW_MINOR=$((MINOR + 1))
+        NEW_PATCH=0
+        ;;
+    major)
+        NEW_MAJOR=$((MAJOR + 1))
+        NEW_MINOR=0
+        NEW_PATCH=0
+        ;;
+    *)
+        echo "Error: invalid bump part '$PART' (use patch, minor, or major)"
+        exit 1
+        ;;
+esac
+
+NEW_VERSION="v${NEW_MAJOR}.${NEW_MINOR}.${NEW_PATCH}"
 
 # Update version.yaml (using -i '' for macOS compatibility)
 sed -i '' "s/firmware_version: \"[^\"]*\"/firmware_version: \"$NEW_VERSION\"/" "$VERSION_FILE"
 
-echo "Version bumped: $CURRENT → $NEW_VERSION"
+echo "Version bumped ($PART): $CURRENT → $NEW_VERSION"

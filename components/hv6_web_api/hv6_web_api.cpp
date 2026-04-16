@@ -96,6 +96,10 @@ static bool parse_bool_(const char *raw, bool *out) {
 static bool parse_probe_option_(const char *raw, int8_t *probe_out) {
   if (raw == nullptr || probe_out == nullptr)
     return false;
+  if (strcasecmp(raw, "None") == 0) {
+    *probe_out = PROBE_UNASSIGNED;
+    return true;
+  }
   int n = 0;
   if (sscanf(raw, "Probe %d", &n) == 1 && n >= 1 && n <= MAX_PROBES) {
     *probe_out = static_cast<int8_t>(n - 1);

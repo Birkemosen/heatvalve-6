@@ -1078,15 +1078,24 @@ select:
     id: zone_probe
     entity_category: config
     optimistic: false
-    options: [Probe 1, Probe 2, Probe 3, Probe 4, Probe 5, Probe 6, Probe 7, Probe 8]
+    options: [None, Probe 1, Probe 2, Probe 3, Probe 4, Probe 5, Probe 6, Probe 7, Probe 8]
     lambda: |-
       uint8_t zi = id(ui_selected_zone_index);
       int probe = id(hv6_zones).get_zone_probe(zi);
+      if (probe < 0 || probe >= hv6::MAX_PROBES) {
+        return std::string("None");
+      }
       return std::string("Probe ") + std::to_string(probe + 1);
     set_action:
       - lambda: |-
           uint8_t zi = id(ui_selected_zone_index);
-          int probe = static_cast<int>(x[x.size() - 1] - '1');
+          int probe = hv6::PROBE_UNASSIGNED;
+          if (x != "None") {
+            int parsed = 0;
+            if (sscanf(x.c_str(), "Probe %d", &parsed) == 1 && parsed >= 1 && parsed <= hv6::MAX_PROBES) {
+              probe = parsed - 1;
+            }
+          }
           id(hv6_zones).set_zone_probe(zi, probe);
 
   - platform: template

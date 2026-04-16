@@ -12,14 +12,18 @@ SERIAL_PORT := $(if $(PORT),$(PORT),$(AUTO_PORT))
 DASHBOARD_SRC_DIR ?= web/dashboard-src
 DASHBOARD_OUT_FILE ?= web/dashboard.js
 
-.PHONY: help check config build deploy ota logs monitor erase erase-nvs clean dashboard dashboard-tooling dashboard-build dashboard-watch
+.PHONY: help check config build build-patch build-minor build-major build-verify deploy ota logs monitor erase erase-nvs clean dashboard dashboard-tooling dashboard-build dashboard-watch
 
 help:
 	@echo "HeatValve-6 ESPHome tasks"
 	@echo "  make config        Validate YAML"
-	@echo "  make build         Increment patch version + compile firmware"
-	@echo "  make deploy        Increment patch version + build + upload (USB if PORT is set, otherwise OTA)"
-	@echo "  make ota           Increment patch version + build + upload over network to HOST"
+	@echo "  make build         Compile firmware (no version bump)"
+	@echo "  make build-patch   Bump patch version + compile firmware"
+	@echo "  make build-minor   Bump minor version + compile firmware"
+	@echo "  make build-major   Bump major version + compile firmware"
+	@echo "  make build-verify  Alias for make build"
+	@echo "  make deploy        Build + upload (USB if PORT is set, otherwise OTA)"
+	@echo "  make ota           Build + upload over network to HOST"
 	@echo "  make logs          Stream logs from HOST"
 	@echo "  make monitor       Open serial monitor on PORT"
 	@echo "  make erase         Erase flash on PORT"
@@ -27,6 +31,7 @@ help:
 	@echo ""
 	@echo "Examples:"
 	@echo "  make build"
+	@echo "  make build-patch"
 	@echo "  make deploy"
 	@echo "  make deploy PORT=/dev/cu.usbmodemXXXX"
 	@echo "  make monitor PORT=/dev/cu.usbmodemXXXX"
@@ -49,10 +54,24 @@ config: check
 	$(ESPHOME) config $(CONFIG)
 
 build: check dashboard-build
-	@bash bump_patch_version.sh
 	$(ESPHOME) compile --only-generate $(CONFIG)
 	perl -0pi -e 's/" ".join\(cmd\)/" ".join(map(str, cmd))/g' $(BUILD_ROOT)/post_build.py
 	$(PIO) run -d $(BUILD_ROOT)
+
+build-patch: check dashboard-build
+	bash bump_patch_version.sh patch
+	$(MAKE) build
+
+build-minor: check dashboard-build
+	bash bump_patch_version.sh minor
+	$(MAKE) build
+
+build-major: check dashboard-build
+	bash bump_patch_version.sh major
+	$(MAKE) build
+
+build-verify: check dashboard-build
+	$(MAKE) build
 
 deploy: check
 	$(MAKE) build

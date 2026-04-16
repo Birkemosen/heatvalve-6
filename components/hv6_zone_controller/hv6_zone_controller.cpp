@@ -279,7 +279,7 @@ ControlAlgorithm Hv6ZoneController::get_control_algorithm() const {
 void Hv6ZoneController::set_zone_probe(uint8_t zone, int8_t probe) {
   if (zone >= NUM_ZONES || !config_store_)
     return;
-  if (probe < 0 || probe >= MAX_PROBES)
+  if (probe != PROBE_UNASSIGNED && (probe < 0 || probe >= MAX_PROBES))
     return;
 
   auto cfg = config_store_->get_config();
@@ -287,14 +287,18 @@ void Hv6ZoneController::set_zone_probe(uint8_t zone, int8_t probe) {
     return;
   cfg.probes.zone_return_probe[zone] = probe;
   config_store_->update_probes(cfg.probes);
-  ESP_LOGI(TAG, "Zone %d now uses probe %d", zone + 1, probe + 1);
+  if (probe == PROBE_UNASSIGNED) {
+    ESP_LOGI(TAG, "Zone %d return probe disabled (None)", zone + 1);
+  } else {
+    ESP_LOGI(TAG, "Zone %d now uses probe %d", zone + 1, probe + 1);
+  }
 }
 
 int8_t Hv6ZoneController::get_zone_probe(uint8_t zone) const {
   if (zone >= NUM_ZONES || !config_store_)
     return PROBE_UNASSIGNED;
   int8_t probe = config_store_->get_config().probes.zone_return_probe[zone];
-  return (probe >= 0 && probe < MAX_PROBES) ? probe : 0;
+  return (probe >= 0 && probe < MAX_PROBES) ? probe : PROBE_UNASSIGNED;
 }
 
 void Hv6ZoneController::set_manifold_flow_probe(int8_t probe) {

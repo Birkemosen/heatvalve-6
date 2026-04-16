@@ -1,6 +1,6 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { ev, es, getDashboardValue, setSelectedZone, subscribeDashboard, zoneLabel, zoneTag } from '../../core/store.js';
+import { ev, es, getDashboardValue, isEntityOn, setSelectedZone, subscribeDashboard, zoneLabel, zoneTag } from '../../core/store.js';
 import { fmtT } from '../../utils/format.js';
 import { key } from '../../utils/keys.js';
 
@@ -94,7 +94,7 @@ const template = (ctx) => `
 	<div class="zone-card" data-zone="${ctx.zone}">
 		<div class="zc-state-row"><span class="zc-dot"></span><span class="zc-state-label">---</span></div>
 		<div class="zc-zone-name">${zoneLabel(ctx.zone)}</div>
-		<div class="zc-friendly">${zoneTag(ctx.zone) || fmtT(null)}</div>
+		<div class="zc-friendly">${zoneTag(ctx.zone) || '---'}</div>
 	</div>
 `;
 
@@ -108,20 +108,23 @@ export default component({
 	}),
 	render: template,
 		onMount(ctx, el) {
+			const zone = ctx.zone;
+			const tempKey = key.temp(zone);
+			const stateKey = key.state(zone);
+			const enabledKey = key.enabled(zone);
 			const stateEl = el.querySelector('.zc-state-label');
 			const dotEl = el.querySelector('.zc-dot');
 			const nameEl = el.querySelector('.zc-zone-name');
 			const friendlyEl = el.querySelector('.zc-friendly');
 
 			function update() {
-				const zone = ctx.zone;
-				const enabled = String(es(key.enabled(zone))).toLowerCase() === 'on';
-				const state = String(es(key.state(zone)) || '').toUpperCase() || 'OFF';
-				const temp = fmtT(ev(key.temp(zone)));
+				const enabled = isEntityOn(enabledKey);
+				const state = String(es(stateKey) || '').toUpperCase() || 'OFF';
 				const active = getDashboardValue('selectedZone') === zone;
+				const friendlyTag = zoneTag(zone);
 
 				nameEl.textContent = zoneLabel(zone);
-				friendlyEl.textContent = zoneTag(zone) || temp;
+				friendlyEl.textContent = friendlyTag || fmtT(ev(tempKey));
 				stateEl.textContent = enabled ? state : 'OFF';
 
 				const displayState = enabled ? state : 'OFF';
@@ -149,12 +152,12 @@ export default component({
 			}
 
 			el.addEventListener('click', () => {
-				setSelectedZone(ctx.zone);
+				setSelectedZone(zone);
 			});
 
-			subscribe(key.temp(ctx.zone), update);
-			subscribe(key.state(ctx.zone), update);
-			subscribe(key.enabled(ctx.zone), update);
+			subscribe(tempKey, update);
+			subscribe(stateKey, update);
+			subscribe(enabledKey, update);
 			subscribeDashboard('selectedZone', update);
 			subscribeDashboard('zoneNames', update);
 			update();

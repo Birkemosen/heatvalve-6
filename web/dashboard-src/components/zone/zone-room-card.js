@@ -149,6 +149,18 @@ export default component({
       });
     }
 
+    function updateIfSelectedZone(id) {
+      const z = zone();
+      if (
+        id === key.area(z) ||
+        id === key.spacing(z) ||
+        id === key.pipeType(z) ||
+        id === key.exteriorWalls(z)
+      ) {
+        update();
+      }
+    }
+
     nameEl.addEventListener('change', () => {
       setZoneName(zone(), nameEl.value);
     });
@@ -180,10 +192,10 @@ export default component({
     subscribeDashboard('selectedZone', update);
     subscribeDashboard('zoneNames', update);
     for (let z = 1; z <= 6; z++) {
-      subscribe(key.area(z), update);
-      subscribe(key.spacing(z), update);
-      subscribe(key.pipeType(z), update);
-      subscribe(key.exteriorWalls(z), update);
+      subscribe(key.area(z), updateIfSelectedZone);
+      subscribe(key.spacing(z), updateIfSelectedZone);
+      subscribe(key.pipeType(z), updateIfSelectedZone);
+      subscribe(key.exteriorWalls(z), updateIfSelectedZone);
     }
     update();
   }

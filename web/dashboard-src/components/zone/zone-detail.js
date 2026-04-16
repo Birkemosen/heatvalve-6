@@ -1,6 +1,6 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { ev, es, getDashboardValue, subscribeDashboard, zoneLabel } from '../../core/store.js';
+import { ev, es, getDashboardValue, isEntityOn, subscribeDashboard, zoneLabel } from '../../core/store.js';
 import { fmtT, fmtV } from '../../utils/format.js';
 import { setEnabled, setSetpoint } from '../../core/api.js';
 import { key } from '../../utils/keys.js';
@@ -231,23 +231,23 @@ export default component({
   render: template,
 
   methods: {
-    update(el) {
+    update(el, refs) {
       const zone = getDashboardValue('selectedZone');
       const state = String(es(key.state(zone)) || '').toUpperCase();
-      const enabled = String(es(key.enabled(zone))).toLowerCase() === 'on';
+      const enabled = isEntityOn(key.enabled(zone));
 
       this.zone = zone;
       el.dataset.zone = String(zone);
-      el.querySelector('.zd-title').textContent = zoneLabel(zone);
-      el.querySelector('.zd-setpoint').textContent = fmtT(ev(key.setpoint(zone)));
-      el.querySelector('.zd-temp').textContent = fmtT(ev(key.temp(zone)));
-      el.querySelector('.zd-ret').textContent = fmtT(ev('sensor-manifold_return_temperature'));
-      el.querySelector('.zd-valve').textContent = fmtV(ev(key.valve(zone)));
-      const badge = el.querySelector('.zd-badge');
+      refs.title.textContent = zoneLabel(zone);
+      refs.setpoint.textContent = fmtT(ev(key.setpoint(zone)));
+      refs.temp.textContent = fmtT(ev(key.temp(zone)));
+      refs.ret.textContent = fmtT(ev('sensor-manifold_return_temperature'));
+      refs.valve.textContent = fmtV(ev(key.valve(zone)));
+      const badge = refs.badge;
       badge.textContent = enabled ? (state || 'IDLE') : 'DISABLED';
       const badgeClass = !enabled ? 'badge-disabled' : state === 'HEATING' ? 'badge-heating' : state === 'IDLE' ? 'badge-idle' : state === 'FAULT' ? 'badge-fault' : '';
       badge.className = 'zd-badge' + (badgeClass ? ' ' + badgeClass : '');
-      el.querySelector('.btn-toggle').classList.toggle('on', enabled);
+      refs.toggle.classList.toggle('on', enabled);
     },
 
     incSetpoint() {
@@ -264,23 +264,48 @@ export default component({
 
     toggleEnabled() {
       const z = this.zone;
-      const current = String(es(key.enabled(z))).toLowerCase() === 'on';
+      const current = isEntityOn(key.enabled(z));
       setEnabled(z, !current);
     }
   },
 
   onMount(ctx, el) {
-    el.querySelector('.btn-inc').onclick = () => ctx.incSetpoint();
-    el.querySelector('.btn-dec').onclick = () => ctx.decSetpoint();
-    el.querySelector('.btn-toggle').onclick = () => ctx.toggleEnabled();
-    const update = () => ctx.update(el);
+    const refs = {
+      title: el.querySelector('.zd-title'),
+      setpoint: el.querySelector('.zd-setpoint'),
+      temp: el.querySelector('.zd-temp'),
+      ret: el.querySelector('.zd-ret'),
+      valve: el.querySelector('.zd-valve'),
+      badge: el.querySelector('.zd-badge'),
+      toggle: el.querySelector('.btn-toggle'),
+      inc: el.querySelector('.btn-inc'),
+      dec: el.querySelector('.btn-dec')
+    };
+
+    refs.inc.onclick = () => ctx.incSetpoint();
+    refs.dec.onclick = () => ctx.decSetpoint();
+    refs.toggle.onclick = () => ctx.toggleEnabled();
+
+    const update = () => ctx.update(el, refs);
+    const updateIfSelectedZone = (id) => {
+      const zone = getDashboardValue('selectedZone');
+      if (
+        id === key.temp(zone) ||
+        id === key.setpoint(zone) ||
+        id === key.valve(zone) ||
+        id === key.state(zone) ||
+        id === key.enabled(zone)
+      ) {
+        update();
+      }
+    };
 
     for (let zone = 1; zone <= 6; zone++) {
-      subscribe(key.temp(zone), update);
-      subscribe(key.setpoint(zone), update);
-      subscribe(key.valve(zone), update);
-      subscribe(key.state(zone), update);
-      subscribe(key.enabled(zone), update);
+      subscribe(key.temp(zone), updateIfSelectedZone);
+      subscribe(key.setpoint(zone), updateIfSelectedZone);
+      subscribe(key.valve(zone), updateIfSelectedZone);
+      subscribe(key.state(zone), updateIfSelectedZone);
+      subscribe(key.enabled(zone), updateIfSelectedZone);
     }
     subscribe('sensor-manifold_return_temperature', update);
     subscribeDashboard('selectedZone', update);

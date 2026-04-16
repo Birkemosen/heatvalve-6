@@ -1,6 +1,6 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { es, ev, getDashboardValue } from '../../core/store.js';
+import { es, ev, isEntityOn } from '../../core/store.js';
 import { fmtT, fmtV } from '../../utils/format.js';
 import { key, gkey } from '../../utils/keys.js';
 
@@ -244,11 +244,11 @@ export default component({
   onMount(ctx, el) {
     function updateZone(zone) {
       const state = String(es(key.state(zone)) || '').toUpperCase() || 'OFF';
-      const enabled = String(es(key.enabled(zone))).toLowerCase() === 'on';
+      const enabled = isEntityOn(key.enabled(zone));
 
       const badgeEl = el.querySelector('[data-dz-state="' + zone + '"]');
-      badgeEl.textContent = enabled ? (state || 'IDLE') : 'OFF';
-      badgeEl.className = 'dz-state-badge' + (enabled && state ? ' ' + stateClass(state) : '');
+      badgeEl.textContent = enabled ? state : 'OFF';
+      badgeEl.className = 'dz-state-badge' + (enabled ? ' ' + stateClass(state) : '');
 
       el.querySelector('[data-dz-temp="' + zone + '"]').textContent = fmtT(ev(key.temp(zone)));
       el.querySelector('[data-dz-valve="' + zone + '"]').textContent = fmtV(ev(key.valve(zone)));
@@ -260,7 +260,7 @@ export default component({
       el.querySelector('[data-dz-cfac="' + zone + '"]').textContent = fmtFactor(ev(key.motorCloseFactor(zone)));
 
       const fault = String(es(key.motorLastFault(zone)) || '').toUpperCase();
-      const hasFault = fault && fault !== 'NONE' && fault !== 'OK' && fault !== '';
+      const hasFault = fault && fault !== 'NONE' && fault !== 'OK';
       const faultRow = el.querySelector('[data-dz-faultrow="' + zone + '"]');
       faultRow.style.display = hasFault ? 'flex' : 'none';
       if (hasFault) el.querySelector('[data-dz-fault="' + zone + '"]').textContent = fault;
