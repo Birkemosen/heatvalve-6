@@ -94,8 +94,6 @@ packages:
   zone_sensors: !include packages/zones/sensors.yaml
   climate:      !include packages/zones/climate.yaml
   ui:           !include packages/zones/ui.yaml
-  # Diagnostics
-  motor_trace:  !include packages/diagnostics/motor_trace.yaml
 
 # =============================================================================
 # External Components — Custom hardware drivers
@@ -108,6 +106,7 @@ external_components:
       - hv6_valve_controller
       - hv6_zone_controller
       - hv6_config_store
+      - hv6_web_api
 
 # =============================================================================
 # Logger
@@ -307,8 +306,6 @@ hv6_valve_controller:
   nsleep_pin: ${pin_nsleep}
   nfault_pin: ${pin_nfault}
   ipropi_pin: 7
-  current_sense: motor_current_adc
-  trace_sense: motor_trace_stream
   motor_addresses: [0x30, 0x31, 0x32, 0x33, 0x34, 0x35]
 
 # Zone controller
@@ -326,3 +323,12 @@ hv6_zone_controller:
     - probe_temp_6
     - probe_temp_7
     - probe_temp_8
+
+# HV6 Web API scaffold
+hv6_web_api:
+  id: hv6_web_api_component
+  config_store_id: hv6_config
+  valve_controller_id: hv6_valves
+  zone_controller_id: hv6_zones
+  dashboard_js: "web/dashboard.js"
+  dashboard_css: "web/dashboard.css"

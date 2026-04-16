@@ -9,8 +9,10 @@ HOST ?= heatvalve-6.local
 PORT ?=
 AUTO_PORT := $(strip $(shell ls /dev/cu.usbmodem* /dev/cu.usbserial* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbserial* 2>/dev/null | head -n 1))
 SERIAL_PORT := $(if $(PORT),$(PORT),$(AUTO_PORT))
+DASHBOARD_SRC_DIR ?= web/dashboard-src
+DASHBOARD_OUT_FILE ?= web/dashboard.js
 
-.PHONY: help check config build deploy ota logs monitor erase erase-nvs clean
+.PHONY: help check config build deploy ota logs monitor erase erase-nvs clean dashboard dashboard-tooling dashboard-build dashboard-watch
 
 help:
 	@echo "HeatValve-6 ESPHome tasks"
@@ -46,7 +48,7 @@ check:
 config: check
 	$(ESPHOME) config $(CONFIG)
 
-build: check
+build: check dashboard-build
 	@bash bump_patch_version.sh
 	$(ESPHOME) compile --only-generate $(CONFIG)
 	perl -0pi -e 's/" ".join\(cmd\)/" ".join(map(str, cmd))/g' $(BUILD_ROOT)/post_build.py
@@ -97,3 +99,38 @@ erase-nvs: check
 
 clean:
 	rm -rf .esphome/build
+
+# Dashboard build tasks
+dashboard: check
+	# Check if esbuild is available, if not, download it (silent unless error)
+	@command -v ./.tools/esbuild >/dev/null 2>&1 || $(MAKE) dashboard-tooling
+	$(MAKE) dashboard-build
+
+dashboard-tooling:
+	# Download esbuild if not present into .tools/esbuild
+	mkdir -p .tools
+	# change to .tools directory and download esbuild
+	cd .tools && curl -fsSL https://esbuild.github.io/dl/latest | sh
+	cd ../
+
+dashboard-build:
+	@command -v ./.tools/esbuild >/dev/null 2>&1 || $(MAKE) dashboard-tooling
+	./.tools/esbuild $(DASHBOARD_SRC_DIR)/main.js \
+	--bundle \
+	--minify \
+	--tree-shaking=true \
+	--format=iife \
+	--target=es2018 \
+	--platform=browser \
+	--define:DEBUG=false \
+	--outfile=$(DASHBOARD_OUT_FILE)
+
+dashboard-watch:
+	@echo "Watching dashboard source for changes... press (ctrl+c to stop)"
+	@fswatch -r -o web/dashboard-src | \
+    while read; do \
+        echo "Rebuilding dashboard..."; \
+        if ! $(MAKE) dashboard --no-print-directory; then \
+            echo "Dashboard build failed!"; \
+        fi; \
+    done

@@ -29,10 +29,5 @@ api:
 web_server:
   port: 80
   version: 2
-  css_url: ""
-  js_url: ""
-  # Embed custom dashboard directly into ESPHome's web_server (served at /)
-  # Alternative: serve separately like asgard's heatvalve_dashboard/ component (served at /dashboard)
-  # ESPHome-only approach chosen for simplicity in heatvalve-6; keep these includes active.
-  css_include: "web/dashboard.css"
-  js_include: "web/dashboard.js"
+  # Standard ESPHome v2 dashboard served at /
+  # Custom HV6 dashboard is served by hv6_web_api at http://<device>/dashboard via async web handler

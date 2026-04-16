@@ -77,7 +77,7 @@ debounce:   6 consecutive 10 ms FSM ticks (60 ms sustained)
 
 | Parameter | Close Default | Open Default | Config Field |
 |-----------|--------------|-------------|--------------|
-| Current factor | 1.8× | 1.2× | `close_current_factor` / `open_current_factor` |
+| Current factor | 1.7× | 1.7× | `close_current_factor` / `open_current_factor` |
 | Debounce | 6 ticks (60ms) | 6 ticks (60ms) | `ENDSTOP_HIGH_TICKS` (compile-time) |
 
 The per-zone `mean_current` is a running average updated after each movement. The
@@ -233,7 +233,7 @@ Motor Start
 
 | Parameter | Close | Open | Rationale |
 |-----------|-------|------|-----------|
-| Threshold factor | 1.8× (tolerant) | 1.2× (sensitive) | Close has high peak; open barely rises |
+| Threshold factor | 1.7× (tolerant) | 1.7× (tolerant) | Close has high peak; open barely rises |
 | Slope threshold | 0.6 mA/s | 0.15 mA/s | Close ramps steeply; open ramps gently |
 | Slope floor | 1.3× | 1.3× | Same mid-travel step protection both ways |
 | Ripple limit | N/A | 1.2× | Extra safety for harder-to-detect open endstop |
@@ -336,10 +336,10 @@ to NVS.
 
 | Entity Name | Range | Default | Step |
 |-------------|-------|---------|------|
-| Motor N Close Endstop Threshold | 1.1× – 3.0× | 1.8× | 0.1 |
+| Motor N Close Endstop Threshold | 1.1× – 3.0× | 1.7× | 0.1 |
 | Motor N Close Endstop Slope | 0.1 – 5.0 mA/s | 0.6 | 0.05 |
 | Motor N Close Endstop Slope Floor | 1.0× – 2.5× | 1.3× | 0.1 |
-| Motor N Open Endstop Threshold | 1.1× – 3.0× | 1.2× | 0.1 |
+| Motor N Open Endstop Threshold | 1.1× – 3.0× | 1.7× | 0.1 |
 | Motor N Open Endstop Slope | 0.05 – 5.0 mA/s | 0.15 | 0.05 |
 | Motor N Open Endstop Slope Floor | 1.0× – 2.5× | 1.3× | 0.1 |
 | Motor N Open Endstop Ripple Limit | 0.0× – 2.0× | 1.2× | 0.1 |

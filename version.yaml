@@ -1,2 +1,2 @@
 substitutions:
-  firmware_version: "v0.4.23"  # Keep this aligned with your git release tag/version.
+  firmware_version: "v0.5.3"  # Keep this aligned with your git release tag/version.

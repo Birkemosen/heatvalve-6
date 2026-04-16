@@ -249,7 +249,7 @@ struct MotorConfig {
   float close_slope_threshold_ma_per_s = 0.6f;
   float close_slope_current_factor = 1.3f;
   // Open-direction endstop (gentler ramp — spring assist)
-  float open_current_factor = 1.2f;
+  float open_current_factor = 1.7f;
   float open_slope_threshold_ma_per_s = 0.15f;
   float open_slope_current_factor = 1.3f;
   // Ripple safety limit for opening: learned_open_ripples × factor (0 = disabled)

@@ -149,3 +149,17 @@ All hardware control is in `core/` and `boards/`:
 - **Endstop Detection**: Four-path software detection (threshold, slope, hard cap, ripple limit) with per-direction parameters — see [endstop_detection.md](endstop_detection.md)
 - **Sensors**: 1-Wire bus (DS18B20), HomeAssistant, BLE, DHT, I2C
 - **Communication**: WiFi, MQTT, ESPHome API, ESP-NOW (pump control)
+
+## Dashboard API Direction (2026 Restructure)
+
+The project is migrating dashboard transport away from ESPHome entity-name REST calls toward a dedicated JSON API namespace.
+
+- Base HTTP stack remains ESPHome `web_server`
+- Dedicated API namespace is `/api/hv6/v1`
+- Dashboard transport is HTTP JSON + SSE
+- Home Assistant integration continues through ESPHome API/entities/services
+- Mock dashboard mode has been removed to keep one production transport path
+
+The API contract and rollout order are defined in [hv6_api_v1.md](hv6_api_v1.md).
+
+Dashboard frontend code is now organized as modular source files under `web/dashboard-src/` and bundled into the single artifact `web/dashboard.js` for ESPHome `web_server` embedding.
