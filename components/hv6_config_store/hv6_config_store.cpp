@@ -67,6 +67,30 @@ struct LegacyMotorConfigV8 {
   uint32_t presence_test_duration_ms;
 };
 
+struct LegacyControlConfigV9 {
+  float comfort_band_c;
+  float min_valve_opening_pct;
+  float maintenance_base_pct;
+  float demand_boost_pct;
+  float boost_factor;
+  float min_movement_pct;
+  float tanh_steepness;
+};
+
+struct LegacyDeviceConfigV9 {
+  uint32_t config_version;
+  SystemConfig system;
+  ZoneConfig zones[NUM_ZONES];
+  LegacyControlConfigV9 control;
+  ProbeConfig probes;
+  PIDParams pid;
+  MotorConfig motor;
+  ManifoldType manifold_type;
+  MqttTempConfig mqtt_temp;
+  BalancingConfig balancing;
+  MqttBrokerConfig mqtt_broker;
+};
+
 struct LegacyDeviceConfigV8 {
   uint32_t config_version;
   SystemConfig system;
@@ -170,6 +194,32 @@ DeviceConfig migrate_v8_config(const LegacyDeviceConfigV8 &legacy) {
   return cfg;
 }
 
+DeviceConfig migrate_v9_config(const LegacyDeviceConfigV9 &legacy) {
+  DeviceConfig cfg;
+  cfg.config_version = CONFIG_VERSION;
+  cfg.system = legacy.system;
+  for (uint8_t i = 0; i < NUM_ZONES; i++)
+    cfg.zones[i] = legacy.zones[i];
+
+  cfg.control.comfort_band_c = legacy.control.comfort_band_c;
+  cfg.control.min_valve_opening_pct = legacy.control.min_valve_opening_pct;
+  cfg.control.maintenance_base_pct = legacy.control.maintenance_base_pct;
+  cfg.control.demand_boost_pct = legacy.control.demand_boost_pct;
+  cfg.control.boost_factor = legacy.control.boost_factor;
+  cfg.control.min_movement_pct = legacy.control.min_movement_pct;
+  cfg.control.tanh_steepness = legacy.control.tanh_steepness;
+  cfg.control.simple_preheat_enabled = true;
+
+  cfg.probes = legacy.probes;
+  cfg.pid = legacy.pid;
+  cfg.motor = legacy.motor;
+  cfg.manifold_type = legacy.manifold_type;
+  cfg.mqtt_temp = legacy.mqtt_temp;
+  cfg.balancing = legacy.balancing;
+  cfg.mqtt_broker = legacy.mqtt_broker;
+  return cfg;
+}
+
 MotorTelemetry migrate_v8_telemetry(const LegacyMotorTelemetryV8 &legacy) {
   MotorTelemetry t;
   t.movement_count = legacy.movement_count;
@@ -245,6 +295,14 @@ void Hv6ConfigStore::setup() {
 #endif
 
   ESP_LOGI(TAG, "Config store initialized");
+}
+
+void Hv6ConfigStore::loop() {
+  if (!save_pending_)
+    return;
+
+  save_pending_ = false;
+  save_config_();
 }
 
 void Hv6ConfigStore::dump_config() {
@@ -512,8 +570,17 @@ void Hv6ConfigStore::load_config_() {
         ESP_LOGI(TAG, "Config loaded (%u bytes, version %" PRIu32 ")", (unsigned) read_size, stored_version);
       } else if (stored_version == 8 && read_size == sizeof(LegacyDeviceConfigV8)) {
         // Legacy binary migration proved fragile across ABI/layout changes.
-        // Keep safe defaults and persist fresh v9 config instead.
+        // Keep safe defaults and persist fresh config for current version instead.
         ESP_LOGW(TAG, "Legacy v8 config detected; using safe defaults for v%" PRIu32, CONFIG_VERSION);
+        mark_dirty();
+      } else if (stored_version == 9 && read_size == sizeof(LegacyDeviceConfigV9)) {
+        LegacyDeviceConfigV9 legacy{};
+        memcpy(&legacy, raw.data(), sizeof(legacy));
+        DeviceConfig migrated = migrate_v9_config(legacy);
+        xSemaphoreTake(mutex_, portMAX_DELAY);
+        config_ = migrated;
+        xSemaphoreGive(mutex_);
+        ESP_LOGW(TAG, "Migrated config v9 -> v%" PRIu32, CONFIG_VERSION);
         mark_dirty();
       } else if (read_size != sizeof(DeviceConfig)) {
         ESP_LOGW(TAG,
@@ -531,17 +598,19 @@ void Hv6ConfigStore::load_config_() {
 }
 
 void Hv6ConfigStore::save_config_() {
+  if (mutex_ == nullptr)
+    return;
+
+  DeviceConfig snapshot;
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  snapshot = config_;
+  xSemaphoreGive(mutex_);
+
   nvs_handle_t handle;
   if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK)
     return;
 
-  if (mutex_ == nullptr) {
-    nvs_close(handle);
-    return;
-  }
-  xSemaphoreTake(mutex_, portMAX_DELAY);
-  nvs_set_blob(handle, KEY_CONFIG, &config_, sizeof(DeviceConfig));
-  xSemaphoreGive(mutex_);
+  nvs_set_blob(handle, KEY_CONFIG, &snapshot, sizeof(DeviceConfig));
 
   nvs_commit(handle);
   nvs_close(handle);
@@ -550,7 +619,8 @@ void Hv6ConfigStore::save_config_() {
 
 void Hv6ConfigStore::dirty_timer_cb_(void *arg) {
   auto *store = static_cast<Hv6ConfigStore *>(arg);
-  store->save_config_();
+  if (store != nullptr)
+    store->save_pending_ = true;
 }
 
 }  // namespace hv6

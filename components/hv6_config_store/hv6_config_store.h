@@ -19,6 +19,7 @@ class Hv6ConfigStore : public esphome::Component {
  public:
   float get_setup_priority() const override { return esphome::setup_priority::HARDWARE; }
   void setup() override;
+  void loop() override;
   void dump_config() override;
 
   // Thread-safe config access
@@ -58,6 +59,7 @@ class Hv6ConfigStore : public esphome::Component {
   DeviceConfig config_{};
   SemaphoreHandle_t mutex_ = nullptr;
   esp_timer_handle_t dirty_timer_ = nullptr;
+  volatile bool save_pending_ = false;
   bool initialized_ = false;
 };
 

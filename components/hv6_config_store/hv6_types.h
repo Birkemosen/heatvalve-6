@@ -190,6 +190,7 @@ struct ControlConfig {
   float boost_factor = 1.0f;
   float min_movement_pct = 5.0f;
   float tanh_steepness = 0.70f;
+  bool simple_preheat_enabled = true;
 };
 
 struct ProbeConfig {
@@ -307,6 +308,7 @@ struct ZoneSnapshot {
   float temperature_c = NAN;
   float setpoint_c = 21.0f;
   float valve_position_pct = 0.0f;
+  float preheat_advance_c = 0.0f;
   ZoneState state = ZoneState::UNKNOWN;
   ZoneDisplayState display_state = ZoneDisplayState::UNKNOWN;
   float hydraulic_factor = 0.0f;
@@ -347,7 +349,8 @@ struct SystemConfig {
 /// v7 adds per-zone motor endstop current-factor overrides.
 /// v8 updates default probe mapping: zones 1..6 -> probes 1..6, flow=7, return=8.
 /// v9 adds motor profiles, runtime safety preset fields, and learned factor confidence controls.
-static constexpr uint32_t CONFIG_VERSION = 9;
+/// v10 adds control.simple_preheat_enabled.
+static constexpr uint32_t CONFIG_VERSION = 10;
 
 struct DeviceConfig {
   uint32_t config_version = CONFIG_VERSION;
