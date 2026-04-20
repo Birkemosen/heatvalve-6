@@ -62,6 +62,8 @@ class Hv6WebApi : public esphome::Component, public AsyncWebHandler {
     static esp_err_t dashboard_handler_(httpd_req_t *req);
     static esp_err_t dashboard_js_handler_(httpd_req_t *req);
     static esp_err_t dashboard_css_handler_(httpd_req_t *req);
+    void events_handler_async_(AsyncWebServerRequest *request);
+    std::string serialize_dashboard_state_() const;
   #endif
 
   Hv6ConfigStore *config_store_{nullptr};

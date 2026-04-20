@@ -46,6 +46,7 @@ class Hv6ZoneController : public esphome::Component {
 
   // Thread-safe public API (callable from lambdas, MQTT handlers, etc.)
   ZoneSnapshot get_zone_snapshot(uint8_t zone) const;
+  bool try_get_system_snapshot(SystemSnapshot *out, uint32_t timeout_ms = 25) const;
   SystemSnapshot get_system_snapshot() const;
 
   float get_zone_temperature(uint8_t zone) const;
@@ -64,12 +65,12 @@ class Hv6ZoneController : public esphome::Component {
 
   /// Manual mode: suppresses automatic valve positioning.
   /// Manual commands (open/close/calibrate via UI) still work.
-  void set_manual_mode(bool enabled) { manual_mode_ = enabled; }
-  bool is_manual_mode() const { return manual_mode_; }
+  void set_manual_mode(bool enabled) { manual_mode_.store(enabled, std::memory_order_release); }
+  bool is_manual_mode() const { return manual_mode_.load(std::memory_order_acquire); }
 
   // State machine accessors (for dashboard/diagnostics)
-  ControllerState get_controller_state() const { return controller_state_; }
-  SystemConditionState get_system_condition_state() const { return system_condition_state_; }
+  ControllerState get_controller_state() const { return controller_state_.load(std::memory_order_acquire); }
+  SystemConditionState get_system_condition_state() const { return system_condition_state_.load(std::memory_order_acquire); }
 
   void set_zone_probe(uint8_t zone, int8_t probe);
   int8_t get_zone_probe(uint8_t zone) const;
@@ -122,6 +123,10 @@ class Hv6ZoneController : public esphome::Component {
   void set_target_delta_t(float delta_c);
   float get_target_delta_t() const;
 
+  void set_simple_preheat_enabled(bool enabled);
+  bool is_simple_preheat_enabled() const;
+  float get_zone_preheat_advance(uint8_t zone) const;
+
   bool is_connected() const { return true; }  // WiFi managed by ESPHome
 
   // MQTT broker configuration (NVS-persisted overrides)
@@ -134,7 +139,7 @@ class Hv6ZoneController : public esphome::Component {
   void set_mqtt_password(const std::string &password);
   std::string get_mqtt_password() const;
 
-  uint32_t get_cycle_count() const { return cycle_count_; }
+  uint32_t get_cycle_count() const { return cycle_count_.load(std::memory_order_relaxed); }
 
  protected:
   static constexpr uint32_t STACK_SIZE = 8192;
@@ -147,6 +152,10 @@ class Hv6ZoneController : public esphome::Component {
   static constexpr uint32_t MQTT_FALLBACK_MS = 30 * 60 * 1000;
   static constexpr float FALLBACK_SETPOINT_C = 20.0f;
   static constexpr bool DEVELOPMENT_MANUAL_ONLY = false;
+  static constexpr float SIMPLE_PREHEAT_MAX_ADVANCE_C = 0.8f;
+  static constexpr float SIMPLE_PREHEAT_LEARN_UP_GAIN = 0.35f;
+  static constexpr float SIMPLE_PREHEAT_LEARN_DOWN_GAIN = 0.50f;
+  static constexpr float SIMPLE_PREHEAT_OVERSHOOT_DECAY_C = 0.02f;
 
   // Component references
   Hv6ConfigStore *config_store_ = nullptr;
@@ -171,6 +180,13 @@ class Hv6ZoneController : public esphome::Component {
   std::array<float, NUM_ZONES> requested_setpoints_{};
   std::array<float, NUM_ZONES> setpoint_offsets_;
 
+  // Simple response-based preheat (runtime only; not persisted)
+  std::array<float, NUM_ZONES> preheat_advance_c_;
+  std::array<bool, NUM_ZONES> preheat_episode_active_;
+  std::array<float, NUM_ZONES> preheat_episode_min_temp_c_;
+  std::array<float, NUM_ZONES> preheat_episode_max_temp_c_;
+  std::array<float, NUM_ZONES> preheat_episode_setpoint_c_;
+
   // Failsafe tracking
   std::array<uint32_t, NUM_ZONES> last_valid_temp_ms_;
   uint32_t last_mqtt_adjustment_ms_ = 0;
@@ -184,13 +200,13 @@ class Hv6ZoneController : public esphome::Component {
   bool mqtt_startup_query_round_active_ = false;
   uint8_t mqtt_startup_query_round_remaining_ = 0;
 
-  uint32_t cycle_count_ = 0;
+  std::atomic<uint32_t> cycle_count_{0};
   uint32_t cycle_interval_ms_ = 10000;
-  bool manual_mode_ = false;
+  std::atomic<bool> manual_mode_{false};
 
-  // State machine tracking
-  ControllerState controller_state_ = ControllerState::UNKNOWN;
-  SystemConditionState system_condition_state_ = SystemConditionState::UNKNOWN;
+  // State machine tracking (atomic for cross-thread reads)
+  std::atomic<ControllerState> controller_state_{ControllerState::UNKNOWN};
+  std::atomic<SystemConditionState> system_condition_state_{SystemConditionState::UNKNOWN};
 
   TaskHandle_t task_handle_ = nullptr;
 
@@ -214,8 +230,10 @@ class Hv6ZoneController : public esphome::Component {
   void handle_zigbee_mqtt_(const std::string &topic, const std::string &payload);
   void request_zigbee_temperature_(const std::string &device_name);
 
-  ZoneState classify_zone_(float temp, float setpoint, float comfort_band) const;
+  ZoneState classify_zone_(float temp, float setpoint, float comfort_band, float preheat_advance_c) const;
   float compute_raw_position_(uint8_t zone, float temp, float setpoint);
+  void update_simple_preheat_(uint8_t zone, float temp, float setpoint, float comfort_band, ZoneState state);
+  void reset_simple_preheat_(uint8_t zone);
 
   // Hydraulic balancing
   void recalculate_balance_factors_();

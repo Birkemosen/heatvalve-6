@@ -9,6 +9,7 @@
 
 #include "hv6_valve_controller.h"
 #include "esphome/core/log.h"
+#include "esphome/core/hal.h"
 #include "esp_timer.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"

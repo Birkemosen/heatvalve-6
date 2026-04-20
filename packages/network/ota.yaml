@@ -3,3 +3,5 @@ ota:
     password: !secret ota_password
 
 safe_mode:
+  # Mark OTA boots as successful sooner to avoid rollback during early high-load startup.
+  boot_is_good_after: 10s

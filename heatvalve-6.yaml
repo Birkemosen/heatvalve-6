@@ -106,7 +106,7 @@ external_components:
       - hv6_valve_controller
       - hv6_zone_controller
       - hv6_config_store
-      - hv6_web_api
+      # - hv6_web_api  # DISABLED: custom dashboard causes timeout issues
 
 # =============================================================================
 # Logger
@@ -324,11 +324,11 @@ hv6_zone_controller:
     - probe_temp_7
     - probe_temp_8
 
-# HV6 Web API scaffold
-hv6_web_api:
-  id: hv6_web_api_component
-  config_store_id: hv6_config
-  valve_controller_id: hv6_valves
-  zone_controller_id: hv6_zones
-  dashboard_js: "web/dashboard.js"
-  dashboard_css: "web/dashboard.css"
+# HV6 Web API scaffold - DISABLED: custom dashboard causes timeout issues
+# hv6_web_api:
+#   id: hv6_web_api_component
+#   config_store_id: hv6_config
+#   valve_controller_id: hv6_valves
+#   zone_controller_id: hv6_zones
+#   dashboard_js: "web/dashboard.js"
+#   dashboard_css: "web/dashboard.css"

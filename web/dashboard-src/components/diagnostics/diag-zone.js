@@ -17,6 +17,10 @@ const css = `
   box-shadow: var(--panel-shadow);
 }
 .diag-zone .card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   font-size: .84rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -25,6 +29,50 @@ const css = `
   margin-bottom: 14px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--panel-border);
+}
+
+.card-title-preheat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  border: 1.5px solid;
+}
+
+.card-title-preheat.on {
+  border-color: rgba(100,255,100,.6);
+  background: rgba(60,120,60,.4);
+  color: #80FF80;
+  box-shadow: 0 0 12px rgba(100,255,100,.2);
+}
+
+.card-title-preheat.off {
+  border-color: rgba(120,120,120,.4);
+  background: rgba(40,40,40,.3);
+  color: #999999;
+}
+
+.card-title-preheat-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  box-shadow: 0 0 5px currentColor;
+  flex-shrink: 0;
+}
+
+.card-title-preheat-dot.on {
+  background: #60FF60;
+  box-shadow: 0 0 8px rgba(96,255,96,.8);
+}
+
+.card-title-preheat-dot.off {
+  background: #666666;
+  box-shadow: 0 0 3px rgba(102,102,102,.4);
 }
 .dz-grid {
   display: grid;
@@ -195,6 +243,10 @@ function fmtRipples(v) {
   return v != null ? Number(v).toFixed(0) : '---';
 }
 
+function fmtPreheat(v) {
+  return v != null ? Number(v).toFixed(2) + 'C' : '---';
+}
+
 // ========================================
 // TEMPLATE
 // ========================================
@@ -219,6 +271,7 @@ const template = () => {
             <div class="dz-motor-param"><span class="dz-motor-param-name">Close ripples</span><span class="dz-motor-param-val" data-dz-crip="${zone}">---</span></div>
             <div class="dz-motor-param"><span class="dz-motor-param-name">Open factor</span><span class="dz-motor-param-val" data-dz-ofac="${zone}">---</span></div>
             <div class="dz-motor-param"><span class="dz-motor-param-name">Close factor</span><span class="dz-motor-param-val" data-dz-cfac="${zone}">---</span></div>
+            <div class="dz-motor-param"><span class="dz-motor-param-name">Preheat advance</span><span class="dz-motor-param-val" data-dz-ph="${zone}">---</span></div>
           </div>
           <div class="dz-fault-row" data-dz-faultrow="${zone}" style="display:none">
             <span class="dz-fault-label">Last fault</span>
@@ -229,7 +282,13 @@ const template = () => {
   }
   return `
     <div class="diag-zone">
-      <div class="card-title">Zone Snapshot</div>
+      <div class="card-title">
+        <span>Zone Snapshot</span>
+        <div class="card-title-preheat off" role="status" aria-live="polite" data-preheat-badge>
+          <span class="card-title-preheat-dot off"></span>
+          <span>Preheat: Off</span>
+        </div>
+      </div>
       <div class="dz-grid">${cards}</div>
     </div>
   `;
@@ -258,6 +317,7 @@ export default component({
       el.querySelector('[data-dz-crip="' + zone + '"]').textContent = fmtRipples(ev(key.motorCloseRipples(zone)));
       el.querySelector('[data-dz-ofac="' + zone + '"]').textContent = fmtFactor(ev(key.motorOpenFactor(zone)));
       el.querySelector('[data-dz-cfac="' + zone + '"]').textContent = fmtFactor(ev(key.motorCloseFactor(zone)));
+      el.querySelector('[data-dz-ph="' + zone + '"]').textContent = fmtPreheat(ev(key.preheatAdvance(zone)));
 
       const fault = String(es(key.motorLastFault(zone)) || '').toUpperCase();
       const hasFault = fault && fault !== 'NONE' && fault !== 'OK';
@@ -278,8 +338,27 @@ export default component({
       subscribe(key.motorCloseRipples(z), update);
       subscribe(key.motorOpenFactor(z), update);
       subscribe(key.motorCloseFactor(z), update);
+      subscribe(key.preheatAdvance(z), update);
       subscribe(key.motorLastFault(z), update);
       updateZone(z);
     }
+
+    // Update preheat badge on header
+    function updatePreheatBadge() {
+      const badgeEl = el.querySelector('[data-preheat-badge]');
+      const dotEl = badgeEl.querySelector('.card-title-preheat-dot');
+      const textEl = badgeEl.querySelector('span:last-child');
+      const state = (subscribe(gkey.simplePreheatEnabled) || 'off').toString().toLowerCase();
+      const isOn = state === 'on';
+      
+      badgeEl.classList.toggle('on', isOn);
+      badgeEl.classList.toggle('off', !isOn);
+      dotEl.classList.toggle('on', isOn);
+      dotEl.classList.toggle('off', !isOn);
+      textEl.textContent = isOn ? 'Preheat: On' : 'Preheat: Off';
+    }
+
+    subscribe(gkey.simplePreheatEnabled, updatePreheatBadge);
+    updatePreheatBadge();
   }
 });

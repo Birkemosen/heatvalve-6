@@ -3,8 +3,31 @@
 import { startMock } from './mock.js';
 import { setEntity, setLive, sampleHistory, addActivity, setI2cResult } from './store.js';
 
-let source;
 let reconnectTimer = null;
+let pollAbortController = null;
+
+async function fetchStateOnce() {
+  if (pollAbortController) {
+    pollAbortController.abort();
+  }
+
+  pollAbortController = new AbortController();
+
+  const response = await fetch('/dashboard/state', {
+    cache: 'no-store',
+    signal: pollAbortController.signal,
+  });
+
+  if (response.status === 503) {
+    throw new Error('State fetch busy');
+  }
+
+  if (!response.ok) {
+    throw new Error('State fetch failed: ' + response.status);
+  }
+
+  return response.json();
+}
 
 function applyStateMap(payload) {
   if (!payload || typeof payload !== 'object') return;
@@ -12,15 +35,13 @@ function applyStateMap(payload) {
   sampleHistory(false);
 }
 
-function onMessage(event) {
-  let message = null;
-  try {
-    message = JSON.parse(event.data);
-  } catch (error) {
+function onMessage(message) {
+  if (!message) return;
+
+  if (!message.type) {
+    applyStateMap(message);
     return;
   }
-
-  if (!message || !message.type) return;
 
   if (message.type === 'state') {
     applyStateMap(message.data);
@@ -51,13 +72,14 @@ export function connect() {
     return;
   }
 
-  if (source) source.close();
-
-  source = new EventSource('/api/hv6/v1/events');
-  source.onopen = () => setLive(true);
-  source.onmessage = onMessage;
-  source.onerror = function () {
-    setLive(false);
-    scheduleReconnect();
-  };
+  fetchStateOnce()
+    .then((message) => {
+      setLive(true);
+      onMessage(message);
+      scheduleReconnect();
+    })
+    .catch(() => {
+      setLive(false);
+      scheduleReconnect();
+    });
 }

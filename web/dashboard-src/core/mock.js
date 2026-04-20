@@ -43,6 +43,7 @@ function seed() {
     setEntity(key.zigbee(zone), { state: 'zone_' + zone + '_mock_sensor' });
     setEntity(key.ble(zone), { state: 'AA:BB:CC:DD:EE:0' + zone });
     setEntity(key.exteriorWalls(zone), { state: ['N', 'E', 'S', 'W', 'N,E', 'S,W'][index] });
+    setEntity(key.preheatAdvance(zone), { value: 0.08 + (index * 0.03) });
   }
 
   for (let probe = 1; probe <= PROBES; probe++) {
@@ -74,8 +75,11 @@ function seed() {
   setEntity(gkey.openRippleLimitFactor, { value: 1.0 });
   setEntity(gkey.genericRuntimeLimitSeconds, { value: 45 });
   setEntity(gkey.hmipRuntimeLimitSeconds, { value: 40 });
+  setEntity(gkey.relearnAfterMovements, { value: 2000 });
+  setEntity(gkey.relearnAfterHours, { value: 168 });
   setEntity(gkey.learnedFactorMinSamples, { value: 3 });
   setEntity(gkey.learnedFactorMaxDeviationPct, { value: 12 });
+  setEntity(gkey.simplePreheatEnabled, { state: 'on' });
   sampleHistory(true);
 }
 
@@ -116,6 +120,8 @@ function simulate() {
 
     setEntity(key.temp(zone), { value: state.temp[index] });
     setEntity(key.valve(zone), { value: Math.round(state.valve[index]) });
+    const preheat = Math.max(0, (state.setpoint[index] - state.temp[index] - 0.15) * 0.22);
+    setEntity(key.preheatAdvance(zone), { value: Number(preheat.toFixed(2)) });
     setEntity(key.state(zone), { state: !enabled ? 'off' : demand ? 'heating' : 'idle' });
     setEntity(key.enabled(zone), { value: enabled, state: enabled ? 'on' : 'off' });
     setEntity(key.probeTemp(zone), { value: state.temp[index] + Math.sin((tick + zone) / 6) * 0.1 });
@@ -138,14 +144,14 @@ export function startMock() {
   timer = setInterval(simulate, 1200);
 }
 
-export function handleMockPost(path) {
-  const url = new URL(path, 'http://localhost');
-  const parts = url.pathname.split('/').filter(Boolean);
+export function handleMockPost(body) {
+  const k = body.key || '';
+  const v = body.value;
+  const zone = body.zone || 0;
 
-  if (parts[0] === 'zones' && parts[2] === 'setpoint') {
-    const zone = Number(parts[1]);
-    const value = Number(url.searchParams.get('setpoint_c'));
-    if (zone >= 1 && zone <= ZONES && !Number.isNaN(value)) {
+  if (k === 'zone_setpoint' && zone >= 1 && zone <= ZONES) {
+    const value = Number(v);
+    if (!Number.isNaN(value)) {
       state.setpoint[zone - 1] = value;
       setEntity(key.setpoint(zone), { value });
       addActivity('Zone ' + zone + ' setpoint set to ' + value.toFixed(1) + '°C', zone);
@@ -153,144 +159,132 @@ export function handleMockPost(path) {
     return;
   }
 
-  if (parts[0] === 'zones' && parts[2] === 'enabled') {
-    const zone = Number(parts[1]);
-    const enabled = url.searchParams.get('enabled') === 'true';
-    if (zone >= 1 && zone <= ZONES) {
-      state.enabled[zone - 1] = enabled ? 1 : 0;
-      setEntity(key.enabled(zone), { value: enabled, state: enabled ? 'on' : 'off' });
-      addActivity('Zone ' + zone + (enabled ? ' enabled' : ' disabled'), zone);
-    }
+  if (k === 'zone_enabled' && zone >= 1 && zone <= ZONES) {
+    const enabled = v > 0.5;
+    state.enabled[zone - 1] = enabled ? 1 : 0;
+    setEntity(key.enabled(zone), { value: enabled, state: enabled ? 'on' : 'off' });
+    addActivity('Zone ' + zone + (enabled ? ' enabled' : ' disabled'), zone);
     return;
   }
 
-  if (parts[0] === 'drivers' && parts[1] === 'enabled') {
-    state.driversEnabled = url.searchParams.get('enabled') === 'true' ? 1 : 0;
-    setEntity(gkey.drivers, { value: !!state.driversEnabled, state: state.driversEnabled ? 'on' : 'off' });
-    addActivity(state.driversEnabled ? 'Motor drivers enabled' : 'Motor drivers disabled');
+  if (k === 'drivers_enabled') {
+    const enabled = v > 0.5;
+    state.driversEnabled = enabled ? 1 : 0;
+    setEntity(gkey.drivers, { value: enabled, state: enabled ? 'on' : 'off' });
+    addActivity(enabled ? 'Motor drivers enabled' : 'Motor drivers disabled');
     return;
   }
 
-  if (parts[0] === 'manual_mode') {
-    const enabled = url.searchParams.get('enabled') === 'true';
+  if (k === 'manual_mode') {
+    const enabled = v > 0.5;
     state.manualMode = enabled ? 1 : 0;
     setDashboardValue('manualMode', enabled);
     return;
   }
 
-  if (parts[0] === 'motors' && parts[2] === 'target') {
-    const zone = Number(parts[1]);
-    const value = Number(url.searchParams.get('value') || '0');
-    if (zone >= 1 && zone <= ZONES && !Number.isNaN(value)) {
-      setEntity(key.motorTarget(zone), { value: Math.max(0, Math.min(100, Math.round(value))) });
-      addActivity('Motor ' + zone + ' target set to ' + value + '%', zone);
-    }
+  if (k === 'motor_target' && zone >= 1 && zone <= ZONES) {
+    const value = Number(v || 0);
+    setEntity(key.motorTarget(zone), { value: Math.max(0, Math.min(100, Math.round(value))) });
+    addActivity('Motor ' + zone + ' target set to ' + value + '%', zone);
     return;
   }
 
-  if (parts[0] === 'settings') {
-    const setting = url.searchParams.get('key') || '';
-    const value = url.searchParams.get('value') || '';
-    const zone = Number(url.searchParams.get('zone') || '1');
+  if (k === 'command') {
+    const cmd = String(v);
 
-    if (parts[1] === 'select') {
-      if (setting === 'zone_probe') setEntity(key.probe(zone), { state: value });
-      if (setting === 'zone_temp_source') setEntity(key.tempSource(zone), { state: value });
-      if (setting === 'zone_sync_to') setEntity(key.syncTo(zone), { state: value });
-      if (setting === 'zone_pipe_type') setEntity(key.pipeType(zone), { state: value });
-      if (setting === 'manifold_type') setEntity(gkey.manifoldType, { state: value });
-      if (setting === 'manifold_flow_probe') setEntity(gkey.manifoldFlowProbe, { state: value });
-      if (setting === 'manifold_return_probe') setEntity(gkey.manifoldReturnProbe, { state: value });
-      if (setting === 'motor_profile_default') setEntity(gkey.motorProfileDefault, { state: value });
-      addActivity('Setting updated: ' + setting + ' = ' + value, zone);
-      return;
-    }
-
-    if (parts[1] === 'text') {
-      if (setting === 'zone_zigbee_device') setEntity(key.zigbee(zone), { state: value });
-      if (setting === 'zone_ble_mac') setEntity(key.ble(zone), { state: value });
-      if (setting === 'zone_exterior_walls') setEntity(key.exteriorWalls(zone), { state: value || 'None' });
-      addActivity('Setting updated: ' + setting + ' = ' + value, zone);
-      return;
-    }
-
-    if (parts[1] === 'number') {
-      const numeric = Number(value);
-      if (setting === 'zone_area_m2' && !Number.isNaN(numeric)) setEntity(key.area(zone), { value: numeric });
-      if (setting === 'zone_pipe_spacing_mm' && !Number.isNaN(numeric)) setEntity(key.spacing(zone), { value: numeric });
-      if (setting === 'close_threshold_multiplier' && !Number.isNaN(numeric)) setEntity(gkey.closeThresholdMultiplier, { value: numeric });
-      if (setting === 'close_slope_threshold' && !Number.isNaN(numeric)) setEntity(gkey.closeSlopeThreshold, { value: numeric });
-      if (setting === 'close_slope_current_factor' && !Number.isNaN(numeric)) setEntity(gkey.closeSlopeCurrentFactor, { value: numeric });
-      if (setting === 'open_threshold_multiplier' && !Number.isNaN(numeric)) setEntity(gkey.openThresholdMultiplier, { value: numeric });
-      if (setting === 'open_slope_threshold' && !Number.isNaN(numeric)) setEntity(gkey.openSlopeThreshold, { value: numeric });
-      if (setting === 'open_slope_current_factor' && !Number.isNaN(numeric)) setEntity(gkey.openSlopeCurrentFactor, { value: numeric });
-      if (setting === 'open_ripple_limit_factor' && !Number.isNaN(numeric)) setEntity(gkey.openRippleLimitFactor, { value: numeric });
-      if (setting === 'generic_runtime_limit_seconds' && !Number.isNaN(numeric)) setEntity(gkey.genericRuntimeLimitSeconds, { value: numeric });
-      if (setting === 'hmip_runtime_limit_seconds' && !Number.isNaN(numeric)) setEntity(gkey.hmipRuntimeLimitSeconds, { value: numeric });
-      if (setting === 'learned_factor_min_samples' && !Number.isNaN(numeric)) setEntity(gkey.learnedFactorMinSamples, { value: numeric });
-      if (setting === 'learned_factor_max_deviation_pct' && !Number.isNaN(numeric)) setEntity(gkey.learnedFactorMaxDeviationPct, { value: numeric });
-      addActivity('Setting updated: ' + setting + ' = ' + value, zone);
-      return;
-    }
-  }
-
-  if (parts[0] === 'commands') {
-    const command = url.searchParams.get('command');
-    const zone = Number(url.searchParams.get('zone') || '0');
-    
-    if (command === 'i2c_scan') {
+    if (cmd === 'i2c_scan') {
       setI2cResult('I2C_SCAN: ----- begin -----\nI2C_SCAN: found 0x3C\nI2C_SCAN: found 0x44\nI2C_SCAN: found 0x76\nI2C_SCAN: ----- end -----');
       addActivity('I2C scan complete');
       return;
     }
-    
-    if (command === 'reset_1wire_probe_map_reboot' || command === 'dump_1wire_probe_diagnostics' || command === 'restart') {
-      addActivity('Command executed: ' + command);
+
+    if (cmd === 'calibrate_all_motors' || cmd === 'restart') {
+      addActivity('Command executed: ' + cmd);
       return;
     }
 
-    // Motor control commands
-    if (command === 'open_motor_timed' && zone >= 1 && zone <= ZONES) {
-      const duration = Number(url.searchParams.get('duration_ms') || '10000');
-      addActivity('Motor ' + zone + ' open timed for ' + duration + 'ms', zone);
+    if (cmd === 'open_motor_timed' && zone >= 1 && zone <= ZONES) {
+      addActivity('Motor ' + zone + ' open timed', zone);
       return;
     }
-
-    if (command === 'close_motor_timed' && zone >= 1 && zone <= ZONES) {
-      const duration = Number(url.searchParams.get('duration_ms') || '10000');
-      addActivity('Motor ' + zone + ' close timed for ' + duration + 'ms', zone);
+    if (cmd === 'close_motor_timed' && zone >= 1 && zone <= ZONES) {
+      addActivity('Motor ' + zone + ' close timed', zone);
       return;
     }
-
-    if (command === 'stop_motor' && zone >= 1 && zone <= ZONES) {
+    if (cmd === 'stop_motor' && zone >= 1 && zone <= ZONES) {
       addActivity('Motor ' + zone + ' stopped', zone);
       return;
     }
-
-    // Motor recovery commands
-    if (command === 'motor_reset_fault' && zone >= 1 && zone <= ZONES) {
+    if (cmd === 'motor_reset_fault' && zone >= 1 && zone <= ZONES) {
       addActivity('Motor ' + zone + ' fault reset', zone);
       return;
     }
-
-    if (command === 'motor_reset_learned_factors' && zone >= 1 && zone <= ZONES) {
+    if (cmd === 'motor_reset_learned_factors' && zone >= 1 && zone <= ZONES) {
       addActivity('Motor ' + zone + ' learned factors reset', zone);
       return;
     }
-
-    if (command === 'motor_reset_and_relearn' && zone >= 1 && zone <= ZONES) {
+    if (cmd === 'motor_reset_and_relearn' && zone >= 1 && zone <= ZONES) {
       addActivity('Motor ' + zone + ' reset and relearn started', zone);
       return;
     }
+    return;
+  }
+
+  // Select settings (zone-scoped)
+  if (k === 'zone_probe' && zone >= 1) { setEntity(key.probe(zone), { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
+  if (k === 'zone_temp_source' && zone >= 1) { setEntity(key.tempSource(zone), { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
+  if (k === 'zone_sync_to' && zone >= 1) { setEntity(key.syncTo(zone), { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
+  if (k === 'zone_pipe_type' && zone >= 1) { setEntity(key.pipeType(zone), { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
+
+  // Select settings (global)
+  if (k === 'manifold_type') { setEntity(gkey.manifoldType, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
+  if (k === 'manifold_flow_probe') { setEntity(gkey.manifoldFlowProbe, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
+  if (k === 'manifold_return_probe') { setEntity(gkey.manifoldReturnProbe, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
+  if (k === 'motor_profile_default') { setEntity(gkey.motorProfileDefault, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
+  if (k === 'simple_preheat_enabled') { setEntity(gkey.simplePreheatEnabled, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
+
+  // Text settings
+  if (k === 'zone_zigbee_device' && zone >= 1) { setEntity(key.zigbee(zone), { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
+  if (k === 'zone_ble_mac' && zone >= 1) { setEntity(key.ble(zone), { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
+  if (k === 'zone_exterior_walls' && zone >= 1) { setEntity(key.exteriorWalls(zone), { state: String(v) || 'None' }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
+
+  // Number settings (zone)
+  if (k === 'zone_area_m2' && zone >= 1) { setEntity(key.area(zone), { value: Number(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
+  if (k === 'zone_pipe_spacing_mm' && zone >= 1) { setEntity(key.spacing(zone), { value: Number(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
+
+  // Number settings (global motor calibration)
+  const numMap = {
+    close_threshold_multiplier: gkey.closeThresholdMultiplier,
+    close_slope_threshold: gkey.closeSlopeThreshold,
+    close_slope_current_factor: gkey.closeSlopeCurrentFactor,
+    open_threshold_multiplier: gkey.openThresholdMultiplier,
+    open_slope_threshold: gkey.openSlopeThreshold,
+    open_slope_current_factor: gkey.openSlopeCurrentFactor,
+    open_ripple_limit_factor: gkey.openRippleLimitFactor,
+    generic_runtime_limit_seconds: gkey.genericRuntimeLimitSeconds,
+    hmip_runtime_limit_seconds: gkey.hmipRuntimeLimitSeconds,
+    relearn_after_movements: gkey.relearnAfterMovements,
+    relearn_after_hours: gkey.relearnAfterHours,
+    learned_factor_min_samples: gkey.learnedFactorMinSamples,
+    learned_factor_max_deviation_pct: gkey.learnedFactorMaxDeviationPct
+  };
+
+  if (numMap[k]) {
+    const numeric = Number(v);
+    if (!Number.isNaN(numeric)) {
+      setEntity(numMap[k], { value: numeric });
+      addActivity('Setting updated: ' + k + ' = ' + v);
+    }
+    return;
   }
 }
 
 window.__hv6_mock = {
   setSetpoint(zone, value) {
-    handleMockPost('/zones/' + zone + '/setpoint?setpoint_c=' + value);
+    handleMockPost({ key: 'zone_setpoint', value, zone });
   },
   toggleZone(zone) {
     const enabled = !state.enabled[zone - 1];
-    handleMockPost('/zones/' + zone + '/enabled?enabled=' + (enabled ? 'true' : 'false'));
+    handleMockPost({ key: 'zone_enabled', value: enabled ? 1 : 0, zone });
   }
 };

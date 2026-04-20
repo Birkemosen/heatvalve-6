@@ -7,6 +7,7 @@
 #include "hv6_web_api.h"
 #include "esphome/core/log.h"
 #include <inttypes.h>
+#include <algorithm>
 #include <cstdio>
 #include <cmath>
 #include <cstring>
@@ -17,6 +18,7 @@
 namespace hv6 {
 
 static const char *const TAG = "hv6.web_api";
+static const char *const HV6_WEB_API_BUILD_FINGERPRINT = "hv6-web-api-20260418-01";
 static constexpr uint32_t HMIP_VDMOT_SAFE_RUNTIME_S = 40;
 static constexpr uint32_t GENERIC_SAFE_RUNTIME_DEFAULT_S = 45;
 
@@ -176,6 +178,165 @@ static bool get_query_value_(httpd_req_t *req, const char *key, char *out, size_
   return httpd_query_key_value(query, key, out, out_len) == ESP_OK;
 }
 
+std::string Hv6WebApi::serialize_dashboard_state_() const {
+  std::string out;
+  out.reserve(4096);
+  out += "{\"type\":\"state\",\"data\":{";
+
+  if (zone_controller_ == nullptr || config_store_ == nullptr) {
+    out += "}}";
+    return out;
+  }
+
+  const auto sys = zone_controller_->get_system_snapshot();
+  const auto &cfg = config_store_->get_config();
+  bool first = true;
+
+  // Global sensors
+  auto append_entity = [&](const char *key, float value) {
+    if (!first) out += ",";
+    out += "\"";
+    out += key;
+    out += "\":{\"value\":";
+    float safe = safe_json_float_(value);
+    // Avoid %f conversion in this hot path to prevent dtoa faults on malformed values.
+    safe = std::clamp(safe, -1000000.0f, 1000000.0f);
+    const long centi = lroundf(safe * 100.0f);
+    const long whole = centi / 100;
+    const long frac = labs(centi % 100);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%ld.%02ld", whole, frac);
+    out += buf;
+    out += "}";
+    first = false;
+  };
+
+  auto append_entity_state = [&](const char *key, const char *state, bool is_on = false) {
+    if (!first) out += ",";
+    out += "\"";
+    out += key;
+    out += "\":{\"state\":\"";
+    out += state;
+    out += "\"";
+    if (is_on) {
+      out += ",\"value\":true";
+    }
+    out += "}";
+    first = false;
+  };
+
+  auto append_entity_bool = [&](const char *key, bool value) {
+    if (!first) out += ",";
+    out += "\"";
+    out += key;
+    out += "\":{\"value\":";
+    out += value ? "true" : "false";
+    out += ",\"state\":\"";
+    out += value ? "on" : "off";
+    out += "\"}";
+    first = false;
+  };
+
+  // Manifold temps
+  append_entity("sensor-manifold_flow_temperature", safe_json_float_(sys.manifold_flow_temp_c));
+  append_entity("sensor-manifold_return_temperature", safe_json_float_(sys.manifold_return_temp_c));
+
+  // Drivers & fault
+  if (valve_controller_ != nullptr) {
+    const bool drivers_enabled = valve_controller_->are_drivers_enabled();
+    const bool motor_fault = valve_controller_->get_last_fault() != FaultCode::NONE;
+    append_entity_bool("switch-motor_drivers_enabled", drivers_enabled);
+    append_entity_bool("binary_sensor-motor_fault", motor_fault);
+  }
+
+  // Per-zone data
+  for (uint8_t i = 0; i < NUM_ZONES; i++) {
+    const auto &z = sys.zones[i];
+    const auto &zcfg = cfg.zones[i];
+    int zone = i + 1;
+
+    char key_buf[64];
+
+    // Temperature
+    snprintf(key_buf, sizeof(key_buf), "sensor-zone_%d_temperature", zone);
+    append_entity(key_buf, safe_json_float_(z.temperature_c));
+
+    // Valve %
+    snprintf(key_buf, sizeof(key_buf), "sensor-zone_%d_valve_pct", zone);
+    append_entity(key_buf, safe_json_float_(z.valve_position_pct));
+
+    // State (heating/idle)
+    snprintf(key_buf, sizeof(key_buf), "text_sensor-zone_%d_state", zone);
+    append_entity_state(key_buf, zone_state_to_string(z.state));
+
+    // Enabled
+    snprintf(key_buf, sizeof(key_buf), "switch-zone_%d_enabled", zone);
+    append_entity_bool(key_buf, zcfg.enabled);
+
+    // Setpoint
+    snprintf(key_buf, sizeof(key_buf), "number-zone_%d_setpoint", zone);
+    append_entity(key_buf, safe_json_float_(z.setpoint_c));
+
+    // Probe (from ProbeConfig)
+    snprintf(key_buf, sizeof(key_buf), "select-zone_%d_probe", zone);
+    const char *probe_name = "None";
+    if (cfg.probes.zone_return_probe[i] >= 0 && cfg.probes.zone_return_probe[i] < MAX_PROBES) {
+      snprintf(key_buf, sizeof(key_buf), "Probe %d", cfg.probes.zone_return_probe[i] + 1);
+      probe_name = key_buf;
+    }
+    snprintf(key_buf, sizeof(key_buf), "select-zone_%d_probe", zone);
+    append_entity_state(key_buf, probe_name);
+
+    // Area
+    snprintf(key_buf, sizeof(key_buf), "number-zone_%d_area_m2", zone);
+    append_entity(key_buf, zcfg.area_m2);
+
+    // Pipe spacing
+    snprintf(key_buf, sizeof(key_buf), "number-zone_%d_pipe_spacing_mm", zone);
+    append_entity(key_buf, zcfg.pipe_spacing_mm);
+
+    // Preheat advance
+    snprintf(key_buf, sizeof(key_buf), "sensor-zone_%d_preheat_advance_c", zone);
+    append_entity(key_buf, safe_json_float_(z.preheat_advance_c));
+  }
+
+  // Control settings
+  const auto &motor_cfg = cfg.motor;
+
+  append_entity("number-close_threshold_multiplier", motor_cfg.close_current_factor);
+  append_entity("number-open_threshold_multiplier", motor_cfg.open_current_factor);
+  append_entity("number-close_slope_threshold", motor_cfg.close_slope_threshold_ma_per_s);
+  append_entity("number-open_slope_threshold", motor_cfg.open_slope_threshold_ma_per_s);
+  append_entity("number-close_slope_current_factor", motor_cfg.close_slope_current_factor);
+  append_entity("number-open_slope_current_factor", motor_cfg.open_slope_current_factor);
+  append_entity("number-open_ripple_limit_factor", motor_cfg.open_ripple_limit_factor);
+  append_entity("number-generic_runtime_limit_seconds", static_cast<float>(motor_cfg.generic_profile_runtime_limit_s));
+  append_entity("number-hmip_runtime_limit_seconds", static_cast<float>(motor_cfg.hmip_vdmot_runtime_limit_s));
+  append_entity("number-learned_factor_min_samples", static_cast<float>(motor_cfg.learned_factor_min_samples));
+  append_entity("number-learned_factor_max_deviation_pct", motor_cfg.learned_factor_max_deviation_pct * 100.0f);
+
+  // Simple preheat
+  bool simple_preheat_enabled = cfg.control.simple_preheat_enabled;
+  append_entity_bool("select-simple_preheat_enabled", simple_preheat_enabled);
+
+  out += "}}";
+  return out;
+}
+
+void Hv6WebApi::events_handler_async_(AsyncWebServerRequest *request) {
+  if (request == nullptr) {
+    return;
+  }
+
+  // For ESPHome's web_server_idf, we need to send a simple response with the state
+  // Proper SSE streaming is complex, so we'll send a simple JSON response instead
+  std::string state_json = serialize_dashboard_state_();
+  
+  AsyncWebServerResponse *response = request->beginResponse(200, "application/json", state_json);
+  response->addHeader("Access-Control-Allow-Origin", "*");
+  request->send(response);
+}
+
 esp_err_t Hv6WebApi::options_handler_(httpd_req_t *req) {
   set_json_headers_(req);
   httpd_resp_set_status(req, "204 No Content");
@@ -192,6 +353,7 @@ esp_err_t Hv6WebApi::options_handler_(httpd_req_t *req) {
       "<link rel=stylesheet href=/dashboard.css>"
       "<title>HeatValve-6</title>"
       "</head><body>"
+      "<div id=app></div>"
       "<script src=/dashboard.js></script>"
       "</body></html>";
 
@@ -295,7 +457,7 @@ esp_err_t Hv6WebApi::zones_handler_(httpd_req_t *req) {
     char row[256];
     const int n = snprintf(
         row, sizeof(row),
-        "%s{\"zone\":%u,\"enabled\":%s,\"state\":\"%s\",\"display_state\":\"%s\",\"temperature_c\":%.2f,\"setpoint_c\":%.2f,\"valve_pct\":%.2f}",
+      "%s{\"zone\":%u,\"enabled\":%s,\"state\":\"%s\",\"display_state\":\"%s\",\"temperature_c\":%.2f,\"setpoint_c\":%.2f,\"valve_pct\":%.2f,\"preheat_advance_c\":%.2f}",
         i == 0 ? "" : ",",
         static_cast<unsigned>(i + 1),
         enabled ? "true" : "false",
@@ -303,7 +465,8 @@ esp_err_t Hv6WebApi::zones_handler_(httpd_req_t *req) {
         zone_display_state_to_string(z.display_state),
         safe_json_float_(z.temperature_c),
         safe_json_float_(z.setpoint_c),
-        safe_json_float_(z.valve_position_pct));
+      safe_json_float_(z.valve_position_pct),
+      safe_json_float_(z.preheat_advance_c));
 
     if (n <= 0 || n >= static_cast<int>(sizeof(row))) {
       httpd_resp_set_status(req, "500 Internal Server Error");
@@ -864,6 +1027,11 @@ esp_err_t Hv6WebApi::settings_select_handler_(httpd_req_t *req) {
     else
       ok = false;
     if (ok) self->valve_controller_->set_manifold_type(type);
+  } else if (strcasecmp(key, "simple_preheat_enabled") == 0) {
+    bool enabled = false;
+    ok = parse_bool_(value, &enabled);
+    if (ok)
+      self->zone_controller_->set_simple_preheat_enabled(enabled);
   } else {
     ok = false;
   }
@@ -1083,9 +1251,16 @@ void Hv6WebApi::handleRequest(AsyncWebServerRequest *request) {
   char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
   const auto url = request->url_to(url_buf);
   const int method = request->method();
+  
+    // Extract path part (remove query string)
+    std::string url_str(url_buf);
+    size_t query_pos = url_str.find('?');
+    if (query_pos != std::string::npos) {
+      url_str = url_str.substr(0, query_pos);
+    }
 
   // ── Dashboard ──────────────────────────────────────────────────────────────
-  if ((url == "/dashboard" || url == "/dashboard/") && method == HTTP_GET) {
+  if ((url_str == "/dashboard" || url_str == "/dashboard/") && method == HTTP_GET) {
     #ifdef HV6_HAS_DASHBOARD
     request->send(200, "text/html", DASHBOARD_HTML);
     #else
@@ -1094,13 +1269,13 @@ void Hv6WebApi::handleRequest(AsyncWebServerRequest *request) {
     return;
   }
   #ifdef HV6_HAS_DASHBOARD
-  if (method == HTTP_GET && url == "/dashboard.js") {
+  if (method == HTTP_GET && url_str == "/dashboard.js") {
     AsyncWebServerResponse *response = request->beginResponse(200, "application/javascript; charset=utf-8", (const uint8_t *)HV6_DASHBOARD_JS_DATA, HV6_DASHBOARD_JS_SIZE);
     response->addHeader("Content-Encoding", "gzip");
     request->send(response);
     return;
   }
-  if (method == HTTP_GET && url == "/dashboard.css") {
+  if (method == HTTP_GET && url_str == "/dashboard.css") {
     AsyncWebServerResponse *response = request->beginResponse(200, "text/css; charset=utf-8", (const uint8_t *)HV6_DASHBOARD_CSS_DATA, HV6_DASHBOARD_CSS_SIZE);
     response->addHeader("Content-Encoding", "gzip");
     request->send(response);
@@ -1108,26 +1283,448 @@ void Hv6WebApi::handleRequest(AsyncWebServerRequest *request) {
   }
   #endif
 
-
-  // ── API routes ─────────────────────────────────────────────────────────────
-  // Add CORS header for API routes
-  if (url == "/api/hv6/v1/zones") {
-    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"ok\":true,\"version\":\"v1\",\"placeholder\":true}");
+  // ── CORS preflight ─────────────────────────────────────────────────────────
+  if (method == HTTP_OPTIONS) {
+    AsyncWebServerResponse *response = request->beginResponse(204, "text/plain", "");
     response->addHeader("Access-Control-Allow-Origin", "*");
     response->addHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
     request->send(response);
     return;
   }
 
-  if (url == "/api/hv6/v1/settings/number" && method == HTTP_POST) {
-    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"ok\":true,\"msg\":\"Number setting updated (stub)\"}");
+  // ── SSE Events ──────────────────────────────────────────────────────────────
+  #ifdef HV6_HAS_DASHBOARD
+  if (url_str == "/api/hv6/v1/events" && method == HTTP_GET) {
+    events_handler_async_(request);
+    return;
+  }
+  #endif
+
+  // ── API routes: Build fingerprint ─────────────────────────────────────────
+  if (url_str == "/api/hv6/v1/build" && method == HTTP_GET) {
+    char payload[192];
+    snprintf(payload, sizeof(payload),
+      "{\"ok\":true,\"version\":\"v1\",\"data\":{\"fingerprint\":\"%s\"}}",
+      HV6_WEB_API_BUILD_FINGERPRINT);
+    request->send(200, "application/json", payload);
+    return;
+  }
+
+  // ── API routes: Overview ────────────────────────────────────────────────────
+  if (url_str == "/api/hv6/v1/overview" && method == HTTP_GET) {
+    if (zone_controller_ == nullptr || valve_controller_ == nullptr) {
+      AsyncWebServerResponse *response = request->beginResponse(500, "application/json", 
+        "{\"ok\":false,\"version\":\"v1\",\"error\":{\"code\":\"controller_unavailable\"}}");
+      response->addHeader("Access-Control-Allow-Origin", "*");
+      request->send(response);
+      return;
+    }
+
+    const auto sys = zone_controller_->get_system_snapshot();
+    const bool drivers_enabled = valve_controller_->are_drivers_enabled();
+    const bool motor_fault = valve_controller_->get_last_fault() != FaultCode::NONE;
+
+    char payload[1024];
+    snprintf(payload, sizeof(payload),
+      "{\"ok\":true,\"version\":\"v1\",\"data\":{"
+      "\"controller_state\":\"%s\","
+      "\"active_zones\":%u,"
+      "\"avg_valve_pct\":%.2f,"
+      "\"manifold\":{\"flow_c\":%.2f,\"return_c\":%.2f},"
+      "\"motor\":{\"drivers_enabled\":%s,\"fault\":%s},"
+      "\"uptime_s\":%" PRIu32 ","
+      "\"free_heap\":%" PRIu32 ","
+      "\"cycle_count\":%" PRIu32 "}}",
+      controller_state_to_string(sys.controller_state),
+      sys.active_zones,
+      safe_json_float_(sys.avg_valve_pct),
+      safe_json_float_(sys.manifold_flow_temp_c),
+      safe_json_float_(sys.manifold_return_temp_c),
+      drivers_enabled ? "true" : "false",
+      motor_fault ? "true" : "false",
+      sys.uptime_s,
+      sys.free_heap,
+      sys.cycle_count);
+
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", std::string(payload));
     response->addHeader("Access-Control-Allow-Origin", "*");
-    response->addHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
     request->send(response);
     return;
   }
 
-  // Not found
+  // ── API routes: Zones ───────────────────────────────────────────────────────
+  if (url_str == "/api/hv6/v1/zones" && method == HTTP_GET) {
+    if (zone_controller_ == nullptr || config_store_ == nullptr) {
+      AsyncWebServerResponse *response = request->beginResponse(500, "application/json", 
+        "{\"ok\":false,\"version\":\"v1\",\"error\":{\"code\":\"controller_unavailable\"}}");
+      response->addHeader("Access-Control-Allow-Origin", "*");
+      request->send(response);
+      return;
+    }
+
+    const auto sys = zone_controller_->get_system_snapshot();
+    std::string out;
+    out.reserve(2048);
+    out += "{\"ok\":true,\"version\":\"v1\",\"data\":{\"count\":" + std::to_string(NUM_ZONES) + ",\"zones\":[";
+
+    for (uint8_t i = 0; i < NUM_ZONES; i++) {
+      const auto &z = sys.zones[i];
+      bool enabled = config_store_->get_config().zones[i].enabled;
+
+      char row[256];
+      snprintf(row, sizeof(row),
+        "%s{\"zone\":%u,\"enabled\":%s,\"state\":\"%s\",\"temperature_c\":%.2f,\"setpoint_c\":%.2f,\"valve_pct\":%.2f}",
+        i == 0 ? "" : ",",
+        static_cast<unsigned>(i + 1),
+        enabled ? "true" : "false",
+        zone_state_to_string(z.state),
+        safe_json_float_(z.temperature_c),
+        safe_json_float_(z.setpoint_c),
+        safe_json_float_(z.valve_position_pct));
+      out += row;
+    }
+
+    out += "]}}";
+
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", out);
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    request->send(response);
+    return;
+  }
+
+  // ── API routes: Zone Setpoint ───────────────────────────────────────────────
+  if (url_str.find("/api/hv6/v1/zones/") == 0 && url_str.find("/setpoint") != std::string::npos && method == HTTP_POST) {
+    uint8_t zone = 0;
+    if (!parse_zone_from_uri_(url_buf, "/setpoint", &zone)) {
+      request->send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_zone\"}");
+      return;
+    }
+
+    if (zone_controller_ == nullptr) {
+      request->send(500, "application/json", "{\"ok\":false,\"error\":\"controller_unavailable\"}");
+      return;
+    }
+
+    if (request->hasArg("setpoint_c")) {
+      std::string arg_str = request->arg("setpoint_c");
+      float setpoint = std::stof(arg_str);
+      zone_controller_->set_zone_setpoint(zone - 1, setpoint);
+      
+      char response_buf[200];
+      snprintf(response_buf, sizeof(response_buf),
+        "{\"ok\":true,\"version\":\"v1\",\"data\":{\"zone\":%u,\"setpoint_c\":%.2f}}",
+        zone, setpoint);
+      
+      AsyncWebServerResponse *response = request->beginResponse(200, "application/json", std::string(response_buf));
+      response->addHeader("Access-Control-Allow-Origin", "*");
+      request->send(response);
+      return;
+    }
+
+    request->send(400, "application/json", "{\"ok\":false,\"error\":\"missing_setpoint_c\"}");
+    return;
+  }
+
+  // ── API routes: Zone Enabled ────────────────────────────────────────────────
+  if (url_str.find("/api/hv6/v1/zones/") == 0 && url_str.find("/enabled") != std::string::npos && method == HTTP_POST) {
+    uint8_t zone = 0;
+    if (!parse_zone_from_uri_(url_buf, "/enabled", &zone)) {
+      request->send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_zone\"}");
+      return;
+    }
+
+    if (zone_controller_ == nullptr) {
+      request->send(500, "application/json", "{\"ok\":false,\"error\":\"controller_unavailable\"}");
+      return;
+    }
+
+    if (request->hasArg("enabled")) {
+      std::string arg_str = request->arg("enabled");
+      bool enabled = arg_str == "true" || arg_str == "1";
+      zone_controller_->set_zone_enabled(zone - 1, enabled);
+      
+      char response_buf[200];
+      snprintf(response_buf, sizeof(response_buf),
+        "{\"ok\":true,\"version\":\"v1\",\"data\":{\"zone\":%u,\"enabled\":%s}}",
+        zone, enabled ? "true" : "false");
+      
+      AsyncWebServerResponse *response = request->beginResponse(200, "application/json", std::string(response_buf));
+      response->addHeader("Access-Control-Allow-Origin", "*");
+      request->send(response);
+      return;
+    }
+
+    request->send(400, "application/json", "{\"ok\":false,\"error\":\"missing_enabled\"}");
+    return;
+  }
+
+  // ── API routes: Drivers Enabled ─────────────────────────────────────────────
+  if (url_str == "/api/hv6/v1/drivers/enabled" && method == HTTP_POST) {
+    if (valve_controller_ == nullptr) {
+      request->send(500, "application/json", "{\"ok\":false,\"error\":\"controller_unavailable\"}");
+      return;
+    }
+
+    if (request->hasArg("enabled")) {
+      std::string arg_str = request->arg("enabled");
+      bool enabled = arg_str == "true" || arg_str == "1";
+      valve_controller_->set_drivers_enabled(enabled);
+      
+      char response_buf[180];
+      snprintf(response_buf, sizeof(response_buf),
+        "{\"ok\":true,\"version\":\"v1\",\"data\":{\"drivers_enabled\":%s}}",
+        enabled ? "true" : "false");
+      
+      AsyncWebServerResponse *response = request->beginResponse(200, "application/json", std::string(response_buf));
+      response->addHeader("Access-Control-Allow-Origin", "*");
+      request->send(response);
+      return;
+    }
+
+    request->send(400, "application/json", "{\"ok\":false,\"error\":\"missing_enabled\"}");
+    return;
+  }
+
+  // ── API routes: Manual Mode ─────────────────────────────────────────────────
+  if (url_str == "/api/hv6/v1/manual_mode" && method == HTTP_POST) {
+    if (zone_controller_ == nullptr) {
+      request->send(500, "application/json", "{\"ok\":false,\"error\":\"controller_unavailable\"}");
+      return;
+    }
+
+    if (request->hasArg("enabled")) {
+      std::string arg_str = request->arg("enabled");
+      bool enabled = arg_str == "true" || arg_str == "1";
+      zone_controller_->set_manual_mode(enabled);
+      
+      char response_buf[160];
+      snprintf(response_buf, sizeof(response_buf),
+        "{\"ok\":true,\"version\":\"v1\",\"data\":{\"manual_mode\":%s}}",
+        enabled ? "true" : "false");
+      
+      AsyncWebServerResponse *response = request->beginResponse(200, "application/json", std::string(response_buf));
+      response->addHeader("Access-Control-Allow-Origin", "*");
+      request->send(response);
+      return;
+    }
+
+    request->send(400, "application/json", "{\"ok\":false,\"error\":\"missing_enabled\"}");
+    return;
+  }
+
+  // ── API routes: Settings (Select) ────────────────────────────────────────────
+  if (url_str == "/api/hv6/v1/settings/select" && method == HTTP_POST) {
+    if (zone_controller_ == nullptr || config_store_ == nullptr || valve_controller_ == nullptr) {
+      request->send(500, "application/json", "{\"ok\":false,\"error\":\"controller_unavailable\"}");
+      return;
+    }
+
+    if (!request->hasArg("key") || !request->hasArg("value")) {
+      request->send(400, "application/json", "{\"ok\":false,\"error\":\"missing_params\"}");
+      return;
+    }
+
+    std::string key = request->arg("key");
+    std::string value = request->arg("value");
+    int zone = request->hasArg("zone") ? std::stoi(request->arg("zone")) : -1;
+
+    bool ok = true;
+    if (key == "zone_probe") {
+      int8_t probe = -1;
+      ok = (zone >= 1 && zone <= NUM_ZONES) && parse_probe_option_(value.c_str(), &probe);
+      if (ok) zone_controller_->set_zone_probe(zone - 1, probe);
+    } else if (key == "manifold_flow_probe") {
+      int8_t probe = -1;
+      ok = parse_probe_option_(value.c_str(), &probe);
+      if (ok) zone_controller_->set_manifold_flow_probe(probe);
+    } else if (key == "manifold_return_probe") {
+      int8_t probe = -1;
+      ok = parse_probe_option_(value.c_str(), &probe);
+      if (ok) zone_controller_->set_manifold_return_probe(probe);
+    } else if (key == "manifold_type") {
+      ManifoldType type = ManifoldType::NC;
+      if (value.find("NC") == 0) type = ManifoldType::NC;
+      else if (value.find("NO") == 0) type = ManifoldType::NO;
+      else ok = false;
+      if (ok) valve_controller_->set_manifold_type(type);
+    } else if (key == "simple_preheat_enabled") {
+      bool enabled = false;
+      ok = parse_bool_(value.c_str(), &enabled);
+      if (ok) zone_controller_->set_simple_preheat_enabled(enabled);
+    }
+
+    if (!ok) {
+      request->send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_params\"}");
+      return;
+    }
+
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"ok\":true,\"version\":\"v1\"}");
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    request->send(response);
+    return;
+  }
+
+  // ── API routes: Settings (Number) ────────────────────────────────────────────
+  if (url_str == "/api/hv6/v1/settings/number" && method == HTTP_POST) {
+    if (zone_controller_ == nullptr || config_store_ == nullptr || valve_controller_ == nullptr) {
+      request->send(500, "application/json", "{\"ok\":false,\"error\":\"controller_unavailable\"}");
+      return;
+    }
+
+    if (!request->hasArg("key") || !request->hasArg("value")) {
+      request->send(400, "application/json", "{\"ok\":false,\"error\":\"missing_params\"}");
+      return;
+    }
+
+    std::string key = request->arg("key");
+    float value = std::stof(request->arg("value"));
+    int zone = request->hasArg("zone") ? std::stoi(request->arg("zone")) : -1;
+
+    bool ok = true;
+    if (key == "zone_area_m2") {
+      ok = zone >= 1 && zone <= NUM_ZONES;
+      if (ok) zone_controller_->set_zone_area_m2(zone - 1, value);
+    } else if (key == "zone_pipe_spacing_mm") {
+      ok = zone >= 1 && zone <= NUM_ZONES;
+      if (ok) zone_controller_->set_zone_pipe_spacing_mm(zone - 1, value);
+    } else {
+      auto cfg = config_store_->get_config();
+      if (key == "close_threshold_multiplier") cfg.motor.close_current_factor = value;
+      else if (key == "open_threshold_multiplier") cfg.motor.open_current_factor = value;
+      else if (key == "close_slope_threshold") cfg.motor.close_slope_threshold_ma_per_s = value;
+      else if (key == "open_slope_threshold") cfg.motor.open_slope_threshold_ma_per_s = value;
+      else if (key == "close_slope_current_factor") cfg.motor.close_slope_current_factor = value;
+      else if (key == "open_slope_current_factor") cfg.motor.open_slope_current_factor = value;
+      else if (key == "open_ripple_limit_factor") cfg.motor.open_ripple_limit_factor = value;
+      else if (key == "generic_runtime_limit_seconds") cfg.motor.generic_profile_runtime_limit_s = static_cast<uint32_t>(value);
+      else if (key == "learned_factor_min_samples") cfg.motor.learned_factor_min_samples = static_cast<uint8_t>(value);
+      else if (key == "learned_factor_max_deviation_pct") cfg.motor.learned_factor_max_deviation_pct = value / 100.0f;
+      else ok = false;
+
+      if (ok) {
+        config_store_->update_motor(cfg.motor);
+        valve_controller_->reload_motor_config();
+      }
+    }
+
+    if (!ok) {
+      request->send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_params\"}");
+      return;
+    }
+
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"ok\":true,\"version\":\"v1\"}");
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    request->send(response);
+    return;
+  }
+
+  // ── API routes: Commands ────────────────────────────────────────────────────
+  if (url_str == "/api/hv6/v1/commands" && method == HTTP_POST) {
+    if (valve_controller_ == nullptr) {
+      request->send(500, "application/json", "{\"ok\":false,\"error\":\"controller_unavailable\"}");
+      return;
+    }
+
+    if (!request->hasArg("command")) {
+      request->send(400, "application/json", "{\"ok\":false,\"error\":\"missing_command\"}");
+      return;
+    }
+
+    std::string command = request->arg("command");
+    int zone = request->hasArg("zone") ? std::stoi(request->arg("zone")) : -1;
+
+    bool accepted = true;
+    const char *result = "accepted";
+
+    if (command == "calibrate_all_motors") {
+      valve_controller_->request_calibration_all();
+    } else if (command == "i2c_scan") {
+      valve_controller_->log_i2c_scan();
+    } else if (command == "motor_reset_fault") {
+      accepted = (zone >= 1 && zone <= NUM_ZONES) && valve_controller_->reset_fault(zone - 1);
+      result = accepted ? "accepted" : "rejected";
+    } else if (command == "motor_reset_and_relearn") {
+      accepted = (zone >= 1 && zone <= NUM_ZONES) && valve_controller_->reset_and_relearn(zone - 1);
+      result = accepted ? "accepted" : "rejected";
+    } else {
+      request->send(400, "application/json", "{\"ok\":false,\"error\":\"unknown_command\"}");
+      return;
+    }
+
+    char response_buf[300];
+    snprintf(response_buf, sizeof(response_buf),
+      "{\"ok\":%s,\"version\":\"v1\",\"data\":{\"command\":\"%s\",\"result\":\"%s\"}}",
+      accepted ? "true" : "false",
+      command.c_str(),
+      result);
+
+    AsyncWebServerResponse *response = request->beginResponse(accepted ? 200 : 409, "application/json", std::string(response_buf));
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    request->send(response);
+    return;
+  }
+
+  // ── API routes: Motor Control ───────────────────────────────────────────────
+  // Pattern: /api/hv6/v1/motors/1/target?value=50
+  if (url_str.find("/api/hv6/v1/motors/") == 0 && method == HTTP_POST) {
+    uint8_t zone = 0;
+    if (!parse_motor_from_uri_(url_buf, "", &zone)) {
+      request->send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_zone\"}");
+      return;
+    }
+
+    if (valve_controller_ == nullptr) {
+      request->send(500, "application/json", "{\"ok\":false,\"error\":\"controller_unavailable\"}");
+      return;
+    }
+
+    bool ok = false;
+    if (url_str.find("/target") != std::string::npos) {
+      if (request->hasArg("value")) {
+        float target = std::stof(request->arg("value"));
+        target = std::max(0.0f, std::min(100.0f, target));
+        ok = valve_controller_->request_position(zone - 1, target);
+      }
+    } else if (url_str.find("/open") != std::string::npos) {
+      if (url_str.find("/open_timed") != std::string::npos) {
+        uint16_t duration = 10000;
+        if (request->hasArg("duration_ms")) {
+          duration = std::stoi(request->arg("duration_ms"));
+          duration = std::min(duration, uint16_t(60000));
+        }
+        ok = valve_controller_->request_timed_open(zone - 1, duration);
+      } else {
+        ok = valve_controller_->request_position(zone - 1, 100.0f);
+      }
+    } else if (url_str.find("/close") != std::string::npos) {
+      if (url_str.find("/close_timed") != std::string::npos) {
+        uint16_t duration = 10000;
+        if (request->hasArg("duration_ms")) {
+          duration = std::stoi(request->arg("duration_ms"));
+          duration = std::min(duration, uint16_t(60000));
+        }
+        ok = valve_controller_->request_timed_close(zone - 1, duration);
+      } else {
+        ok = valve_controller_->request_position(zone - 1, 0.0f);
+      }
+    } else if (url_str.find("/stop") != std::string::npos) {
+      ok = valve_controller_->request_stop(zone - 1);
+    }
+
+    char response_buf[200];
+    snprintf(response_buf, sizeof(response_buf),
+      "{\"ok\":%s,\"version\":\"v1\",\"data\":{\"zone\":%u}}",
+      ok ? "true" : "false",
+      zone);
+
+    AsyncWebServerResponse *response = request->beginResponse(ok ? 200 : 409, "application/json", std::string(response_buf));
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    request->send(response);
+    return;
+  }
+
+  // Default: Not found
   request->send(404, "text/plain", "Not found");
 }
 
@@ -1152,6 +1749,7 @@ void Hv6WebApi::setup() {
 void Hv6WebApi::dump_config() {
   ESP_LOGCONFIG(TAG, "HV6 Web API:");
   ESP_LOGCONFIG(TAG, "  Port: 80 (ESPHome web server)");
+  ESP_LOGCONFIG(TAG, "  Build fingerprint: %s", HV6_WEB_API_BUILD_FINGERPRINT);
   ESP_LOGCONFIG(TAG, "  Config store linked: %s", this->config_store_ != nullptr ? "yes" : "no");
   ESP_LOGCONFIG(TAG, "  Valve controller linked: %s", this->valve_controller_ != nullptr ? "yes" : "no");
   ESP_LOGCONFIG(TAG, "  Zone controller linked: %s", this->zone_controller_ != nullptr ? "yes" : "no");

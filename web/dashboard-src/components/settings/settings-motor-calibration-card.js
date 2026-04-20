@@ -116,6 +116,8 @@ const FIELDS = [
   { cls: 'open-slope-threshold', key: 'open_slope_threshold', id: gkey.openSlopeThreshold, label: 'Open Endstop Slope', unit: 'mA/s' },
   { cls: 'open-slope-floor', key: 'open_slope_current_factor', id: gkey.openSlopeCurrentFactor, label: 'Open Endstop Slope Floor', unit: 'x' },
   { cls: 'open-ripple-limit', key: 'open_ripple_limit_factor', id: gkey.openRippleLimitFactor, label: 'Open Ripple Limit', unit: 'x' },
+  { cls: 'relearn-movements', key: 'relearn_after_movements', id: gkey.relearnAfterMovements, label: 'Relearn After Movements', unit: 'count' },
+  { cls: 'relearn-hours', key: 'relearn_after_hours', id: gkey.relearnAfterHours, label: 'Relearn After Hours', unit: 'h' },
   { cls: 'learn-min-samples', key: 'learned_factor_min_samples', id: gkey.learnedFactorMinSamples, label: 'Learned Factor Min Samples', unit: 'count' },
   { cls: 'learn-max-deviation', key: 'learned_factor_max_deviation_pct', id: gkey.learnedFactorMaxDeviationPct, label: 'Learned Factor Max Deviation', unit: '%' }
 ];
@@ -153,7 +155,10 @@ const template = () => {
 };
 
 function isIntegerSetting(keyName) {
-  return keyName === 'learned_factor_min_samples' || keyName === 'generic_runtime_limit_seconds';
+  return keyName === 'learned_factor_min_samples' ||
+    keyName === 'generic_runtime_limit_seconds' ||
+    keyName === 'relearn_after_movements' ||
+    keyName === 'relearn_after_hours';
 }
 
 function formatValue(keyName, value) {

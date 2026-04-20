@@ -53,6 +53,11 @@ void Hv6ZoneController::setup() {
   balance_factors_.fill(1.0f);
   last_valid_temp_ms_.fill(0);
   mqtt_temp_last_ms_.fill(0);
+  preheat_advance_c_.fill(0.0f);
+  preheat_episode_active_.fill(false);
+  preheat_episode_min_temp_c_.fill(NAN);
+  preheat_episode_max_temp_c_.fill(NAN);
+  preheat_episode_setpoint_c_.fill(0.0f);
   for (uint8_t i = 0; i < NUM_ZONES; i++) {
     mqtt_temperatures_[i] = NAN;
     if (requested_setpoints_[i] < 5.0f || requested_setpoints_[i] > 35.0f)
@@ -117,13 +122,14 @@ ZoneSnapshot Hv6ZoneController::get_zone_snapshot(uint8_t zone) const {
   return copy;
 }
 
-SystemSnapshot Hv6ZoneController::get_system_snapshot() const {
+bool Hv6ZoneController::try_get_system_snapshot(SystemSnapshot *out, uint32_t timeout_ms) const {
+  if (out == nullptr || snapshot_mutex_ == nullptr)
+    return false;
+
+  if (xSemaphoreTake(snapshot_mutex_, pdMS_TO_TICKS(timeout_ms)) != pdTRUE)
+    return false;
+
   SystemSnapshot sys = {};
-
-  if (snapshot_mutex_ == nullptr)
-    return sys;
-
-  xSemaphoreTake(snapshot_mutex_, portMAX_DELAY);
   float sum_valve = 0.0f;
   for (uint8_t i = 0; i < NUM_ZONES; i++) {
     sys.zones[i] = snapshots_[i];
@@ -157,6 +163,26 @@ SystemSnapshot Hv6ZoneController::get_system_snapshot() const {
   sys.system_condition_state = system_condition_state_;
   sys.wifi_connected = true;  // ESPHome manages WiFi
 
+  *out = sys;
+  return true;
+}
+
+SystemSnapshot Hv6ZoneController::get_system_snapshot() const {
+  SystemSnapshot sys = {};
+
+  if (try_get_system_snapshot(&sys))
+    return sys;
+
+  ESP_LOGW(TAG, "System snapshot skipped: snapshot mutex busy");
+  sys.manifold_flow_temp_c = read_manifold_flow_();
+  sys.manifold_return_temp_c = read_manifold_return_();
+  sys.uptime_s = static_cast<uint32_t>(esp_timer_get_time() / 1000000);
+  sys.free_heap = esp_get_free_heap_size();
+  sys.cycle_count = cycle_count_;
+  sys.controller_state = controller_state_;
+  sys.system_condition_state = system_condition_state_;
+  sys.wifi_connected = true;
+
   return sys;
 }
 
@@ -181,6 +207,12 @@ float Hv6ZoneController::get_valve_position(uint8_t zone) const {
   float pos = snapshots_[zone].valve_position_pct;
   xSemaphoreGive(snapshot_mutex_);
   return pos;
+}
+
+float Hv6ZoneController::get_zone_preheat_advance(uint8_t zone) const {
+  if (zone >= NUM_ZONES)
+    return 0.0f;
+  return std::clamp(preheat_advance_c_[zone], 0.0f, SIMPLE_PREHEAT_MAX_ADVANCE_C);
 }
 
 void Hv6ZoneController::set_zone_setpoint(uint8_t zone, float setpoint_c) {
@@ -268,6 +300,29 @@ void Hv6ZoneController::set_control_algorithm(ControlAlgorithm algorithm) {
   }
 
   ESP_LOGI(TAG, "Control algorithm set to %s for all zones", algo_name);
+}
+
+void Hv6ZoneController::set_simple_preheat_enabled(bool enabled) {
+  if (!config_store_)
+    return;
+  auto cfg = config_store_->get_config();
+  if (cfg.control.simple_preheat_enabled == enabled)
+    return;
+  cfg.control.simple_preheat_enabled = enabled;
+  config_store_->update_control(cfg.control);
+
+  if (!enabled) {
+    for (uint8_t i = 0; i < NUM_ZONES; i++)
+      reset_simple_preheat_(i);
+  }
+
+  ESP_LOGI(TAG, "Simple preheat: %s", enabled ? "ON" : "OFF");
+}
+
+bool Hv6ZoneController::is_simple_preheat_enabled() const {
+  if (!config_store_)
+    return true;
+  return config_store_->get_config().control.simple_preheat_enabled;
 }
 
 ControlAlgorithm Hv6ZoneController::get_control_algorithm() const {
@@ -833,7 +888,8 @@ void Hv6ZoneController::run_cycle_() {
 
     algorithms_[i].set_algorithm(cfg.zones[i].algorithm);
 
-    ZoneState state = classify_zone_(temp, setpoint, cfg.control.comfort_band_c);
+    float preheat_advance = cfg.control.simple_preheat_enabled ? preheat_advance_c_[i] : 0.0f;
+    ZoneState state = classify_zone_(temp, setpoint, cfg.control.comfort_band_c, preheat_advance);
 
     float position = 0.0f;
     bool was_overheated = false;
@@ -863,10 +919,17 @@ void Hv6ZoneController::run_cycle_() {
     snapshots_[i].temperature_c = temp;
     snapshots_[i].setpoint_c = setpoint;
     snapshots_[i].valve_position_pct = position;
+    snapshots_[i].preheat_advance_c = preheat_advance;
     snapshots_[i].state = state;
     snapshots_[i].hydraulic_factor = balance_factors_[i];
     snapshots_[i].was_overheated = was_overheated;
     xSemaphoreGive(snapshot_mutex_);
+
+    if (cfg.control.simple_preheat_enabled) {
+      update_simple_preheat_(i, temp, setpoint, cfg.control.comfort_band_c, state);
+    } else {
+      reset_simple_preheat_(i);
+    }
   }
 
   enforce_minimum_total_opening_(target_positions);
@@ -1015,12 +1078,16 @@ float Hv6ZoneController::read_manifold_return_() const {
 // Zone Classification + Control
 // =============================================================================
 
-ZoneState Hv6ZoneController::classify_zone_(float temp, float setpoint, float comfort_band) const {
+ZoneState Hv6ZoneController::classify_zone_(float temp, float setpoint, float comfort_band, float preheat_advance_c) const {
   if (std::isnan(temp))
     return ZoneState::UNKNOWN;
+
+  preheat_advance_c = std::clamp(preheat_advance_c, 0.0f, SIMPLE_PREHEAT_MAX_ADVANCE_C);
+  float demand_threshold_c = setpoint - comfort_band + preheat_advance_c;
+
   if (temp > setpoint + comfort_band)
     return ZoneState::OVERHEATED;
-  if (temp >= setpoint - comfort_band)
+  if (temp >= demand_threshold_c)
     return ZoneState::SATISFIED;
   return ZoneState::DEMAND;
 }
@@ -1030,6 +1097,62 @@ float Hv6ZoneController::compute_raw_position_(uint8_t zone, float temp, float s
     return 0.0f;
   const auto cfg = config_store_->get_config();
   return algorithms_[zone].calculate(temp, setpoint, cfg.control, cfg.zones[zone]);
+}
+
+void Hv6ZoneController::update_simple_preheat_(uint8_t zone, float temp, float setpoint,
+                                               float comfort_band, ZoneState state) {
+  if (zone >= NUM_ZONES || std::isnan(temp)) {
+    return;
+  }
+
+  // Start or continue a demand episode and track min/max room temperatures.
+  if (state == ZoneState::DEMAND) {
+    if (!preheat_episode_active_[zone]) {
+      preheat_episode_active_[zone] = true;
+      preheat_episode_setpoint_c_[zone] = setpoint;
+      preheat_episode_min_temp_c_[zone] = temp;
+      preheat_episode_max_temp_c_[zone] = temp;
+    } else {
+      preheat_episode_min_temp_c_[zone] = std::min(preheat_episode_min_temp_c_[zone], temp);
+      preheat_episode_max_temp_c_[zone] = std::max(preheat_episode_max_temp_c_[zone], temp);
+    }
+  } else if (preheat_episode_active_[zone]) {
+    float episode_min = preheat_episode_min_temp_c_[zone];
+    float episode_max = std::max(preheat_episode_max_temp_c_[zone], temp);
+    float episode_setpoint = preheat_episode_setpoint_c_[zone];
+
+    float low_band = episode_setpoint - comfort_band;
+    float high_band = episode_setpoint + comfort_band;
+    float undershoot_c = std::max(0.0f, low_band - episode_min);
+    float overshoot_c = std::max(0.0f, episode_max - high_band);
+
+    float advance = preheat_advance_c_[zone];
+    advance += undershoot_c * SIMPLE_PREHEAT_LEARN_UP_GAIN;
+    advance -= overshoot_c * SIMPLE_PREHEAT_LEARN_DOWN_GAIN;
+    preheat_advance_c_[zone] = std::clamp(advance, 0.0f, SIMPLE_PREHEAT_MAX_ADVANCE_C);
+
+    ESP_LOGD(TAG,
+             "Zone %d simple preheat: undershoot=%.2fC overshoot=%.2fC advance=%.2fC",
+             zone + 1, undershoot_c, overshoot_c, preheat_advance_c_[zone]);
+
+    preheat_episode_active_[zone] = false;
+  }
+
+  // Continuous small decay while overheated to back off early-start aggressiveness.
+  if (state == ZoneState::OVERHEATED && preheat_advance_c_[zone] > 0.0f) {
+    preheat_advance_c_[zone] = std::max(0.0f, preheat_advance_c_[zone] - SIMPLE_PREHEAT_OVERSHOOT_DECAY_C);
+  }
+
+}
+
+void Hv6ZoneController::reset_simple_preheat_(uint8_t zone) {
+  if (zone >= NUM_ZONES)
+    return;
+  preheat_advance_c_[zone] = 0.0f;
+  preheat_episode_active_[zone] = false;
+  preheat_episode_min_temp_c_[zone] = NAN;
+  preheat_episode_max_temp_c_[zone] = NAN;
+  preheat_episode_setpoint_c_[zone] = 0.0f;
 }
 
 // =============================================================================

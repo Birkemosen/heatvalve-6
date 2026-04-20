@@ -992,6 +992,20 @@ select:
           id(hv6_zones).set_control_algorithm(algo);
 
   - platform: template
+    name: "Simple Preheat"
+    id: simple_preheat_enabled
+    entity_category: config
+    optimistic: false
+    options:
+      - "On"
+      - "Off"
+    lambda: |-
+      return id(hv6_zones).is_simple_preheat_enabled() ? std::string("On") : std::string("Off");
+    set_action:
+      - lambda: |-
+          id(hv6_zones).set_simple_preheat_enabled(x == "On");
+
+  - platform: template
     name: "Zone Motor Profile"
     id: zone_motor_profile
     entity_category: config

@@ -258,6 +258,66 @@ sensor:
     lambda: |-
       return id(hv6_valves).get_telemetry(5).learned_close_current_factor;
 
+  - platform: template
+    name: "Zone 1 Preheat Advance"
+    id: zone_1_preheat_advance_c
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return id(hv6_zones).get_zone_preheat_advance(0);
+
+  - platform: template
+    name: "Zone 2 Preheat Advance"
+    id: zone_2_preheat_advance_c
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return id(hv6_zones).get_zone_preheat_advance(1);
+
+  - platform: template
+    name: "Zone 3 Preheat Advance"
+    id: zone_3_preheat_advance_c
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return id(hv6_zones).get_zone_preheat_advance(2);
+
+  - platform: template
+    name: "Zone 4 Preheat Advance"
+    id: zone_4_preheat_advance_c
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return id(hv6_zones).get_zone_preheat_advance(3);
+
+  - platform: template
+    name: "Zone 5 Preheat Advance"
+    id: zone_5_preheat_advance_c
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return id(hv6_zones).get_zone_preheat_advance(4);
+
+  - platform: template
+    name: "Zone 6 Preheat Advance"
+    id: zone_6_preheat_advance_c
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      return id(hv6_zones).get_zone_preheat_advance(5);
+
   - platform: wifi_signal
     name: "WiFi Signal"
     id: wifi_signal_dbm

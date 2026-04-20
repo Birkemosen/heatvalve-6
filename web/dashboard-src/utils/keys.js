@@ -21,6 +21,7 @@ export const key = {
   motorCloseRipples: (zone) => 'sensor-motor_' + zone + '_learned_close_ripples',
   motorOpenFactor: (zone) => 'sensor-motor_' + zone + '_learned_open_factor',
   motorCloseFactor: (zone) => 'sensor-motor_' + zone + '_learned_close_factor',
+  preheatAdvance: (zone) => 'sensor-zone_' + zone + '_preheat_advance_c',
   motorLastFault: (zone) => 'text_sensor-motor_' + zone + '_last_fault',
   probeTemp: (probe) => 'sensor-probe_' + probe + '_temperature'
 };
@@ -49,6 +50,9 @@ export const gkey = {
   openRippleLimitFactor: 'number-open_ripple_limit_factor',
   genericRuntimeLimitSeconds: 'number-generic_runtime_limit_seconds',
   hmipRuntimeLimitSeconds: 'number-hmip_runtime_limit_seconds',
+  relearnAfterMovements: 'number-relearn_after_movements',
+  relearnAfterHours: 'number-relearn_after_hours',
   learnedFactorMinSamples: 'number-learned_factor_min_samples',
-  learnedFactorMaxDeviationPct: 'number-learned_factor_max_deviation_pct'
+  learnedFactorMaxDeviationPct: 'number-learned_factor_max_deviation_pct',
+  simplePreheatEnabled: 'select-simple_preheat_enabled'
 };

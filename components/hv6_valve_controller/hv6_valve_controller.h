@@ -21,6 +21,7 @@
 #include "freertos/semphr.h"
 #include "driver/gpio.h"
 #include <array>
+#include <atomic>
 #include <string>
 
 namespace hv6 {
@@ -78,10 +79,10 @@ class Hv6ValveController : public esphome::Component {
   bool request_stop(uint8_t zone);
   float get_position(uint8_t zone) const;
   MotorTelemetry get_telemetry(uint8_t zone) const;
-  FaultCode get_last_fault() const { return current_fault_code_; }
-  bool is_motor_busy() const { return motor_turning_; }
-  bool is_calibrating() const { return calibrating_; }
-  uint32_t get_live_ripple_count() const { return live_ripple_count_; }
+  FaultCode get_last_fault() const { return current_fault_code_.load(std::memory_order_acquire); }
+  bool is_motor_busy() const { return motor_turning_.load(std::memory_order_acquire); }
+  bool is_calibrating() const { return calibrating_.load(std::memory_order_acquire); }
+  uint32_t get_live_ripple_count() const { return live_ripple_count_.load(std::memory_order_relaxed); }
   void request_calibration(uint8_t zone);
   void request_calibration_all();
   bool reset_fault(uint8_t zone);
@@ -96,7 +97,7 @@ class Hv6ValveController : public esphome::Component {
   /// Enable or disable all motor drivers (nSLEEP control).
   /// When disabled, all motors are put to sleep and commands are rejected.
   void set_drivers_enabled(bool enabled);
-  bool are_drivers_enabled() const { return drivers_enabled_; }
+  bool are_drivers_enabled() const { return drivers_enabled_.load(std::memory_order_acquire); }
 
   /// Reload motor config from config store (call after UI changes).
   void reload_motor_config();
@@ -207,9 +208,9 @@ class Hv6ValveController : public esphome::Component {
   // DRV8215 driver instances
   std::array<DRV8215 *, NUM_ZONES> drivers_{};
 
-  // Motor FSM state
-  volatile bool motor_turning_ = false;
-  bool drivers_enabled_ = false;
+  // Motor FSM state (atomic for cross-thread access)
+  std::atomic<bool> motor_turning_{false};
+  std::atomic<bool> drivers_enabled_{false};
   uint8_t current_zone_ = 0;
   MotorDirection current_dir_ = MotorDirection::OPEN;
   MotorFsmState fsm_state_ = MotorFsmState::IDLE;
@@ -251,8 +252,8 @@ class Hv6ValveController : public esphome::Component {
   // Relearn scheduling
   uint32_t last_relearn_check_ms_ = 0;
 
-  // Fault
-  FaultCode current_fault_code_ = FaultCode::NONE;
+  // Fault (atomic for cross-thread reads)
+  std::atomic<FaultCode> current_fault_code_{FaultCode::NONE};
 
   // Telemetry
   mutable SemaphoreHandle_t telemetry_mutex_ = nullptr;
@@ -263,10 +264,10 @@ class Hv6ValveController : public esphome::Component {
   QueueHandle_t cmd_queue_ = nullptr;
   TaskHandle_t task_handle_ = nullptr;
 
-  // Calibration request
-  volatile int8_t calibration_request_ = -1;
-  volatile uint8_t calibration_pending_mask_ = 0;
-  volatile bool calibrating_ = false;
+  // Calibration request (atomic for cross-thread access)
+  std::atomic<int8_t> calibration_request_{-1};
+  std::atomic<uint8_t> calibration_pending_mask_{0};
+  std::atomic<bool> calibrating_{false};
 
   // Motor config cache
   MotorConfig motor_cfg_;
@@ -278,9 +279,9 @@ class Hv6ValveController : public esphome::Component {
   int ipropi_channel_ = 0;
   bool ripple_enabled_ = false;
 
-  // Ripple counter state
+  // Ripple counter state (atomic for cross-thread reads)
   RippleDetector ripple_{};
-  volatile uint32_t live_ripple_count_ = 0;
+  std::atomic<uint32_t> live_ripple_count_{0};
   uint8_t fsm_tick_count_ = 0;
   float latest_current_ma_ = 0.0f;
   uint32_t last_publish_ms_ = 0;
