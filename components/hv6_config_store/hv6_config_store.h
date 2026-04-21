@@ -24,6 +24,13 @@ class Hv6ConfigStore : public esphome::Component {
 
   // Thread-safe config access
   DeviceConfig get_config() const;
+  MotorConfig get_motor_config() const;
+  ZoneConfig get_zone_config(uint8_t zone) const;
+  bool get_simple_preheat_enabled() const;
+  ManifoldType get_manifold_type() const;
+  ProbeConfig get_probe_config() const;
+  TempSource get_zone_temp_source(uint8_t zone) const;
+  void get_zone_mqtt_strings(uint8_t zone, char *device, size_t dev_len, char *ble, size_t ble_len) const;
   void set_config(const DeviceConfig &config);
   void mark_dirty();
 

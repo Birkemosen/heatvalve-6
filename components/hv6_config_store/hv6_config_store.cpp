@@ -326,6 +326,81 @@ DeviceConfig Hv6ConfigStore::get_config() const {
   return copy;
 }
 
+MotorConfig Hv6ConfigStore::get_motor_config() const {
+  if (mutex_ == nullptr)
+    return config_.motor;
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  MotorConfig copy = config_.motor;
+  xSemaphoreGive(mutex_);
+  return copy;
+}
+
+ZoneConfig Hv6ConfigStore::get_zone_config(uint8_t zone) const {
+  if (zone >= NUM_ZONES)
+    return {};
+  if (mutex_ == nullptr)
+    return config_.zones[zone];
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  ZoneConfig copy = config_.zones[zone];
+  xSemaphoreGive(mutex_);
+  return copy;
+}
+
+bool Hv6ConfigStore::get_simple_preheat_enabled() const {
+  if (mutex_ == nullptr)
+    return config_.control.simple_preheat_enabled;
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  bool val = config_.control.simple_preheat_enabled;
+  xSemaphoreGive(mutex_);
+  return val;
+}
+
+ManifoldType Hv6ConfigStore::get_manifold_type() const {
+  if (mutex_ == nullptr)
+    return config_.manifold_type;
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  ManifoldType val = config_.manifold_type;
+  xSemaphoreGive(mutex_);
+  return val;
+}
+
+ProbeConfig Hv6ConfigStore::get_probe_config() const {
+  if (mutex_ == nullptr)
+    return config_.probes;
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  ProbeConfig copy = config_.probes;
+  xSemaphoreGive(mutex_);
+  return copy;
+}
+
+TempSource Hv6ConfigStore::get_zone_temp_source(uint8_t zone) const {
+  if (zone >= NUM_ZONES)
+    return TempSource::LOCAL_PROBE;
+  if (mutex_ == nullptr)
+    return config_.mqtt_temp.zone_temp_source[zone];
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  TempSource val = config_.mqtt_temp.zone_temp_source[zone];
+  xSemaphoreGive(mutex_);
+  return val;
+}
+
+void Hv6ConfigStore::get_zone_mqtt_strings(uint8_t zone, char *device, size_t dev_len, char *ble, size_t ble_len) const {
+  if (zone >= NUM_ZONES) {
+    if (device && dev_len) device[0] = '\0';
+    if (ble && ble_len) ble[0] = '\0';
+    return;
+  }
+  if (mutex_ == nullptr) {
+    if (device && dev_len) { strncpy(device, config_.mqtt_temp.zone_mqtt_device[zone], dev_len - 1); device[dev_len - 1] = '\0'; }
+    if (ble && ble_len)    { strncpy(ble,    config_.mqtt_temp.zone_ble_mac[zone],        ble_len - 1); ble[ble_len - 1] = '\0'; }
+    return;
+  }
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  if (device && dev_len) { strncpy(device, config_.mqtt_temp.zone_mqtt_device[zone], dev_len - 1); device[dev_len - 1] = '\0'; }
+  if (ble && ble_len)    { strncpy(ble,    config_.mqtt_temp.zone_ble_mac[zone],        ble_len - 1); ble[ble_len - 1] = '\0'; }
+  xSemaphoreGive(mutex_);
+}
+
 void Hv6ConfigStore::set_config(const DeviceConfig &config) {
   if (mutex_ == nullptr) {
     config_ = config;

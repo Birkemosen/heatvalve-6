@@ -312,7 +312,7 @@ void Hv6ValveController::set_drivers_enabled(bool enabled) {
 
 void Hv6ValveController::reload_motor_config() {
   if (config_store_)
-    motor_cfg_ = config_store_->get_config().motor;
+    motor_cfg_ = config_store_->get_motor_config();
   ESP_LOGI(TAG, "Motor config: profile=%s runtime(user=%" PRIu32 "s generic=%" PRIu32 "s hmip=%" PRIu32 "s) close(%.2fx, slope %.2f mA/s, floor %.2fx) "
            "open(%.2fx, slope %.2f mA/s, floor %.2fx, ripple_lim %.2f) "
            "pin(step %.1f mA, margin %" PRIu16 ") learning(samples=%u, dev=%.0f%%, auto=%s)",

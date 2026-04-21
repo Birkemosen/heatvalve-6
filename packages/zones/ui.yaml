@@ -40,10 +40,13 @@ text_sensor:
   - platform: wifi_info
     ip_address:
       name: "IP Address"
+      id: ip_address_text
     ssid:
       name: "Connected SSID"
+      id: connected_ssid_text
     mac_address:
       name: "MAC Address"
+      id: mac_address_text
 
 button:
   - platform: restart

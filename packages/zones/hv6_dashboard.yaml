@@ -1,0 +1,86 @@
+
+hv6_dashboard:
+  id: hv6_dashboard_id
+  zone_controller_id: hv6_zones
+  valve_controller_id: hv6_valves
+  config_store_id: hv6_config
+  wifi_signal_id: wifi_signal_dbm
+  manifold_flow_id: temp_manifold_flow
+  manifold_return_id: temp_manifold_return
+  zone_temp_ids:
+    - temp_zone_1
+    - temp_zone_2
+    - temp_zone_3
+    - temp_zone_4
+    - temp_zone_5
+    - temp_zone_6
+  zone_valve_ids:
+    - zone_1_valve_position
+    - zone_2_valve_position
+    - zone_3_valve_position
+    - zone_4_valve_position
+    - zone_5_valve_position
+    - zone_6_valve_position
+  zone_preheat_ids:
+    - zone_1_preheat_advance_c
+    - zone_2_preheat_advance_c
+    - zone_3_preheat_advance_c
+    - zone_4_preheat_advance_c
+    - zone_5_preheat_advance_c
+    - zone_6_preheat_advance_c
+  motor_open_ripple_ids:
+    - motor_1_learned_open_ripples
+    - motor_2_learned_open_ripples
+    - motor_3_learned_open_ripples
+    - motor_4_learned_open_ripples
+    - motor_5_learned_open_ripples
+    - motor_6_learned_open_ripples
+  motor_close_ripple_ids:
+    - motor_1_learned_close_ripples
+    - motor_2_learned_close_ripples
+    - motor_3_learned_close_ripples
+    - motor_4_learned_close_ripples
+    - motor_5_learned_close_ripples
+    - motor_6_learned_close_ripples
+  motor_open_factor_ids:
+    - motor_1_learned_open_factor
+    - motor_2_learned_open_factor
+    - motor_3_learned_open_factor
+    - motor_4_learned_open_factor
+    - motor_5_learned_open_factor
+    - motor_6_learned_open_factor
+  motor_close_factor_ids:
+    - motor_1_learned_close_factor
+    - motor_2_learned_close_factor
+    - motor_3_learned_close_factor
+    - motor_4_learned_close_factor
+    - motor_5_learned_close_factor
+    - motor_6_learned_close_factor
+  probe_temp_ids:
+    - probe_temp_1
+    - probe_temp_2
+    - probe_temp_3
+    - probe_temp_4
+    - probe_temp_5
+    - probe_temp_6
+    - probe_temp_7
+    - probe_temp_8
+  firmware_version_id: firmware_version_text
+  ip_address_id: ip_address_text
+  connected_ssid_id: connected_ssid_text
+  mac_address_id: mac_address_text
+  zone_state_ids:
+    - zone_1_state
+    - zone_2_state
+    - zone_3_state
+    - zone_4_state
+    - zone_5_state
+    - zone_6_state
+  motor_fault_ids:
+    - motor_1_last_fault
+    - motor_2_last_fault
+    - motor_3_last_fault
+    - motor_4_last_fault
+    - motor_5_last_fault
+    - motor_6_last_fault
+  dashboard_js: web/dashboard.js

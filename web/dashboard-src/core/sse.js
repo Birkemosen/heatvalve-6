@@ -61,7 +61,7 @@ function scheduleReconnect() {
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connect();
-  }, 2500);
+  }, 1000);
 }
 
 export function connect() {

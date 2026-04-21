@@ -226,6 +226,14 @@ void Hv6ZoneController::set_zone_setpoint(uint8_t zone, float setpoint_c) {
     snapshots_[zone].setpoint_c = setpoint_c;
     xSemaphoreGive(snapshot_mutex_);
   }
+
+  if (config_store_) {
+    auto zone_cfg = config_store_->get_zone_config(zone);
+    if (std::fabs(zone_cfg.setpoint_c - setpoint_c) > 0.01f) {
+      zone_cfg.setpoint_c = setpoint_c;
+      config_store_->update_zone(zone, zone_cfg);
+    }
+  }
 }
 
 bool Hv6ZoneController::apply_setpoint_adjustment(uint8_t zone, float offset_c) {

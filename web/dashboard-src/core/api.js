@@ -25,8 +25,14 @@ export function postSet(body) {
 
   return fetch(BASE + '/set', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: (() => {
+      const params = new URLSearchParams();
+      for (const [k, v] of Object.entries(body)) {
+        if (v !== undefined && v !== null) params.append(k, v);
+      }
+      return params.toString();
+    })()
   }).finally(() => {
     endPendingWrite();
   });

@@ -94,6 +94,7 @@ packages:
   zone_sensors: !include packages/zones/sensors.yaml
   climate:      !include packages/zones/climate.yaml
   ui:           !include packages/zones/ui.yaml
+  dashboard:    !include packages/zones/hv6_dashboard.yaml
 
 # =============================================================================
 # External Components — Custom hardware drivers
@@ -106,6 +107,7 @@ external_components:
       - hv6_valve_controller
       - hv6_zone_controller
       - hv6_config_store
+      - hv6_dashboard  
       # - hv6_web_api  # DISABLED: custom dashboard causes timeout issues
 
 # =============================================================================
@@ -331,4 +333,3 @@ hv6_zone_controller:
 #   valve_controller_id: hv6_valves
 #   zone_controller_id: hv6_zones
 #   dashboard_js: "web/dashboard.js"
-#   dashboard_css: "web/dashboard.css"

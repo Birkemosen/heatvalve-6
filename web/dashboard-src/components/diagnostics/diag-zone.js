@@ -348,7 +348,7 @@ export default component({
       const badgeEl = el.querySelector('[data-preheat-badge]');
       const dotEl = badgeEl.querySelector('.card-title-preheat-dot');
       const textEl = badgeEl.querySelector('span:last-child');
-      const state = (subscribe(gkey.simplePreheatEnabled) || 'off').toString().toLowerCase();
+      const state = (es(gkey.simplePreheatEnabled) || 'off').toString().toLowerCase();
       const isOn = state === 'on';
       
       badgeEl.classList.toggle('on', isOn);
