@@ -7,6 +7,7 @@ import './app/header.js';
 import './components/overview/status-card.js';
 import './components/overview/connectivity-card.js';
 import './components/overview/graph-widgets.js';
+import './components/overview/zone-state-timeline.js';
 import './components/zone/zone-grid.js';
 import './components/zone/zone-card.js';
 import './components/zone/zone-detail.js';

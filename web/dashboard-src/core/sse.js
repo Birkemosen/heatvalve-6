@@ -2,9 +2,11 @@
 
 import { startMock } from './mock.js';
 import { setEntity, setLive, sampleHistory, addActivity, setI2cResult, shouldSuppressStateUpdate } from './store.js';
+import { fetchHistory } from './api.js';
 
 let reconnectTimer = null;
 let pollAbortController = null;
+let historyRefreshTimer = null;
 
 async function fetchStateOnce() {
   if (pollAbortController) {
@@ -77,6 +79,11 @@ export function connect() {
     .then((message) => {
       setLive(true);
       onMessage(message);
+      // Fetch history on initial connection and then every 5 minutes.
+      fetchHistory();
+      if (!historyRefreshTimer) {
+        historyRefreshTimer = setInterval(fetchHistory, 5 * 60 * 1000);
+      }
       scheduleReconnect();
     })
     .catch(() => {

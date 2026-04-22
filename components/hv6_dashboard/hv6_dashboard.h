@@ -70,6 +70,21 @@ struct DashboardAction {
   uint8_t zi;
 };
 
+// -----------------------------------------------------------------------
+// Zone-state history ring buffer
+// Samples every HISTORY_INTERVAL_MS, keeps HISTORY_SLOTS entries (24 h).
+// Each entry: uptime_s + one uint8_t per zone (ZoneDisplayState, 0xFF=unknown).
+// Total RAM: HISTORY_SLOTS * (4 + NUM_ZONES) bytes = 288 * 10 = 2880 bytes.
+// -----------------------------------------------------------------------
+static constexpr uint16_t HISTORY_SLOTS         = 288;       // 24 h at 5 min
+static constexpr uint32_t HISTORY_INTERVAL_MS   = 5 * 60 * 1000UL;
+static constexpr uint8_t  HISTORY_STATE_UNKNOWN = 0xFF;
+
+struct HistoryEntry {
+  uint32_t uptime_s;
+  uint8_t  zone_state[hv6::NUM_ZONES];
+};
+
 class HV6Dashboard : public Component, public AsyncWebHandler {
  public:
   void setup() override;
@@ -126,8 +141,10 @@ class HV6Dashboard : public Component, public AsyncWebHandler {
   void handle_root_(AsyncWebServerRequest *request);
   void handle_js_(AsyncWebServerRequest *request);
   void handle_state_(AsyncWebServerRequest *request);
+  void handle_history_(AsyncWebServerRequest *request);
   void handle_set_(AsyncWebServerRequest *request);
   void dispatch_set_(const DashboardAction &act);
+  void sample_history_();
 
   web_server_base::WebServerBase *base_{nullptr};
   hv6::Hv6ZoneController *zone_controller_{nullptr};
@@ -160,6 +177,13 @@ class HV6Dashboard : public Component, public AsyncWebHandler {
   bool snapshot_ready_{false};
   static constexpr uint32_t SNAPSHOT_INTERVAL_MS = 1000;
   void update_snapshot_();
+
+  // History ring buffer (protected by history_lock_)
+  SemaphoreHandle_t history_lock_{nullptr};
+  HistoryEntry history_ring_[HISTORY_SLOTS]{};
+  uint16_t history_head_{0};
+  uint16_t history_count_{0};
+  uint32_t history_last_sample_ms_{0};
 };
 
 }  // namespace hv6_dashboard

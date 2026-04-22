@@ -1,6 +1,6 @@
 // core/api.js
 
-import { beginPendingWrite, endPendingWrite, setEntity, setI2cResult, setLive, addActivity, setDashboardValue } from './store.js';
+import { beginPendingWrite, endPendingWrite, setEntity, setI2cResult, setLive, addActivity, setDashboardValue, setZoneStateHistory } from './store.js';
 import { handleMockPost } from './mock.js';
 import { key, gkey } from '../utils/keys.js';
 
@@ -189,4 +189,12 @@ export function resetMotorLearnedFactors(zone) {
 export function resetMotorAndRelearn(zone) {
   addActivity('Motor ' + zone + ' reset and relearn started', zone);
   return postSet({ key: 'command', value: 'motor_reset_and_relearn', zone });
+}
+
+export function fetchHistory() {
+  if (isMock()) return;
+  fetch(BASE + '/history', { cache: 'no-store' })
+    .then((response) => response.ok ? response.json() : null)
+    .then((data) => { if (data) setZoneStateHistory(data); })
+    .catch(() => { /* history fetch errors are non-fatal */ });
 }

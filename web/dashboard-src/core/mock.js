@@ -1,6 +1,6 @@
 // core/mock.js
 
-import { setEntity, setLive, sampleHistory, setI2cResult, addActivity, setDashboardValue } from './store.js';
+import { setEntity, setLive, sampleHistory, setI2cResult, addActivity, setDashboardValue, setZoneStateHistory, getDashboardValue } from './store.js';
 import { key, gkey } from '../utils/keys.js';
 
 const ZONES = 6;
@@ -81,6 +81,35 @@ function seed() {
   setEntity(gkey.learnedFactorMaxDeviationPct, { value: 12 });
   setEntity(gkey.simplePreheatEnabled, { state: 'on' });
   sampleHistory(true);
+
+  // Generate 24 h of mock zone-state history (5-min intervals = 288 entries).
+  const INTERVAL_S = 300;
+  const NOW_S = (Number(Date.now() / 1000) | 0);
+  const TOTAL = 288;
+  // Zone 5 is disabled in mock; zone 4 always idle; others alternate heating/idle
+  const patterns = [
+    // zone 0: mostly heating with short idle gaps
+    [5,5,5,6,5,5,5,5,6,6,5,5,5,5,5,6,5,5,5,5,5,6,6,5],
+    // zone 1: mostly idle, some heating
+    [6,6,5,5,6,6,6,5,5,6,6,6,5,5,6,6,6,6,5,5,6,6,5,5],
+    // zone 2: heating then idle then heating
+    [5,5,5,5,5,5,6,6,6,6,6,6,5,5,5,5,6,6,6,6,5,5,5,5],
+    // zone 3: always idle
+    [6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6],
+    // zone 4: off (disabled)
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    // zone 5: mix of heating and idle
+    [5,6,5,5,5,6,6,5,5,6,5,5,5,6,5,5,6,6,5,5,5,5,6,6],
+  ];
+  const mockEntries = [];
+  for (let i = 0; i < TOTAL; i++) {
+    const age_s = (TOTAL - 1 - i) * INTERVAL_S;
+    const t = NOW_S - age_s;
+    const hourIndex = Math.floor(i / 12) % 24;   // 12 entries per hour
+    const states = patterns.map((p) => p[hourIndex % p.length]);
+    mockEntries.push([t, ...states]);
+  }
+  setZoneStateHistory({ interval_s: INTERVAL_S, uptime_s: NOW_S, count: TOTAL, entries: mockEntries });
 }
 
 function simulate() {
@@ -135,6 +164,10 @@ function simulate() {
   setEntity(key.probeTemp(7), { value: Number((ret - 0.4).toFixed(1)) });
   setEntity(key.probeTemp(8), { value: Number((flow + 0.2).toFixed(1)) });
   sampleHistory(true);
+
+  // Keep history uptime_s current so the timeline x-axis tracks wall time.
+  const hist = getDashboardValue('zoneStateHistory');
+  if (hist) hist.uptime_s = (Number(Date.now() / 1000) | 0);
 }
 
 export function startMock() {

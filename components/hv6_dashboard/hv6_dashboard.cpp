@@ -241,6 +241,7 @@ void HV6Dashboard::setup() {
 
   this->action_lock_ = xSemaphoreCreateMutex();
   this->snapshot_lock_ = xSemaphoreCreateMutex();
+  this->history_lock_ = xSemaphoreCreateMutex();
 
   // Prime snapshot so the first GET doesn't return 503.
   this->update_snapshot_();
@@ -273,13 +274,19 @@ void HV6Dashboard::loop() {
     snapshot_last_ms_ = now;
     update_snapshot_();
   }
+
+  // Sample zone-state history every 5 minutes.
+  if ((int32_t)(now - history_last_sample_ms_) >= (int32_t)HISTORY_INTERVAL_MS) {
+    history_last_sample_ms_ = now;
+    sample_history_();
+  }
 }
 
 bool HV6Dashboard::canHandle(AsyncWebServerRequest *request) const {
   char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
   auto url = request->url_to(url_buf);
   return url == "/dashboard" || url == "/dashboard/" || url == "/dashboard.js" || url == "/dashboard/state" ||
-         url == "/dashboard/set";
+         url == "/dashboard/set" || url == "/dashboard/history";
 }
 
 void HV6Dashboard::handleRequest(AsyncWebServerRequest *request) {
@@ -296,6 +303,10 @@ void HV6Dashboard::handleRequest(AsyncWebServerRequest *request) {
   }
   if (url == "/dashboard/state") {
     this->handle_state_(request);
+    return;
+  }
+  if (url == "/dashboard/history") {
+    this->handle_history_(request);
     return;
   }
   if (url == "/dashboard/set") {
@@ -870,6 +881,142 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
       this->valve_controller_->reload_motor_config();
     }
   }
+}
+
+// =============================================================================
+// Zone-state history
+// =============================================================================
+
+// Map a ZoneDisplayState string (from snapshot) to a compact uint8_t code.
+// Returns HISTORY_STATE_UNKNOWN (0xFF) for empty / unrecognised strings.
+static uint8_t parse_zone_display_state_code(const char *s) {
+  if (!s || !s[0]) return HISTORY_STATE_UNKNOWN;
+  if (strcasecmp(s, "OFF") == 0)                  return 0;
+  if (strcasecmp(s, "MANUAL") == 0)               return 1;
+  if (strcasecmp(s, "CALIBRATING") == 0)          return 2;
+  if (strcasecmp(s, "WAITING_CALIBRATION") == 0)  return 3;
+  if (strcasecmp(s, "WAITING_ROOM_TEMP") == 0)    return 4;
+  if (strcasecmp(s, "HEATING") == 0)              return 5;
+  if (strcasecmp(s, "IDLE") == 0)                 return 6;
+  if (strcasecmp(s, "OVERHEATED") == 0)           return 7;
+  return HISTORY_STATE_UNKNOWN;
+}
+
+void HV6Dashboard::sample_history_() {
+  if (history_lock_ == nullptr) return;
+
+  // Read current zone states from the live snapshot (brief lock).
+  HistoryEntry entry{};
+  entry.uptime_s = millis() / 1000UL;
+  for (uint8_t i = 0; i < hv6::NUM_ZONES; i++)
+    entry.zone_state[i] = HISTORY_STATE_UNKNOWN;
+
+  if (snapshot_lock_ != nullptr && snapshot_ready_ &&
+      xSemaphoreTake(snapshot_lock_, pdMS_TO_TICKS(10)) == pdTRUE) {
+    for (uint8_t i = 0; i < hv6::NUM_ZONES; i++)
+      entry.zone_state[i] = parse_zone_display_state_code(snapshot_.zone_state[i]);
+    xSemaphoreGive(snapshot_lock_);
+  }
+
+  if (xSemaphoreTake(history_lock_, pdMS_TO_TICKS(10)) == pdTRUE) {
+    history_ring_[history_head_] = entry;
+    history_head_ = static_cast<uint16_t>((history_head_ + 1) % HISTORY_SLOTS);
+    if (history_count_ < HISTORY_SLOTS) history_count_++;
+    xSemaphoreGive(history_lock_);
+  }
+}
+
+void HV6Dashboard::handle_history_(AsyncWebServerRequest *request) {
+  // Copy history data under lock.
+  auto *ring_copy = static_cast<HistoryEntry *>(malloc(sizeof(HistoryEntry) * HISTORY_SLOTS));
+  if (!ring_copy) {
+    httpd_req_t *req_err = *request;
+    httpd_resp_set_status(req_err, "503 Service Unavailable");
+    httpd_resp_set_type(req_err, "text/plain");
+    httpd_resp_send(req_err, "Out of memory", HTTPD_RESP_USE_STRLEN);
+    return;
+  }
+
+  uint16_t count = 0;
+  uint16_t head  = 0;
+  if (history_lock_ != nullptr &&
+      xSemaphoreTake(history_lock_, pdMS_TO_TICKS(50)) == pdTRUE) {
+    memcpy(ring_copy, history_ring_, sizeof(HistoryEntry) * HISTORY_SLOTS);
+    count = history_count_;
+    head  = history_head_;
+    xSemaphoreGive(history_lock_);
+  }
+
+  httpd_req_t *req = *request;
+  httpd_resp_set_status(req, "200 OK");
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
+  constexpr size_t BUF_SIZE = 2048;
+  char *buf = static_cast<char *>(malloc(BUF_SIZE));
+  if (!buf) {
+    free(ring_copy);
+    httpd_resp_set_status(req, "503 Service Unavailable");
+    httpd_resp_set_type(req, "text/plain");
+    httpd_resp_send(req, "Out of memory", HTTPD_RESP_USE_STRLEN);
+    return;
+  }
+  size_t offset = 0;
+
+  auto flush = [&]() -> bool {
+    if (offset == 0) return true;
+    bool ok = (httpd_resp_send_chunk(req, buf, offset) == ESP_OK);
+    offset = 0;
+    return ok;
+  };
+
+  const uint32_t current_uptime = millis() / 1000UL;
+  appendf(buf, BUF_SIZE, offset,
+      "{\"interval_s\":%lu,\"uptime_s\":%lu,\"count\":%u,\"entries\":[",
+      static_cast<unsigned long>(HISTORY_INTERVAL_MS / 1000UL),
+      static_cast<unsigned long>(current_uptime),
+      static_cast<unsigned>(count));
+
+  // Iterate from oldest to newest entry.
+  // oldest_index = (head - count + HISTORY_SLOTS) % HISTORY_SLOTS when buffer is full,
+  // or simply 0..count-1 when not yet full (head == count in that case).
+  const uint16_t oldest = static_cast<uint16_t>(count < HISTORY_SLOTS
+      ? 0
+      : head);
+
+  bool first_entry = true;
+  for (uint16_t idx = 0; idx < count; idx++) {
+    const uint16_t slot = static_cast<uint16_t>((oldest + idx) % HISTORY_SLOTS);
+    const HistoryEntry &e = ring_copy[slot];
+
+    // Flush before entries that might overflow the 2 KB buffer.
+    // Each entry is at most ~35 bytes: "[4294967295,7,7,7,7,7,7]," → 28 chars.
+    if (offset + 40 >= BUF_SIZE) {
+      if (!flush()) { free(buf); free(ring_copy); return; }
+    }
+
+    if (!first_entry) {
+      buf[offset++] = ',';
+    }
+    first_entry = false;
+
+    offset += static_cast<size_t>(snprintf(buf + offset, BUF_SIZE - offset,
+        "[%lu,%u,%u,%u,%u,%u,%u]",
+        static_cast<unsigned long>(e.uptime_s),
+        static_cast<unsigned>(e.zone_state[0]),
+        static_cast<unsigned>(e.zone_state[1]),
+        static_cast<unsigned>(e.zone_state[2]),
+        static_cast<unsigned>(e.zone_state[3]),
+        static_cast<unsigned>(e.zone_state[4]),
+        static_cast<unsigned>(e.zone_state[5])));
+  }
+
+  appendf(buf, BUF_SIZE, offset, "]}");
+  flush();
+  httpd_resp_send_chunk(req, nullptr, 0);
+  free(buf);
+  free(ring_copy);
 }
 
 }  // namespace hv6_dashboard

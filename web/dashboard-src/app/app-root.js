@@ -188,6 +188,7 @@ const template = (ctx) => `
           <div class="overview-connectivity"></div>
           <div class="overview-graphs"></div>
         </div>
+        <div class="overview-timeline" style="margin-top:14px"></div>
       </section>
       <section class="sec" data-section="zones">
         <div class="zone-selector"></div>
@@ -229,6 +230,7 @@ component({
     el.querySelector('.overview-status').appendChild(mountComponent('status-card'));
     el.querySelector('.overview-connectivity').appendChild(mountComponent('connectivity-card'));
     el.querySelector('.overview-graphs').appendChild(mountComponent('graph-widgets'));
+    el.querySelector('.overview-timeline').appendChild(mountComponent('zone-state-timeline'));
     el.querySelector('.zone-selector').appendChild(mountComponent('zone-grid'));
     el.querySelector('.zone-detail-slot').appendChild(mountComponent('zone-detail', { zone: getDashboardValue('selectedZone') }));
     el.querySelector('.zone-sensor-slot').appendChild(mountComponent('zone-sensor-card'));

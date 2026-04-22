@@ -23,7 +23,8 @@ const D = {
   historyDemand: [],
   lastHistoryAt: 0,
   zoneNames,
-  manualMode: false
+  manualMode: false,
+  zoneStateHistory: null,   // { interval_s, uptime_s, count, entries: [[uptime_s,z0..z5],...] }
 };
 
 function createZoneLog() {
@@ -270,4 +271,9 @@ function timeStamp() {
   return String(value.getHours()).padStart(2, '0') + ':' +
     String(value.getMinutes()).padStart(2, '0') + ':' +
     String(value.getSeconds()).padStart(2, '0');
+}
+
+export function setZoneStateHistory(data) {
+  D.zoneStateHistory = data || null;
+  notify(dashboardKey('zoneStateHistory'));
 }
