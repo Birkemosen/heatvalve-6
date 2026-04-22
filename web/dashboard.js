@@ -954,6 +954,8 @@ I2C_SCAN: ----- end -----`),k("I2C scan complete");return}if(n==="calibrate_all_
   width: 100%;
   border-radius: 18px;
   overflow: hidden;
+  border: 1px solid var(--panel-border);
+  box-shadow: var(--panel-shadow);
 }
 
 .flow-svg {

@@ -12,6 +12,8 @@ const css = `
   width: 100%;
   border-radius: 18px;
   overflow: hidden;
+  border: 1px solid var(--panel-border);
+  box-shadow: var(--panel-shadow);
 }
 
 .flow-svg {
