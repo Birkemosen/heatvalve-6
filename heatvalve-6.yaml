@@ -40,6 +40,7 @@ substitutions:
 
 esphome:
   name: ${device_name}
+  name_add_mac_suffix: true
   friendly_name: ${friendly_name}
   comment: "Underfloor heating 6-zone valve controller"
   project:
@@ -59,6 +60,14 @@ esphome:
           if (id(probe_addr_6) != 0) id(probe_temp_6)->set_address(id(probe_addr_6));
           if (id(probe_addr_7) != 0) id(probe_temp_7)->set_address(id(probe_addr_7));
           if (id(probe_addr_8) != 0) id(probe_temp_8)->set_address(id(probe_addr_8));
+
+# Allow users to import this config into their ESPHome dashboard
+dashboard_import:
+  package_import_url: github://birkemosen/heatvalve-6/heatvalve-6.yaml@main
+  import_full_config: false
+
+# WiFi provisioning over USB (Improv protocol) — works with ESPHome Web Installer
+improv_serial:
 
 # =============================================================================
 # WIFI Manual IP

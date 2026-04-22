@@ -1,18 +1,19 @@
 CONFIG ?= heatvalve-6.yaml
 ESPHOME ?= $(if $(wildcard .venv313/bin/esphome),.venv313/bin/esphome,$(if $(wildcard .venv/bin/esphome),.venv/bin/esphome,esphome))
 PIO ?= $(if $(wildcard .venv313/bin/platformio),.venv313/bin/platformio,$(if $(wildcard .venv/bin/platformio),.venv/bin/platformio,platformio))
+PYTHON ?= $(if $(wildcard .venv313/bin/python3),.venv313/bin/python3,$(if $(wildcard .venv/bin/python3),.venv/bin/python3,python3))
 BUILD_NAME ?= heatvalve-6
 BUILD_ROOT ?= .esphome/build/$(BUILD_NAME)
 PIO_BUILD_DIR ?= $(BUILD_ROOT)/.pio/build/$(BUILD_NAME)
 FIRMWARE_BIN ?= $(PIO_BUILD_DIR)/firmware.bin
-HOST ?= heatvalve-6.local
+HOST ?=
 PORT ?=
 AUTO_PORT := $(strip $(shell ls /dev/cu.usbmodem* /dev/cu.usbserial* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbserial* 2>/dev/null | head -n 1))
 SERIAL_PORT := $(if $(PORT),$(PORT),$(AUTO_PORT))
 DASHBOARD_SRC_DIR ?= web/dashboard-src
 DASHBOARD_OUT_FILE ?= web/dashboard.js
 
-.PHONY: help check config build build-patch build-minor build-major build-verify deploy ota logs monitor erase erase-nvs clean dashboard dashboard-tooling dashboard-build dashboard-watch
+.PHONY: help check config build build-patch build-minor build-major build-verify deploy ota logs discover monitor erase erase-nvs clean dashboard dashboard-tooling dashboard-build dashboard-watch
 
 help:
 	@echo "HeatValve-6 ESPHome tasks"
@@ -22,9 +23,10 @@ help:
 	@echo "  make build-minor   Bump minor version + compile firmware"
 	@echo "  make build-major   Bump major version + compile firmware"
 	@echo "  make build-verify  Alias for make build"
-	@echo "  make deploy        Build + upload (USB if PORT is set, otherwise OTA)"
-	@echo "  make ota           Build + upload over network to HOST"
-	@echo "  make logs          Stream logs from HOST"
+	@echo "  make deploy        Build + upload (USB, OTA, or auto-discover)"
+	@echo "  make ota           Build + upload over network (auto-discover if HOST unset)"
+	@echo "  make logs          Stream logs (auto-discover if HOST unset)"
+	@echo "  make discover      Scan network and list found devices"
 	@echo "  make monitor       Open serial monitor on PORT"
 	@echo "  make erase         Erase flash on PORT"
 	@echo "  make erase-nvs     Erase NVS partition only (clears calibration data)"
@@ -36,7 +38,8 @@ help:
 	@echo "  make deploy PORT=/dev/cu.usbmodemXXXX"
 	@echo "  make monitor PORT=/dev/cu.usbmodemXXXX"
 	@echo "  make erase PORT=/dev/cu.usbmodemXXXX"
-	@echo "  make ota HOST=192.168.1.50"
+	@echo "  make ota HOST=heatvalve-6-a1b2c3.local"
+	@echo "  make discover"
 
 check:
 	@command -v $(ESPHOME) >/dev/null 2>&1 || { \
@@ -80,16 +83,60 @@ deploy: check
 	elif [ -n "$(AUTO_PORT)" ]; then \
 		echo "Auto-detected serial port: $(AUTO_PORT)"; \
 		$(PIO) run -d $(BUILD_ROOT) -t upload --upload-port $(AUTO_PORT); \
-	else \
+	elif [ -n "$(HOST)" ]; then \
 		$(ESPHOME) upload $(CONFIG) --file $(FIRMWARE_BIN) --device $(HOST); \
+	else \
+		echo "No serial port detected. Scanning for HeatValve-6 devices (3s)..."; \
+		hosts=$$($(PYTHON) discover_devices.py 2>/dev/null); \
+		if [ -z "$$hosts" ]; then echo "No devices found. Use PORT= or HOST=heatvalve-6-XXXXXX.local"; exit 1; fi; \
+		count=$$(echo "$$hosts" | wc -l | tr -d ' '); \
+		echo "Found devices:"; \
+		i=1; for h in $$hosts; do printf "  %d) %s\n" $$i $$h; i=$$((i+1)); done; \
+		printf "Select device [1-$$count]: "; \
+		read choice < /dev/tty; \
+		selected=$$(echo "$$hosts" | sed -n "$${choice}p"); \
+		[ -z "$$selected" ] && { echo "Invalid selection"; exit 1; }; \
+		$(ESPHOME) upload $(CONFIG) --file $(FIRMWARE_BIN) --device $$selected; \
 	fi
 
 ota: check
 	$(MAKE) build
-	$(ESPHOME) upload $(CONFIG) --file $(FIRMWARE_BIN) --device $(HOST)
+	@if [ -z "$(HOST)" ]; then \
+		echo "Scanning for HeatValve-6 devices (3s)..."; \
+		hosts=$$($(PYTHON) discover_devices.py 2>/dev/null); \
+		if [ -z "$$hosts" ]; then echo "No devices found. Use: make ota HOST=heatvalve-6-XXXXXX.local"; exit 1; fi; \
+		count=$$(echo "$$hosts" | wc -l | tr -d ' '); \
+		echo "Found devices:"; \
+		i=1; for h in $$hosts; do printf "  %d) %s\n" $$i $$h; i=$$((i+1)); done; \
+		printf "Select device [1-$$count]: "; \
+		read choice < /dev/tty; \
+		selected=$$(echo "$$hosts" | sed -n "$${choice}p"); \
+		[ -z "$$selected" ] && { echo "Invalid selection"; exit 1; }; \
+		$(ESPHOME) upload $(CONFIG) --file $(FIRMWARE_BIN) --device $$selected; \
+	else \
+		$(ESPHOME) upload $(CONFIG) --file $(FIRMWARE_BIN) --device $(HOST); \
+	fi
 
 logs: check
-	$(ESPHOME) logs $(CONFIG) --device $(HOST)
+	@if [ -z "$(HOST)" ]; then \
+		echo "Scanning for HeatValve-6 devices (3s)..."; \
+		hosts=$$($(PYTHON) discover_devices.py 2>/dev/null); \
+		if [ -z "$$hosts" ]; then echo "No devices found. Use: make logs HOST=heatvalve-6-XXXXXX.local"; exit 1; fi; \
+		count=$$(echo "$$hosts" | wc -l | tr -d ' '); \
+		echo "Found devices:"; \
+		i=1; for h in $$hosts; do printf "  %d) %s\n" $$i $$h; i=$$((i+1)); done; \
+		printf "Select device [1-$$count]: "; \
+		read choice < /dev/tty; \
+		selected=$$(echo "$$hosts" | sed -n "$${choice}p"); \
+		[ -z "$$selected" ] && { echo "Invalid selection"; exit 1; }; \
+		$(ESPHOME) logs $(CONFIG) --device $$selected; \
+	else \
+		$(ESPHOME) logs $(CONFIG) --device $(HOST); \
+	fi
+
+discover: check
+	@echo "Scanning for HeatValve-6 devices (5s)..."
+	@$(PYTHON) discover_devices.py 2>/dev/null || echo "(no devices found)"
 
 monitor: check
 	@if [ -z "$(SERIAL_PORT)" ]; then \
