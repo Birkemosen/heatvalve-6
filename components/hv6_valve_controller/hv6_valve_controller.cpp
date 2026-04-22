@@ -914,8 +914,13 @@ void Hv6ValveController::execute_move_(uint8_t zone, float target_pct) {
 
   uint32_t timeout_ms;
   if (drive_to_endstop) {
-    // Safety timeout: max_runtime_s (endstop detection should fire well before this)
-    timeout_ms = motor_cfg_.max_runtime_s * 1000;
+    // Drive-to-endstop always uses the full per-profile runtime limit as the
+    // safety timeout. The motor could be anywhere (position tracking may have
+    // drifted, or the valve was manually moved) so we must allow a full stroke.
+    // Endstop detection will fire well before this in the normal case.
+    // Uses effective_runtime_limit_s_() (per-profile: 40s HmIP, 45s Generic)
+    // rather than the legacy max_runtime_s which does not respect the profile.
+    timeout_ms = effective_runtime_limit_s_(zone) * 1000;
   } else if (target_ripples > 0) {
     timeout_ms = static_cast<uint32_t>(travel_time_ms * 1.5f);
   } else {
@@ -939,9 +944,9 @@ void Hv6ValveController::execute_move_(uint8_t zone, float target_pct) {
   }
 
   if (drive_to_endstop) {
-    ESP_LOGI(TAG, "Motor %d drive-to-endstop %s (safety timeout %" PRIu32 "ms, ripple_lim=%" PRIu32 ")",
+    ESP_LOGI(TAG, "Motor %d drive-to-endstop %s (travel_est=%.0fms safety timeout %" PRIu32 "ms, ripple_lim=%" PRIu32 ")",
              zone + 1, dir == MotorDirection::OPEN ? "OPEN" : "CLOSE",
-             timeout_ms, open_ripple_limit);
+             travel_time_ms, timeout_ms, open_ripple_limit);
   }
 
   while (motor_turning_) {
