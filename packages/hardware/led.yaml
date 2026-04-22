@@ -13,11 +13,6 @@
 #   PURPLE (solid)    = Calibration in progress
 #   WHITE (flash)     = Command received
 
-status_led:
-  pin:
-    number: GPIO46
-    inverted: true  # Active-low, red LED left of USB-C connector
-
 globals:
   - id: led_status_code
     type: int
@@ -30,8 +25,8 @@ light:
     id: rgb_status_led
     internal: true
     chipset: WS2812
-    rgb_order: GRB
-    pin: ${pin_status_led}
+    rgb_order: RGB
+    pin: ${pin_rgb_status_led}
     num_leds: 1
     restore_mode: ALWAYS_OFF
     default_transition_length: 200ms
@@ -152,10 +147,11 @@ script:
     then:
       - light.turn_on:
           id: rgb_status_led
-          brightness: 100%
+          brightness: 2%
           red: 100%
           green: 100%
           blue: 100%
+          transition_length: 0ms
       - delay: 100ms
       - script.execute: led_update_status
 

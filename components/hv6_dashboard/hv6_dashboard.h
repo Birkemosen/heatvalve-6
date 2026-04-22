@@ -1,5 +1,6 @@
 #pragma once
 
+#include "esphome/components/hv6_config_store/hv6_config_store.h"
 #include "esphome/components/hv6_zone_controller/hv6_zone_controller.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
@@ -18,6 +19,45 @@ extern const size_t HV6_DASHBOARD_JS_SIZE;
 
 namespace esphome {
 namespace hv6_dashboard {
+
+static constexpr size_t SNAPSHOT_TEXT_LEN = 64;
+
+struct DashboardSnapshot {
+  // --- scalar sensors ---
+  uint32_t uptime_s;
+  float    wifi_dbm;
+  float    manifold_flow_c;
+  float    manifold_return_c;
+  float    zone_temp_c[6];
+  float    zone_valve_pct[6];
+  float    zone_preheat_c[6];
+  float    motor_open_ripple[6];
+  float    motor_close_ripple[6];
+  float    motor_open_factor[6];
+  float    motor_close_factor[6];
+  float    probe_temp_c[8];
+
+  // --- text sensors: fixed-size char arrays, null-terminated, pre-sanitized ---
+  char firmware_version[SNAPSHOT_TEXT_LEN];
+  char ip_address[SNAPSHOT_TEXT_LEN];
+  char connected_ssid[SNAPSHOT_TEXT_LEN];
+  char mac_address[SNAPSHOT_TEXT_LEN];
+  char zone_state[6][SNAPSHOT_TEXT_LEN];
+  char motor_fault[6][SNAPSHOT_TEXT_LEN];
+
+  // --- live runtime flags ---
+  bool drivers_enabled;
+
+  // --- full config copies (POD structs, safe to memcpy) ---
+  hv6::ZoneConfig   zones[hv6::NUM_ZONES];
+  hv6::TempSource   zone_temp_source[hv6::NUM_ZONES];
+  char              zone_mqtt_dev[hv6::NUM_ZONES][hv6::MQTT_DEVICE_NAME_LEN];
+  char              zone_ble_mac[hv6::NUM_ZONES][hv6::BLE_MAC_LEN];
+  hv6::ProbeConfig  probes;
+  hv6::MotorConfig  motor;
+  hv6::ManifoldType manifold_type;
+  bool              simple_preheat_enabled;
+};
 
 struct DashboardAction {
   std::string key;
@@ -113,6 +153,13 @@ class HV6Dashboard : public Component, public AsyncWebHandler {
 
   SemaphoreHandle_t action_lock_{nullptr};
   std::vector<DashboardAction> action_queue_;
+
+  SemaphoreHandle_t snapshot_lock_{nullptr};
+  DashboardSnapshot snapshot_{};
+  uint32_t snapshot_last_ms_{0};
+  bool snapshot_ready_{false};
+  static constexpr uint32_t SNAPSHOT_INTERVAL_MS = 1000;
+  void update_snapshot_();
 };
 
 }  // namespace hv6_dashboard

@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdarg>
+#include <esp_http_server.h>
 
 namespace esphome {
 namespace hv6_dashboard {
@@ -59,14 +60,6 @@ void format_float_token(char *buffer, size_t capacity, float value, int decimals
   snprintf(buffer, capacity, "%ld.%s", whole, frac_buf);
 }
 
-void format_sensor_token(char *buffer, size_t capacity, esphome::sensor::Sensor *sensor, int decimals = 1) {
-  if (sensor == nullptr || !sensor->has_state()) {
-    snprintf(buffer, capacity, "null");
-    return;
-  }
-  format_float_token(buffer, capacity, sensor->state, decimals);
-}
-
 void sanitize_text(const std::string &src, char *buffer, size_t capacity) {
   if (capacity == 0)
     return;
@@ -77,14 +70,6 @@ void sanitize_text(const std::string &src, char *buffer, size_t capacity) {
     buffer[out++] = (c == '"' || c == '\\') ? '_' : c;
   }
   buffer[out] = '\0';
-}
-
-void format_text_state(char *buffer, size_t capacity, esphome::text_sensor::TextSensor *text) {
-  if (text == nullptr || !text->has_state()) {
-    buffer[0] = '\0';
-    return;
-  }
-  sanitize_text(text->state, buffer, capacity);
 }
 
 // --- minimal JSON field extractors for POST body ---
@@ -185,6 +170,69 @@ static const char DASHBOARD_HTML[] =
     "<script src=\"/dashboard.js\"></script>"
     "</body></html>";
 
+void HV6Dashboard::update_snapshot_() {
+  DashboardSnapshot s{};
+
+  s.uptime_s = millis() / 1000UL;
+
+  auto snap_float = [](sensor::Sensor *sns) -> float {
+    return (sns && sns->has_state()) ? sns->state : NAN;
+  };
+
+  s.wifi_dbm          = snap_float(this->wifi_signal_sensor_);
+  s.manifold_flow_c   = snap_float(this->manifold_flow_sensor_);
+  s.manifold_return_c = snap_float(this->manifold_return_sensor_);
+  for (uint8_t i = 0; i < 6; i++) {
+    s.zone_temp_c[i]        = snap_float(this->zone_temp_sensors_[i]);
+    s.zone_valve_pct[i]     = snap_float(this->zone_valve_sensors_[i]);
+    s.zone_preheat_c[i]     = snap_float(this->zone_preheat_sensors_[i]);
+    s.motor_open_ripple[i]  = snap_float(this->motor_open_ripple_sensors_[i]);
+    s.motor_close_ripple[i] = snap_float(this->motor_close_ripple_sensors_[i]);
+    s.motor_open_factor[i]  = snap_float(this->motor_open_factor_sensors_[i]);
+    s.motor_close_factor[i] = snap_float(this->motor_close_factor_sensors_[i]);
+  }
+  for (uint8_t i = 0; i < 8; i++)
+    s.probe_temp_c[i] = snap_float(this->probe_temp_sensors_[i]);
+
+  auto snap_text = [](text_sensor::TextSensor *ts, char *out, size_t len) {
+    if (ts && ts->has_state()) {
+      sanitize_text(ts->state, out, len);
+    } else {
+      out[0] = '\0';
+    }
+  };
+  snap_text(this->firmware_version_text_, s.firmware_version, sizeof(s.firmware_version));
+  snap_text(this->ip_address_text_,       s.ip_address,       sizeof(s.ip_address));
+  snap_text(this->connected_ssid_text_,   s.connected_ssid,   sizeof(s.connected_ssid));
+  snap_text(this->mac_address_text_,      s.mac_address,      sizeof(s.mac_address));
+  for (uint8_t i = 0; i < 6; i++) {
+    snap_text(this->zone_state_sensors_[i],  s.zone_state[i],  sizeof(s.zone_state[i]));
+    snap_text(this->motor_fault_sensors_[i], s.motor_fault[i], sizeof(s.motor_fault[i]));
+  }
+
+  s.drivers_enabled = this->valve_controller_ && this->valve_controller_->are_drivers_enabled();
+
+  if (this->config_store_) {
+    s.probes                 = this->config_store_->get_probe_config();
+    s.motor                  = this->config_store_->get_motor_config();
+    s.manifold_type          = this->config_store_->get_manifold_type();
+    s.simple_preheat_enabled = this->config_store_->get_simple_preheat_enabled();
+    for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
+      s.zones[i]            = this->config_store_->get_zone_config(i);
+      s.zone_temp_source[i] = this->config_store_->get_zone_temp_source(i);
+      this->config_store_->get_zone_mqtt_strings(
+          i, s.zone_mqtt_dev[i], sizeof(s.zone_mqtt_dev[i]),
+          s.zone_ble_mac[i],     sizeof(s.zone_ble_mac[i]));
+    }
+  }
+
+  if (xSemaphoreTake(snapshot_lock_, pdMS_TO_TICKS(5)) == pdTRUE) {
+    memcpy(&this->snapshot_, &s, sizeof(s));
+    this->snapshot_ready_ = true;
+    xSemaphoreGive(snapshot_lock_);
+  }
+}
+
 void HV6Dashboard::setup() {
   if (this->base_ == nullptr) {
     ESP_LOGE(TAG, "web_server_base is null; dashboard handler not registered");
@@ -192,6 +240,11 @@ void HV6Dashboard::setup() {
   }
 
   this->action_lock_ = xSemaphoreCreateMutex();
+  this->snapshot_lock_ = xSemaphoreCreateMutex();
+
+  // Prime snapshot so the first GET doesn't return 503.
+  this->update_snapshot_();
+  this->snapshot_last_ms_ = millis();
 
   this->base_->init();
   this->base_->add_handler(this);
@@ -212,6 +265,13 @@ void HV6Dashboard::loop() {
   }
   for (const auto &act : todo) {
     dispatch_set_(act);
+  }
+
+  // Update snapshot at 1 Hz (int32_t cast for millis() rollover safety).
+  const uint32_t now = millis();
+  if ((int32_t)(now - snapshot_last_ms_) >= (int32_t)SNAPSHOT_INTERVAL_MS) {
+    snapshot_last_ms_ = now;
+    update_snapshot_();
   }
 }
 
@@ -261,35 +321,71 @@ void HV6Dashboard::handle_js_(AsyncWebServerRequest *request) {
 }
 
 void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
-  static char payload[10240];
+  // Take a local snapshot copy under a brief lock — no ESPHome API calls from httpd task.
+  auto *snap = static_cast<DashboardSnapshot *>(malloc(sizeof(DashboardSnapshot)));
+  if (!snap) {
+    httpd_req_t *req_err = *request;
+    httpd_resp_set_status(req_err, "503 Service Unavailable");
+    httpd_resp_set_type(req_err, "text/plain");
+    httpd_resp_send(req_err, "Out of memory", HTTPD_RESP_USE_STRLEN);
+    return;
+  }
+  if (snapshot_lock_ == nullptr || !snapshot_ready_ ||
+      xSemaphoreTake(snapshot_lock_, pdMS_TO_TICKS(50)) != pdTRUE) {
+    free(snap);
+    httpd_req_t *req_err = *request;
+    httpd_resp_set_status(req_err, "503 Service Unavailable");
+    httpd_resp_set_type(req_err, "text/plain");
+    httpd_resp_send(req_err, "Snapshot not ready", HTTPD_RESP_USE_STRLEN);
+    return;
+  }
+  memcpy(snap, &this->snapshot_, sizeof(*snap));
+  xSemaphoreGive(snapshot_lock_);
+
+  httpd_req_t *req = *request;
+  httpd_resp_set_status(req, "200 OK");
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
+  // Heap-allocate a 2 KB chunk buffer; flush to client progressively.
+  constexpr size_t BUF_SIZE = 2048;
+  char *buf = static_cast<char *>(malloc(BUF_SIZE));
+  if (!buf) {
+    free(snap);
+    httpd_resp_set_status(req, "503 Service Unavailable");
+    httpd_resp_set_type(req, "text/plain");
+    httpd_resp_send(req, "Out of memory", HTTPD_RESP_USE_STRLEN);
+    return;
+  }
   size_t offset = 0;
 
-  const uint32_t uptime_s = millis() / 1000UL;
-
-  char wifi_buf[24] = "null";
-  if (this->wifi_signal_sensor_ != nullptr && this->wifi_signal_sensor_->has_state()) {
-    const float wifi_dbm = this->wifi_signal_sensor_->state;
-    if (std::isfinite(wifi_dbm)) {
-      snprintf(wifi_buf, sizeof(wifi_buf), "%ld", static_cast<long>(std::lround(wifi_dbm)));
-    }
-  }
+  auto flush = [&]() -> bool {
+    if (offset == 0) return true;
+    bool ok = (httpd_resp_send_chunk(req, buf, offset) == ESP_OK);
+    offset = 0;
+    return ok;
+  };
 
   char num_buf[24];
-  char text_buf[64];
 
-  appendf(payload, sizeof(payload), offset, "{");
+  appendf(buf, BUF_SIZE, offset, "{");
 
   // --- uptime & wifi ---
-  appendf(payload, sizeof(payload), offset,
+  char wifi_buf[24] = "null";
+  if (std::isfinite(snap->wifi_dbm)) {
+    snprintf(wifi_buf, sizeof(wifi_buf), "%ld", static_cast<long>(std::lround(snap->wifi_dbm)));
+  }
+  appendf(buf, BUF_SIZE, offset,
       "\"sensor-uptime\":{\"value\":%lu},"
       "\"sensor-wifi_signal\":{\"value\":%s},",
-      static_cast<unsigned long>(uptime_s), wifi_buf);
+      static_cast<unsigned long>(snap->uptime_s), wifi_buf);
 
   // --- manifold temps ---
-  format_sensor_token(num_buf, sizeof(num_buf), this->manifold_flow_sensor_);
-  appendf(payload, sizeof(payload), offset, "\"sensor-manifold_flow_temperature\":{\"value\":%s},", num_buf);
-  format_sensor_token(num_buf, sizeof(num_buf), this->manifold_return_sensor_);
-  appendf(payload, sizeof(payload), offset, "\"sensor-manifold_return_temperature\":{\"value\":%s},", num_buf);
+  format_float_token(num_buf, sizeof(num_buf), snap->manifold_flow_c);
+  appendf(buf, BUF_SIZE, offset, "\"sensor-manifold_flow_temperature\":{\"value\":%s},", num_buf);
+  format_float_token(num_buf, sizeof(num_buf), snap->manifold_return_c);
+  appendf(buf, BUF_SIZE, offset, "\"sensor-manifold_return_temperature\":{\"value\":%s},", num_buf);
 
   // --- zone temperatures ---
   static const char *const ZONE_TEMP_KEYS[6] = {
@@ -297,8 +393,8 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
     "sensor-zone_4_temperature", "sensor-zone_5_temperature", "sensor-zone_6_temperature",
   };
   for (uint8_t i = 0; i < 6; i++) {
-    format_sensor_token(num_buf, sizeof(num_buf), this->zone_temp_sensors_[i]);
-    appendf(payload, sizeof(payload), offset, "\"%s\":{\"value\":%s},", ZONE_TEMP_KEYS[i], num_buf);
+    format_float_token(num_buf, sizeof(num_buf), snap->zone_temp_c[i]);
+    appendf(buf, BUF_SIZE, offset, "\"%s\":{\"value\":%s},", ZONE_TEMP_KEYS[i], num_buf);
   }
 
   // --- zone valve positions (0 decimals) ---
@@ -307,8 +403,8 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
     "sensor-zone_4_valve_pct", "sensor-zone_5_valve_pct", "sensor-zone_6_valve_pct",
   };
   for (uint8_t i = 0; i < 6; i++) {
-    format_sensor_token(num_buf, sizeof(num_buf), this->zone_valve_sensors_[i], 0);
-    appendf(payload, sizeof(payload), offset, "\"%s\":{\"value\":%s},", ZONE_VALVE_KEYS[i], num_buf);
+    format_float_token(num_buf, sizeof(num_buf), snap->zone_valve_pct[i], 0);
+    appendf(buf, BUF_SIZE, offset, "\"%s\":{\"value\":%s},", ZONE_VALVE_KEYS[i], num_buf);
   }
 
   // --- preheat advance ---
@@ -317,9 +413,12 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
     "sensor-zone_4_preheat_advance_c", "sensor-zone_5_preheat_advance_c", "sensor-zone_6_preheat_advance_c",
   };
   for (uint8_t i = 0; i < 6; i++) {
-    format_sensor_token(num_buf, sizeof(num_buf), this->zone_preheat_sensors_[i]);
-    appendf(payload, sizeof(payload), offset, "\"%s\":{\"value\":%s},", PREHEAT_KEYS[i], num_buf);
+    format_float_token(num_buf, sizeof(num_buf), snap->zone_preheat_c[i]);
+    appendf(buf, BUF_SIZE, offset, "\"%s\":{\"value\":%s},", PREHEAT_KEYS[i], num_buf);
   }
+
+  // flush: cumulative ~1330 bytes; motor ripples (~840) would overflow
+  if (!flush()) { free(buf); free(snap); return; }
 
   // --- motor learned ripples (0 decimals) ---
   static const char *const OPEN_RIPPLE_KEYS[6] = {
@@ -331,11 +430,14 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
     "sensor-motor_4_learned_close_ripples", "sensor-motor_5_learned_close_ripples", "sensor-motor_6_learned_close_ripples",
   };
   for (uint8_t i = 0; i < 6; i++) {
-    format_sensor_token(num_buf, sizeof(num_buf), this->motor_open_ripple_sensors_[i], 0);
-    appendf(payload, sizeof(payload), offset, "\"%s\":{\"value\":%s},", OPEN_RIPPLE_KEYS[i], num_buf);
-    format_sensor_token(num_buf, sizeof(num_buf), this->motor_close_ripple_sensors_[i], 0);
-    appendf(payload, sizeof(payload), offset, "\"%s\":{\"value\":%s},", CLOSE_RIPPLE_KEYS[i], num_buf);
+    format_float_token(num_buf, sizeof(num_buf), snap->motor_open_ripple[i], 0);
+    appendf(buf, BUF_SIZE, offset, "\"%s\":{\"value\":%s},", OPEN_RIPPLE_KEYS[i], num_buf);
+    format_float_token(num_buf, sizeof(num_buf), snap->motor_close_ripple[i], 0);
+    appendf(buf, BUF_SIZE, offset, "\"%s\":{\"value\":%s},", CLOSE_RIPPLE_KEYS[i], num_buf);
   }
+
+  // flush: motor factors (~900) would overflow
+  if (!flush()) { free(buf); free(snap); return; }
 
   // --- motor learned factors (2 decimals) ---
   static const char *const OPEN_FACTOR_KEYS[6] = {
@@ -347,11 +449,14 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
     "sensor-motor_4_learned_close_factor", "sensor-motor_5_learned_close_factor", "sensor-motor_6_learned_close_factor",
   };
   for (uint8_t i = 0; i < 6; i++) {
-    format_sensor_token(num_buf, sizeof(num_buf), this->motor_open_factor_sensors_[i], 2);
-    appendf(payload, sizeof(payload), offset, "\"%s\":{\"value\":%s},", OPEN_FACTOR_KEYS[i], num_buf);
-    format_sensor_token(num_buf, sizeof(num_buf), this->motor_close_factor_sensors_[i], 2);
-    appendf(payload, sizeof(payload), offset, "\"%s\":{\"value\":%s},", CLOSE_FACTOR_KEYS[i], num_buf);
+    format_float_token(num_buf, sizeof(num_buf), snap->motor_open_factor[i], 2);
+    appendf(buf, BUF_SIZE, offset, "\"%s\":{\"value\":%s},", OPEN_FACTOR_KEYS[i], num_buf);
+    format_float_token(num_buf, sizeof(num_buf), snap->motor_close_factor[i], 2);
+    appendf(buf, BUF_SIZE, offset, "\"%s\":{\"value\":%s},", CLOSE_FACTOR_KEYS[i], num_buf);
   }
+
+  // flush: probe temps + text sensors would overflow combined
+  if (!flush()) { free(buf); free(snap); return; }
 
   // --- probe temperatures ---
   static const char *const PROBE_TEMP_KEYS[8] = {
@@ -360,11 +465,14 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
     "sensor-probe_7_temperature", "sensor-probe_8_temperature",
   };
   for (uint8_t i = 0; i < 8; i++) {
-    format_sensor_token(num_buf, sizeof(num_buf), this->probe_temp_sensors_[i]);
-    appendf(payload, sizeof(payload), offset, "\"%s\":{\"value\":%s},", PROBE_TEMP_KEYS[i], num_buf);
+    format_float_token(num_buf, sizeof(num_buf), snap->probe_temp_c[i]);
+    appendf(buf, BUF_SIZE, offset, "\"%s\":{\"value\":%s},", PROBE_TEMP_KEYS[i], num_buf);
   }
 
-  // --- text sensors ---
+  // flush: text sensors (~1200) would overflow combined with probe temps (~460)
+  if (!flush()) { free(buf); free(snap); return; }
+
+  // --- text sensors (pre-sanitized in snapshot) ---
   static const char *const ZONE_STATE_KEYS[6] = {
     "text_sensor-zone_1_state", "text_sensor-zone_2_state", "text_sensor-zone_3_state",
     "text_sensor-zone_4_state", "text_sensor-zone_5_state", "text_sensor-zone_6_state",
@@ -374,196 +482,173 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
     "text_sensor-motor_4_last_fault", "text_sensor-motor_5_last_fault", "text_sensor-motor_6_last_fault",
   };
 
-  format_text_state(text_buf, sizeof(text_buf), this->firmware_version_text_);
-  appendf(payload, sizeof(payload), offset, "\"text_sensor-firmware_version\":{\"state\":\"%s\"},", text_buf);
-
-  format_text_state(text_buf, sizeof(text_buf), this->ip_address_text_);
-  appendf(payload, sizeof(payload), offset, "\"text_sensor-ip_address\":{\"state\":\"%s\"},", text_buf);
-
-  format_text_state(text_buf, sizeof(text_buf), this->connected_ssid_text_);
-  appendf(payload, sizeof(payload), offset, "\"text_sensor-connected_ssid\":{\"state\":\"%s\"},", text_buf);
-
-  format_text_state(text_buf, sizeof(text_buf), this->mac_address_text_);
-  appendf(payload, sizeof(payload), offset, "\"text_sensor-mac_address\":{\"state\":\"%s\"},", text_buf);
+  appendf(buf, BUF_SIZE, offset, "\"text_sensor-firmware_version\":{\"state\":\"%s\"},", snap->firmware_version);
+  appendf(buf, BUF_SIZE, offset, "\"text_sensor-ip_address\":{\"state\":\"%s\"},", snap->ip_address);
+  appendf(buf, BUF_SIZE, offset, "\"text_sensor-connected_ssid\":{\"state\":\"%s\"},", snap->connected_ssid);
+  appendf(buf, BUF_SIZE, offset, "\"text_sensor-mac_address\":{\"state\":\"%s\"},", snap->mac_address);
 
   for (uint8_t i = 0; i < 6; i++) {
-    format_text_state(text_buf, sizeof(text_buf), this->zone_state_sensors_[i]);
-    appendf(payload, sizeof(payload), offset, "\"%s\":{\"state\":\"%s\"},", ZONE_STATE_KEYS[i], text_buf);
+    appendf(buf, BUF_SIZE, offset, "\"%s\":{\"state\":\"%s\"},", ZONE_STATE_KEYS[i], snap->zone_state[i]);
   }
-
   for (uint8_t i = 0; i < 6; i++) {
-    format_text_state(text_buf, sizeof(text_buf), this->motor_fault_sensors_[i]);
-    appendf(payload, sizeof(payload), offset, "\"%s\":{\"state\":\"%s\"},", MOTOR_FAULT_KEYS[i], text_buf);
+    appendf(buf, BUF_SIZE, offset, "\"%s\":{\"state\":\"%s\"},", MOTOR_FAULT_KEYS[i], snap->motor_fault[i]);
   }
 
-  // ---- config snapshot ----
-  if (this->config_store_) {
-    static const char *const PIPE_TYPE_STR[] = {
-      "PEX 12mm", "PEX 14mm", "PEX 16mm", "PEX 17mm",
-      "PEX 18mm", "PEX 20mm", "ALUPEX 16mm", "ALUPEX 20mm"
-    };
-    static const char *const TEMP_SOURCE_STR[] = {
-      "Local Probe", "Zigbee MQTT", "BLE Sensor"
-    };
-    static const char *const MOTOR_PROFILE_STR[] = {
-      "Inherit", "Generic", "HmIP VdMot"
-    };
+  // flush before config section; each zone config (~550 bytes) would overflow combined
+  if (!flush()) { free(buf); free(snap); return; }
 
-    const hv6::ProbeConfig probes = this->config_store_->get_probe_config();
-    const hv6::MotorConfig motor = this->config_store_->get_motor_config();
+  // ---- config (read entirely from snapshot — no config_store_ calls) ----
+  static const char *const PIPE_TYPE_STR[] = {
+    "PEX 12mm", "PEX 14mm", "PEX 16mm", "PEX 17mm",
+    "PEX 18mm", "PEX 20mm", "ALUPEX 16mm", "ALUPEX 20mm"
+  };
+  static const char *const TEMP_SOURCE_STR[] = {
+    "Local Probe", "Zigbee MQTT", "BLE Sensor"
+  };
+  static const char *const MOTOR_PROFILE_STR[] = {
+    "Inherit", "Generic", "HmIP VdMot"
+  };
 
-    // --- zone configs ---
-    for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
-      const hv6::ZoneConfig z = this->config_store_->get_zone_config(i);
-      const hv6::TempSource src = this->config_store_->get_zone_temp_source(i);
-      char mqtt_dev[hv6::MQTT_DEVICE_NAME_LEN];
-      char ble_mac[hv6::BLE_MAC_LEN];
-      this->config_store_->get_zone_mqtt_strings(i, mqtt_dev, sizeof(mqtt_dev), ble_mac, sizeof(ble_mac));
-      const uint8_t zn = i + 1;
+  // --- zone configs: flush after each to stay within buffer ---
+  for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
+    const hv6::ZoneConfig &z = snap->zones[i];
+    const uint8_t zn = i + 1;
 
-      appendf(payload, sizeof(payload), offset,
-          "\"switch-zone_%u_enabled\":{\"state\":\"%s\"},"
-          "\"number-zone_%u_setpoint\":{\"value\":",
-          zn, z.enabled ? "on" : "off", zn);
-      format_float_token(num_buf, sizeof(num_buf), z.setpoint_c, 1);
-      appendf(payload, sizeof(payload), offset, "%s},", num_buf);
+    appendf(buf, BUF_SIZE, offset,
+        "\"switch-zone_%u_enabled\":{\"state\":\"%s\"},"
+        "\"number-zone_%u_setpoint\":{\"value\":",
+        zn, z.enabled ? "on" : "off", zn);
+    format_float_token(num_buf, sizeof(num_buf), z.setpoint_c, 1);
+    appendf(buf, BUF_SIZE, offset, "%s},", num_buf);
 
-      format_float_token(num_buf, sizeof(num_buf), z.area_m2, 1);
-      appendf(payload, sizeof(payload), offset,
-          "\"number-zone_%u_area_m2\":{\"value\":%s},", zn, num_buf);
+    format_float_token(num_buf, sizeof(num_buf), z.area_m2, 1);
+    appendf(buf, BUF_SIZE, offset, "\"number-zone_%u_area_m2\":{\"value\":%s},", zn, num_buf);
 
-      format_float_token(num_buf, sizeof(num_buf), z.pipe_spacing_mm, 0);
-      appendf(payload, sizeof(payload), offset,
-          "\"number-zone_%u_pipe_spacing_mm\":{\"value\":%s},", zn, num_buf);
+    format_float_token(num_buf, sizeof(num_buf), z.pipe_spacing_mm, 0);
+    appendf(buf, BUF_SIZE, offset, "\"number-zone_%u_pipe_spacing_mm\":{\"value\":%s},", zn, num_buf);
 
-      const int8_t probe_idx = probes.zone_return_probe[i];
-      if (probe_idx >= 0 && probe_idx < static_cast<int8_t>(hv6::MAX_PROBES)) {
-        appendf(payload, sizeof(payload), offset,
-            "\"select-zone_%u_probe\":{\"state\":\"Probe %d\"},",
-            zn, static_cast<int>(probe_idx) + 1);
-      } else {
-        appendf(payload, sizeof(payload), offset,
-            "\"select-zone_%u_probe\":{\"state\":\"None\"},", zn);
-      }
-
-      const uint8_t src_idx = static_cast<uint8_t>(src);
-      const char *src_str = (src_idx < 3) ? TEMP_SOURCE_STR[src_idx] : "Local Probe";
-      appendf(payload, sizeof(payload), offset,
-          "\"select-zone_%u_temp_source\":{\"state\":\"%s\"},", zn, src_str);
-
-      if (z.sync_to_zone >= 0 && z.sync_to_zone < static_cast<int8_t>(hv6::NUM_ZONES)) {
-        appendf(payload, sizeof(payload), offset,
-            "\"select-zone_%u_sync_to\":{\"state\":\"Zone %d\"},",
-            zn, static_cast<int>(z.sync_to_zone) + 1);
-      } else {
-        appendf(payload, sizeof(payload), offset,
-            "\"select-zone_%u_sync_to\":{\"state\":\"None\"},", zn);
-      }
-
-      const uint8_t pt_idx = static_cast<uint8_t>(z.pipe_type);
-      const char *pt_str = (pt_idx < 8) ? PIPE_TYPE_STR[pt_idx] : "Unknown";
-      appendf(payload, sizeof(payload), offset,
-          "\"select-zone_%u_pipe_type\":{\"state\":\"%s\"},", zn, pt_str);
-
-      sanitize_text(std::string(mqtt_dev), text_buf, sizeof(text_buf));
-      appendf(payload, sizeof(payload), offset,
-          "\"text-zone_%u_zigbee_device\":{\"state\":\"%s\"},", zn, text_buf);
-
-      sanitize_text(std::string(ble_mac), text_buf, sizeof(text_buf));
-      appendf(payload, sizeof(payload), offset,
-          "\"text-zone_%u_ble_mac\":{\"state\":\"%s\"},", zn, text_buf);
-
-      const uint8_t walls = z.exterior_walls;
-      if (walls == hv6::ExteriorWall::NONE) {
-        appendf(payload, sizeof(payload), offset,
-            "\"text-zone_%u_exterior_walls\":{\"state\":\"None\"},", zn);
-      } else {
-        char wall_buf[12] = {};
-        size_t woff = 0;
-        if (walls & hv6::ExteriorWall::NORTH) { if (woff) wall_buf[woff++] = ','; wall_buf[woff++] = 'N'; }
-        if (walls & hv6::ExteriorWall::SOUTH) { if (woff) wall_buf[woff++] = ','; wall_buf[woff++] = 'S'; }
-        if (walls & hv6::ExteriorWall::EAST)  { if (woff) wall_buf[woff++] = ','; wall_buf[woff++] = 'E'; }
-        if (walls & hv6::ExteriorWall::WEST)  { if (woff) wall_buf[woff++] = ','; wall_buf[woff++] = 'W'; }
-        wall_buf[woff] = '\0';
-        appendf(payload, sizeof(payload), offset,
-            "\"text-zone_%u_exterior_walls\":{\"state\":\"%s\"},", zn, wall_buf);
-      }
+    const int8_t probe_idx = snap->probes.zone_return_probe[i];
+    if (probe_idx >= 0 && probe_idx < static_cast<int8_t>(hv6::MAX_PROBES)) {
+      appendf(buf, BUF_SIZE, offset,
+          "\"select-zone_%u_probe\":{\"state\":\"Probe %d\"},",
+          zn, static_cast<int>(probe_idx) + 1);
+    } else {
+      appendf(buf, BUF_SIZE, offset, "\"select-zone_%u_probe\":{\"state\":\"None\"},", zn);
     }
 
-    // --- global config ---
-    if (this->valve_controller_) {
-      appendf(payload, sizeof(payload), offset,
-          "\"switch-motor_drivers_enabled\":{\"state\":\"%s\"},",
-          this->valve_controller_->are_drivers_enabled() ? "on" : "off");
+    const uint8_t src_idx = static_cast<uint8_t>(snap->zone_temp_source[i]);
+    const char *src_str = (src_idx < 3) ? TEMP_SOURCE_STR[src_idx] : "Local Probe";
+    appendf(buf, BUF_SIZE, offset,
+        "\"select-zone_%u_temp_source\":{\"state\":\"%s\"},", zn, src_str);
+
+    if (z.sync_to_zone >= 0 && z.sync_to_zone < static_cast<int8_t>(hv6::NUM_ZONES)) {
+      appendf(buf, BUF_SIZE, offset,
+          "\"select-zone_%u_sync_to\":{\"state\":\"Zone %d\"},",
+          zn, static_cast<int>(z.sync_to_zone) + 1);
+    } else {
+      appendf(buf, BUF_SIZE, offset, "\"select-zone_%u_sync_to\":{\"state\":\"None\"},", zn);
     }
 
-    const bool preheat_en = this->config_store_->get_simple_preheat_enabled();
-    appendf(payload, sizeof(payload), offset,
-        "\"select-simple_preheat_enabled\":{\"state\":\"%s\"},",
-        preheat_en ? "on" : "off");
+    const uint8_t pt_idx = static_cast<uint8_t>(z.pipe_type);
+    const char *pt_str = (pt_idx < 8) ? PIPE_TYPE_STR[pt_idx] : "Unknown";
+    appendf(buf, BUF_SIZE, offset, "\"select-zone_%u_pipe_type\":{\"state\":\"%s\"},", zn, pt_str);
 
-    const hv6::ManifoldType mtype = this->config_store_->get_manifold_type();
-    appendf(payload, sizeof(payload), offset,
-        "\"select-manifold_type\":{\"state\":\"%s\"},"
-        "\"select-manifold_flow_probe\":{\"state\":\"Probe %d\"},"
-        "\"select-manifold_return_probe\":{\"state\":\"Probe %d\"},",
-        mtype == hv6::ManifoldType::NC ? "NC (Normally Closed)" : "NO (Normally Open)",
-        static_cast<int>(probes.manifold_flow_probe) + 1,
-        static_cast<int>(probes.manifold_return_probe) + 1);
+    appendf(buf, BUF_SIZE, offset,
+        "\"text-zone_%u_zigbee_device\":{\"state\":\"%s\"},", zn, snap->zone_mqtt_dev[i]);
+    appendf(buf, BUF_SIZE, offset,
+        "\"text-zone_%u_ble_mac\":{\"state\":\"%s\"},", zn, snap->zone_ble_mac[i]);
 
-    const uint8_t mp_idx = static_cast<uint8_t>(motor.default_profile);
-    const char *mp_str = (mp_idx < 3) ? MOTOR_PROFILE_STR[mp_idx] : "Generic";
-    appendf(payload, sizeof(payload), offset,
-        "\"select-motor_profile_default\":{\"state\":\"%s\"},", mp_str);
+    const uint8_t walls = z.exterior_walls;
+    if (walls == hv6::ExteriorWall::NONE) {
+      appendf(buf, BUF_SIZE, offset,
+          "\"text-zone_%u_exterior_walls\":{\"state\":\"None\"},", zn);
+    } else {
+      char wall_buf[12] = {};
+      size_t woff = 0;
+      if (walls & hv6::ExteriorWall::NORTH) { if (woff) wall_buf[woff++] = ','; wall_buf[woff++] = 'N'; }
+      if (walls & hv6::ExteriorWall::SOUTH) { if (woff) wall_buf[woff++] = ','; wall_buf[woff++] = 'S'; }
+      if (walls & hv6::ExteriorWall::EAST)  { if (woff) wall_buf[woff++] = ','; wall_buf[woff++] = 'E'; }
+      if (walls & hv6::ExteriorWall::WEST)  { if (woff) wall_buf[woff++] = ','; wall_buf[woff++] = 'W'; }
+      wall_buf[woff] = '\0';
+      appendf(buf, BUF_SIZE, offset,
+          "\"text-zone_%u_exterior_walls\":{\"state\":\"%s\"},", zn, wall_buf);
+    }
 
-    format_float_token(num_buf, sizeof(num_buf), motor.close_current_factor, 2);
-    appendf(payload, sizeof(payload), offset, "\"number-close_threshold_multiplier\":{\"value\":%s},", num_buf);
-    format_float_token(num_buf, sizeof(num_buf), motor.close_slope_threshold_ma_per_s, 2);
-    appendf(payload, sizeof(payload), offset, "\"number-close_slope_threshold\":{\"value\":%s},", num_buf);
-    format_float_token(num_buf, sizeof(num_buf), motor.close_slope_current_factor, 2);
-    appendf(payload, sizeof(payload), offset, "\"number-close_slope_current_factor\":{\"value\":%s},", num_buf);
-    format_float_token(num_buf, sizeof(num_buf), motor.open_current_factor, 2);
-    appendf(payload, sizeof(payload), offset, "\"number-open_threshold_multiplier\":{\"value\":%s},", num_buf);
-    format_float_token(num_buf, sizeof(num_buf), motor.open_slope_threshold_ma_per_s, 2);
-    appendf(payload, sizeof(payload), offset, "\"number-open_slope_threshold\":{\"value\":%s},", num_buf);
-    format_float_token(num_buf, sizeof(num_buf), motor.open_slope_current_factor, 2);
-    appendf(payload, sizeof(payload), offset, "\"number-open_slope_current_factor\":{\"value\":%s},", num_buf);
-    format_float_token(num_buf, sizeof(num_buf), motor.open_ripple_limit_factor, 2);
-    appendf(payload, sizeof(payload), offset, "\"number-open_ripple_limit_factor\":{\"value\":%s},", num_buf);
-    appendf(payload, sizeof(payload), offset,
-        "\"number-generic_runtime_limit_seconds\":{\"value\":%lu},"
-        "\"number-hmip_runtime_limit_seconds\":{\"value\":%lu},"
-        "\"number-relearn_after_movements\":{\"value\":%lu},"
-        "\"number-relearn_after_hours\":{\"value\":%lu},"
-        "\"number-learned_factor_min_samples\":{\"value\":%u},",
-        static_cast<unsigned long>(motor.generic_profile_runtime_limit_s),
-        static_cast<unsigned long>(motor.hmip_vdmot_runtime_limit_s),
-        static_cast<unsigned long>(motor.relearn_after_movements),
-        static_cast<unsigned long>(motor.relearn_after_hours),
-        static_cast<unsigned>(motor.learned_factor_min_samples));
-    format_float_token(num_buf, sizeof(num_buf), motor.learned_factor_max_deviation_pct * 100.0f, 2);
-    appendf(payload, sizeof(payload), offset,
-        "\"number-learned_factor_max_deviation_pct\":{\"value\":%s}", num_buf);
-  } else {
-    // trim trailing comma left by motor fault loop when config_store_ is null
-    if (offset > 0 && payload[offset - 1] == ',')
-      offset--;
+    // flush after each zone to stay within buffer
+    if (!flush()) { free(buf); free(snap); return; }
   }
 
-  appendf(payload, sizeof(payload), offset, "}");
+  // --- global config ---
+  appendf(buf, BUF_SIZE, offset,
+      "\"switch-motor_drivers_enabled\":{\"state\":\"%s\"},",
+      snap->drivers_enabled ? "on" : "off");
 
-  if (offset >= sizeof(payload)) {
-    request->send(500, "application/json", "{\"ok\":false,\"error\":\"encode_failed\"}");
-    return;
-  }
+  appendf(buf, BUF_SIZE, offset,
+      "\"select-simple_preheat_enabled\":{\"state\":\"%s\"},",
+      snap->simple_preheat_enabled ? "on" : "off");
 
-  request->send(200, "application/json", payload);
+  appendf(buf, BUF_SIZE, offset,
+      "\"select-manifold_type\":{\"state\":\"%s\"},"
+      "\"select-manifold_flow_probe\":{\"state\":\"Probe %d\"},"
+      "\"select-manifold_return_probe\":{\"state\":\"Probe %d\"},",
+      snap->manifold_type == hv6::ManifoldType::NC ? "NC (Normally Closed)" : "NO (Normally Open)",
+      static_cast<int>(snap->probes.manifold_flow_probe) + 1,
+      static_cast<int>(snap->probes.manifold_return_probe) + 1);
+
+  const uint8_t mp_idx = static_cast<uint8_t>(snap->motor.default_profile);
+  const char *mp_str = (mp_idx < 3) ? MOTOR_PROFILE_STR[mp_idx] : "Generic";
+  appendf(buf, BUF_SIZE, offset, "\"select-motor_profile_default\":{\"state\":\"%s\"},", mp_str);
+
+  format_float_token(num_buf, sizeof(num_buf), snap->motor.close_current_factor, 2);
+  appendf(buf, BUF_SIZE, offset, "\"number-close_threshold_multiplier\":{\"value\":%s},", num_buf);
+  format_float_token(num_buf, sizeof(num_buf), snap->motor.close_slope_threshold_ma_per_s, 2);
+  appendf(buf, BUF_SIZE, offset, "\"number-close_slope_threshold\":{\"value\":%s},", num_buf);
+  format_float_token(num_buf, sizeof(num_buf), snap->motor.close_slope_current_factor, 2);
+  appendf(buf, BUF_SIZE, offset, "\"number-close_slope_current_factor\":{\"value\":%s},", num_buf);
+  format_float_token(num_buf, sizeof(num_buf), snap->motor.open_current_factor, 2);
+  appendf(buf, BUF_SIZE, offset, "\"number-open_threshold_multiplier\":{\"value\":%s},", num_buf);
+  format_float_token(num_buf, sizeof(num_buf), snap->motor.open_slope_threshold_ma_per_s, 2);
+  appendf(buf, BUF_SIZE, offset, "\"number-open_slope_threshold\":{\"value\":%s},", num_buf);
+  format_float_token(num_buf, sizeof(num_buf), snap->motor.open_slope_current_factor, 2);
+  appendf(buf, BUF_SIZE, offset, "\"number-open_slope_current_factor\":{\"value\":%s},", num_buf);
+  format_float_token(num_buf, sizeof(num_buf), snap->motor.open_ripple_limit_factor, 2);
+  appendf(buf, BUF_SIZE, offset, "\"number-open_ripple_limit_factor\":{\"value\":%s},", num_buf);
+  appendf(buf, BUF_SIZE, offset,
+      "\"number-generic_runtime_limit_seconds\":{\"value\":%lu},"
+      "\"number-hmip_runtime_limit_seconds\":{\"value\":%lu},"
+      "\"number-relearn_after_movements\":{\"value\":%lu},"
+      "\"number-relearn_after_hours\":{\"value\":%lu},"
+      "\"number-learned_factor_min_samples\":{\"value\":%u},",
+      static_cast<unsigned long>(snap->motor.generic_profile_runtime_limit_s),
+      static_cast<unsigned long>(snap->motor.hmip_vdmot_runtime_limit_s),
+      static_cast<unsigned long>(snap->motor.relearn_after_movements),
+      static_cast<unsigned long>(snap->motor.relearn_after_hours),
+      static_cast<unsigned>(snap->motor.learned_factor_min_samples));
+  format_float_token(num_buf, sizeof(num_buf), snap->motor.learned_factor_max_deviation_pct * 100.0f, 2);
+  appendf(buf, BUF_SIZE, offset,
+      "\"number-learned_factor_max_deviation_pct\":{\"value\":%s},", num_buf);
+
+  // Sentinel field closes the JSON object and absorbs any trailing comma.
+  appendf(buf, BUF_SIZE, offset, "\"_\":0}");
+  flush();
+  httpd_resp_send_chunk(req, nullptr, 0);
+  free(buf);
+  free(snap);
 }
 
 void HV6Dashboard::handle_set_(AsyncWebServerRequest *request) {
   if (request->method() != HTTP_POST) {
     request->send(405, "text/plain", "Method Not Allowed");
     return;
+  }
+
+  {
+    httpd_req_t *req = *request;
+    const size_t content_len = req->content_len;
+    if (content_len == 0 || content_len > 512) {
+      request->send(400, "text/plain", "Bad Request");
+      return;
+    }
   }
 
   const std::string key_str = request->arg("key");

@@ -19,7 +19,7 @@ substitutions:
   pin_onewire: GPIO12
   pin_nsleep: "6"
   pin_nfault: "4"
-  pin_status_led: GPIO48
+  pin_rgb_status_led: GPIO48
   pin_adc_current: GPIO7
 
   # Network — fallback AP name when WiFi is unreachable
@@ -46,8 +46,8 @@ esphome:
     name: birkemosen.heatvalve-6
     version: ${firmware_version}
   on_boot:
-    priority: 800
-    then:
+    - priority: 800
+      then:
       - logger.log: "HeatValve-6 booting..."
       - lambda: |-
           // Apply persisted DS18B20 ROM map early so probe slots stay stable across reboots.
@@ -108,7 +108,6 @@ external_components:
       - hv6_zone_controller
       - hv6_config_store
       - hv6_dashboard  
-      # - hv6_web_api  # DISABLED: custom dashboard causes timeout issues
 
 # =============================================================================
 # Logger
@@ -325,11 +324,3 @@ hv6_zone_controller:
     - probe_temp_6
     - probe_temp_7
     - probe_temp_8
-
-# HV6 Web API scaffold - DISABLED: custom dashboard causes timeout issues
-# hv6_web_api:
-#   id: hv6_web_api_component
-#   config_store_id: hv6_config
-#   valve_controller_id: hv6_valves
-#   zone_controller_id: hv6_zones
-#   dashboard_js: "web/dashboard.js"
