@@ -1,7 +1,7 @@
 // core/sse.js
 
 import { startMock } from './mock.js';
-import { setEntity, setLive, sampleHistory, addActivity, setI2cResult } from './store.js';
+import { setEntity, setLive, sampleHistory, addActivity, setI2cResult, shouldSuppressStateUpdate } from './store.js';
 
 let reconnectTimer = null;
 let pollAbortController = null;
@@ -31,6 +31,7 @@ async function fetchStateOnce() {
 
 function applyStateMap(payload) {
   if (!payload || typeof payload !== 'object') return;
+  if (shouldSuppressStateUpdate()) return;
   for (const id in payload) setEntity(id, payload[id]);
   sampleHistory(false);
 }

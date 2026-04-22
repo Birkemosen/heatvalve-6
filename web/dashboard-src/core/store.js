@@ -13,6 +13,7 @@ const D = {
   selectedZone: 1,
   live: false,
   pendingWrites: 0,
+  lastWriteAt: 0,
   firmwareVersion: '',
   i2cResult: 'No scan has been run yet.',
   activityLog: [],
@@ -179,7 +180,13 @@ export function beginPendingWrite() {
 
 export function endPendingWrite() {
   D.pendingWrites = Math.max(0, D.pendingWrites - 1);
+  D.lastWriteAt = Date.now();
   notify(dashboardKey('pendingWrites'));
+}
+
+export function shouldSuppressStateUpdate() {
+  if (D.pendingWrites > 0) return true;
+  return (Date.now() - D.lastWriteAt) < 2000;
 }
 
 export function setZoneName(zone, value) {
