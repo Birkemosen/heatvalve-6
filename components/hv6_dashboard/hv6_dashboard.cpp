@@ -584,7 +584,7 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
       snap->drivers_enabled ? "on" : "off");
 
   appendf(buf, BUF_SIZE, offset,
-      "\"select-simple_preheat_enabled\":{\"state\":\"%s\"},",
+      "\"switch-simple_preheat_enabled\":{\"state\":\"%s\"},",
       snap->simple_preheat_enabled ? "on" : "off");
 
   appendf(buf, BUF_SIZE, offset,
@@ -629,7 +629,7 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
       "\"number-learned_factor_max_deviation_pct\":{\"value\":%s},", num_buf);
 
   // Sentinel field closes the JSON object and absorbs any trailing comma.
-  appendf(buf, BUF_SIZE, offset, "\"_\":0}");
+  appendf(buf, BUF_SIZE, offset, "\"_\":{}}");
   flush();
   httpd_resp_send_chunk(req, nullptr, 0);
   free(buf);

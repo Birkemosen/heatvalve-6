@@ -54,5 +54,5 @@ export const gkey = {
   relearnAfterHours: 'number-relearn_after_hours',
   learnedFactorMinSamples: 'number-learned_factor_min_samples',
   learnedFactorMaxDeviationPct: 'number-learned_factor_max_deviation_pct',
-  simplePreheatEnabled: 'select-simple_preheat_enabled'
+  simplePreheatEnabled: 'switch-simple_preheat_enabled'
 };
