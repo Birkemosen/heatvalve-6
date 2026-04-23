@@ -15,6 +15,7 @@
 #include "../hv6_config_store/hv6_config_store.h"
 #include "../hv6_config_store/hv6_types.h"
 #include "drv8215.h"
+#include "ripple_counter.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -34,15 +35,6 @@ struct ValveCommand {
   MotorDirection timed_direction = MotorDirection::OPEN;  // Direction for timed moves
 };
 
-/// Software ripple counter state — reset each motor start.
-/// Detects commutator current ripples from IPROPI ADC for position tracking.
-struct RippleDetector {
-  float dc_estimate = 0.0f;   ///< Lowpass DC component (raw ADC units)
-  bool above_dc = false;       ///< Currently above DC mean
-  uint32_t count = 0;          ///< Cumulative ripple count this movement
-  uint8_t pwm_debounce = 0;    ///< Debounce counter after PWM on-transition
-  bool pwm_was_on = false;     ///< Previous drive_output_enabled_ state
-};
 
 struct MotorTraceSample {
   uint32_t t_ms = 0;
@@ -128,12 +120,21 @@ class Hv6ValveController : public esphome::Component {
   static constexpr uint32_t TRACE_SAMPLE_PERIOD_US = 2000;
   static constexpr uint32_t TRACE_MQTT_PUBLISH_INTERVAL_MS = 500;  // Publish every 500ms
 
-  // Ripple detection constants
-  static constexpr float RIPPLE_DC_ALPHA = 0.01f;
-  static constexpr float RIPPLE_DC_ALPHA_SLOW = 0.005f;
-  static constexpr float RIPPLE_HYSTERESIS_PCT = 0.12f;
-  static constexpr uint8_t RIPPLE_PWM_DEBOUNCE_TICKS = 5;
-  static constexpr uint8_t PIN_ENGAGE_DEBOUNCE_TICKS = 20;     ///< 200ms sustained current step for detection
+  // Ripple detection constants (DMA continuous mode @ 15 kHz)
+  static constexpr uint32_t RIPPLE_SAMPLE_RATE_HZ      = 15000;
+  static constexpr uint32_t RIPPLE_DMA_FRAME_BYTES     = 1024;  ///< ~256 samples × 4 B = ~17 ms per frame
+  static constexpr uint32_t RIPPLE_DMA_STORE_BYTES     = 4096;  ///< 4 frames of internal DMA ring buffer
+  static constexpr uint32_t RIPPLE_DMA_DEBOUNCE_SAMPLES = 75;   ///< 5 ms inrush blanking at 15 kHz
+  static constexpr RippleCounter::Config kRippleConfig = {
+    .sampleRate       = 15000.0f,
+    .lpAlpha          = 0.002f,
+    .hpAlpha          = 0.90f,
+    .threshold        = 3.0f,
+    .hysteresis       = 0.5f,
+    .ripplesPerRev    = 24,
+    .minPeriodSamples = 75,   ///< floor(15000 / 200 Hz) — gate above 200 Hz
+  };
+  static constexpr uint8_t PIN_ENGAGE_DEBOUNCE_TICKS = 20;      ///< 200ms sustained current step for detection
 
   // FreeRTOS task
   static void task_func_(void *arg);
@@ -161,10 +162,10 @@ class Hv6ValveController : public esphome::Component {
   float effective_current_factor_(uint8_t zone, MotorDirection dir) const;
   void update_learned_factor_(uint8_t zone, MotorDirection dir, float average_ma, float peak_ma, bool sample_valid);
 
-  // Ripple counting
+  // Ripple counting (DMA continuous processor task)
   void motor_loop_();
-  void sample_ripple_();
-  int read_adc_raw_();
+  void run_ripple_task_();
+  static void ripple_task_func_(void *arg);
   float adc_raw_to_ma_(int raw);
 
   // Fault handling
@@ -216,7 +217,7 @@ class Hv6ValveController : public esphome::Component {
   MotorFsmState fsm_state_ = MotorFsmState::IDLE;
   uint32_t motor_run_time_ms_ = 0;
   uint32_t drive_phase_elapsed_ms_ = 0;
-  bool drive_output_enabled_ = false;
+  std::atomic<bool> drive_output_enabled_{false};
   
   // Timed movement state
   bool timed_mode_active_ = false;
@@ -272,16 +273,23 @@ class Hv6ValveController : public esphome::Component {
   // Motor config cache
   MotorConfig motor_cfg_;
 
-  // Direct ADC for IPROPI (fast 1ms sampling for ripple counting)
-  // Opaque ESP-IDF handles (cast to adc_oneshot_unit_handle_t / adc_cali_handle_t in .cpp)
-  void *adc_handle_ = nullptr;
+  // ADC continuous (DMA) for IPROPI @ 15 kHz
+  // adc_continuous_handle_t and adc_cali_handle_t are kept as void* to avoid
+  // pulling ESP-IDF headers into this header file.
+  void *adc_continuous_handle_ = nullptr;
   void *adc_cali_handle_ = nullptr;
   int ipropi_channel_ = 0;
   bool ripple_enabled_ = false;
 
-  // Ripple counter state (atomic for cross-thread reads)
-  RippleDetector ripple_{};
+  // Ripple counter (written by ripple task, count read via live_ripple_count_)
+  RippleCounter ripple_counter_{kRippleConfig};
   std::atomic<uint32_t> live_ripple_count_{0};
+
+  // DMA task state
+  TaskHandle_t ripple_task_handle_ = nullptr;
+  uint32_t dma_debounce_remaining_ = 0;
+  bool ripple_drive_was_on_ = false;
+  alignas(32) uint8_t adc_frame_buf_[RIPPLE_DMA_FRAME_BYTES];
   uint8_t fsm_tick_count_ = 0;
   float latest_current_ma_ = 0.0f;
   uint32_t last_publish_ms_ = 0;

@@ -11,7 +11,8 @@
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
 #include "esp_timer.h"
-#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_oneshot.h"   // adc_oneshot_io_to_channel() for GPIO→channel mapping
+#include "esp_adc/adc_continuous.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include <algorithm>
@@ -19,6 +20,20 @@
 #include <cmath>
 #include <cstdarg>
 #include <inttypes.h>
+
+// File-static ISR callback: DMA conversion-done → notify ripple processor task.
+// Must be in IRAM and return quickly.
+static IRAM_ATTR bool ripple_adc_conv_done_(
+    adc_continuous_handle_t /*hdl*/,
+    const adc_continuous_evt_data_t * /*edata*/,
+    void *user_data)
+{
+  auto *task_handle = static_cast<TaskHandle_t *>(user_data);
+  BaseType_t must_yield = pdFALSE;
+  vTaskNotifyGiveFromISR(*task_handle, &must_yield);
+  portYIELD_FROM_ISR(must_yield);
+  return false;
+}
 
 namespace hv6 {
 
@@ -74,43 +89,71 @@ void Hv6ValveController::setup() {
   nfault_cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
   gpio_config(&nfault_cfg);
 
-  // Initialize direct ADC for IPROPI (fast 1ms sampling for ripple counting)
+  // Initialize IPROPI ADC in continuous (DMA) mode for ripple counting @ 15 kHz.
+  // adc_oneshot_io_to_channel() is a pure utility that maps GPIO → (unit, channel)
+  // without allocating any oneshot handle — safe to call alongside continuous mode.
   adc_unit_t adc_unit;
   adc_channel_t adc_chan;
   esp_err_t adc_err = adc_oneshot_io_to_channel(static_cast<int>(ipropi_pin_),
                                                  &adc_unit, &adc_chan);
   if (adc_err == ESP_OK) {
     ipropi_channel_ = static_cast<int>(adc_chan);
-    adc_oneshot_unit_init_cfg_t unit_cfg = {};
-    unit_cfg.unit_id = adc_unit;
-    unit_cfg.ulp_mode = ADC_ULP_MODE_DISABLE;
-    adc_oneshot_unit_handle_t adc_h = nullptr;
-    adc_err = adc_oneshot_new_unit(&unit_cfg, &adc_h);
-    adc_handle_ = adc_h;
+
+    adc_continuous_handle_cfg_t cont_handle_cfg = {};
+    cont_handle_cfg.max_store_buf_size = RIPPLE_DMA_STORE_BYTES;
+    cont_handle_cfg.conv_frame_size    = RIPPLE_DMA_FRAME_BYTES;
+    adc_continuous_handle_t adc_cont_h = nullptr;
+    adc_err = adc_continuous_new_handle(&cont_handle_cfg, &adc_cont_h);
+    adc_continuous_handle_ = adc_cont_h;
   }
   if (adc_err == ESP_OK) {
-    adc_oneshot_chan_cfg_t chan_cfg = {};
-    chan_cfg.atten = ADC_ATTEN_DB_12;
-    chan_cfg.bitwidth = ADC_BITWIDTH_12;
-    adc_err = adc_oneshot_config_channel(
-        static_cast<adc_oneshot_unit_handle_t>(adc_handle_),
-        static_cast<adc_channel_t>(ipropi_channel_), &chan_cfg);
+    adc_digi_pattern_config_t pattern = {};
+    pattern.atten     = ADC_ATTEN_DB_12;
+    pattern.channel   = static_cast<adc_channel_t>(ipropi_channel_);
+    pattern.unit      = adc_unit;
+    pattern.bit_width = ADC_BITWIDTH_12;
+
+    adc_continuous_config_t cont_cfg = {};
+    cont_cfg.sample_freq_hz = RIPPLE_SAMPLE_RATE_HZ;
+    cont_cfg.conv_mode      = ADC_CONV_SINGLE_UNIT_1;
+    cont_cfg.format         = ADC_DIGI_OUTPUT_FORMAT_TYPE2;
+    cont_cfg.pattern_num    = 1;
+    cont_cfg.adc_pattern    = &pattern;
+    adc_err = adc_continuous_config(
+        static_cast<adc_continuous_handle_t>(adc_continuous_handle_), &cont_cfg);
+  }
+  if (adc_err == ESP_OK) {
+    adc_continuous_evt_cbs_t cbs = {};
+    cbs.on_conv_done = ripple_adc_conv_done_;
+    adc_err = adc_continuous_register_event_callbacks(
+        static_cast<adc_continuous_handle_t>(adc_continuous_handle_), &cbs, &ripple_task_handle_);
   }
   if (adc_err == ESP_OK) {
     adc_cali_curve_fitting_config_t cali_cfg = {};
-    cali_cfg.unit_id = adc_unit;
-    cali_cfg.chan = static_cast<adc_channel_t>(ipropi_channel_);
-    cali_cfg.atten = ADC_ATTEN_DB_12;
+    cali_cfg.unit_id  = adc_unit;
+    cali_cfg.chan     = static_cast<adc_channel_t>(ipropi_channel_);
+    cali_cfg.atten    = ADC_ATTEN_DB_12;
     cali_cfg.bitwidth = ADC_BITWIDTH_12;
     adc_cali_handle_t cali_h = nullptr;
-    adc_err = adc_cali_create_scheme_curve_fitting(&cali_cfg, &cali_h);
-    if (adc_err != ESP_OK) {
+    esp_err_t cali_err = adc_cali_create_scheme_curve_fitting(&cali_cfg, &cali_h);
+    if (cali_err != ESP_OK) {
       ESP_LOGW(TAG, "ADC calibration init failed, using uncalibrated");
       cali_h = nullptr;
     }
     adc_cali_handle_ = cali_h;
-    ripple_enabled_ = true;
-    ESP_LOGI(TAG, "IPROPI ADC initialized (GPIO%d), ripple counting enabled", ipropi_pin_);
+  }
+  if (adc_err == ESP_OK) {
+    BaseType_t task_ok = xTaskCreatePinnedToCore(
+        ripple_task_func_, "hv6_ripple", 4096, this,
+        PRIORITY - 1, &ripple_task_handle_, CORE);
+    if (task_ok == pdPASS) {
+      ripple_enabled_ = true;
+      ESP_LOGI(TAG, "IPROPI ADC continuous @ %" PRIu32 "Hz (GPIO%d), ripple counting enabled",
+               RIPPLE_SAMPLE_RATE_HZ, ipropi_pin_);
+    } else {
+      ESP_LOGE(TAG, "Failed to create ripple processor task");
+      ripple_enabled_ = false;
+    }
   } else {
     ESP_LOGW(TAG, "IPROPI ADC init failed (err=%d), ripple counting disabled", adc_err);
     ripple_enabled_ = false;
@@ -195,8 +238,9 @@ void Hv6ValveController::dump_config() {
   ESP_LOGCONFIG(TAG, "HV6 Valve Controller:");
   ESP_LOGCONFIG(TAG, "  nSLEEP pin: GPIO%d", nsleep_pin_);
   ESP_LOGCONFIG(TAG, "  nFAULT pin: GPIO%d", nfault_pin_);
-  ESP_LOGCONFIG(TAG, "  IPROPI pin: GPIO%d  ripple=%s", ipropi_pin_,
-                ripple_enabled_ ? "yes" : "no");
+  ESP_LOGCONFIG(TAG, "  IPROPI pin: GPIO%d  ripple=%s  dma=%s", ipropi_pin_,
+                ripple_enabled_ ? "yes" : "no",
+                adc_continuous_handle_ ? "yes" : "no");
   for (uint8_t i = 0; i < NUM_ZONES; i++) {
     ESP_LOGCONFIG(TAG, "  Motor %d: addr=0x%02X present=%s", i + 1,
                   motor_addresses_[i], telemetry_[i].present ? "yes" : "no");
@@ -959,14 +1003,16 @@ void Hv6ValveController::execute_move_(uint8_t zone, float target_pct) {
       if (motor_run_time_ms_ >= timeout_ms)
         break;
       // Ripple safety: stop if we've exceeded the learned stroke length × factor
-      if (open_ripple_limit > 0 && ripple_.count >= open_ripple_limit) {
+      uint32_t cur_rip = live_ripple_count_.load(std::memory_order_relaxed);
+      if (open_ripple_limit > 0 && cur_rip >= open_ripple_limit) {
         ESP_LOGI(TAG, "Motor %d open ripple limit (%" PRIu32 "/%" PRIu32 ")",
-                 zone + 1, ripple_.count, open_ripple_limit);
+                 zone + 1, cur_rip, open_ripple_limit);
         break;
       }
     } else {
       // Ripple-based stop (precise)
-      if (target_ripples > 0 && ripple_.count >= target_ripples)
+      if (target_ripples > 0 &&
+          live_ripple_count_.load(std::memory_order_relaxed) >= target_ripples)
         break;
       // Time-based stop (fallback when no ripple data)
       if (target_ripples == 0 && motor_run_time_ms_ >= timeout_ms)
@@ -986,9 +1032,10 @@ void Hv6ValveController::execute_move_(uint8_t zone, float target_pct) {
     if (drive_to_endstop) {
       // Endstop reached — position is definitively at the limit
       telemetry_[zone].current_position_pct = target_pct;
-    } else if (target_ripples > 0 && learned_ripples > 0 && ripple_.count > 0) {
-      // Precise position from actual ripple count
-      float actual_pct = (static_cast<float>(ripple_.count) /
+    } else if (target_ripples > 0 && learned_ripples > 0 &&
+               ripple_counter_.getRippleCount() > 0) {
+      // Precise position from actual ripple count (safe: DMA stopped in stop_motor_)
+      float actual_pct = (static_cast<float>(ripple_counter_.getRippleCount()) /
                           static_cast<float>(learned_ripples)) * 100.0f;
       float new_pos = (dir == MotorDirection::OPEN)
           ? current_pct + actual_pct
@@ -1065,13 +1112,18 @@ bool Hv6ValveController::start_motor_(uint8_t zone, MotorDirection dir, bool ove
   fsm_state_ = MotorFsmState::BOOST;
   motor_turning_ = true;
 
-  // Reset ripple counter
-  ripple_ = {};
+  // Reset ripple counter and start ADC DMA
+  ripple_counter_.reset();
   live_ripple_count_ = 0;
+  dma_debounce_remaining_ = RIPPLE_DMA_DEBOUNCE_SAMPLES;
+  ripple_drive_was_on_ = false;
   fsm_tick_count_ = 0;
   trace_reset_();
   trace_last_mqtt_index_ = 0;
   trace_last_mqtt_publish_ms_ = 0;
+
+  if (ripple_enabled_ && adc_continuous_handle_)
+    adc_continuous_start(static_cast<adc_continuous_handle_t>(adc_continuous_handle_));
 
   if (dir == MotorDirection::OPEN)
     driver->reverse();
@@ -1091,6 +1143,14 @@ void Hv6ValveController::stop_motor_(bool record_event) {
   DRV8215 *driver = drivers_[current_zone_];
   if (driver)
     driver->coast();
+  drive_output_enabled_ = false;
+
+  // Stop DMA and allow the ripple processor task to drain any pending frames
+  // before the motor task reads the final ripple count.
+  if (ripple_enabled_ && adc_continuous_handle_) {
+    adc_continuous_stop(static_cast<adc_continuous_handle_t>(adc_continuous_handle_));
+    vTaskDelay(pdMS_TO_TICKS(25));  // ~2 frame periods; ripple task drains here
+  }
 
   if (record_event) {
     xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
@@ -1403,7 +1463,7 @@ void Hv6ValveController::detect_pin_engagement_() {
 
   if (pin_detect_sustained_ >= PIN_ENGAGE_DEBOUNCE_TICKS) {
     pin_detected_ = true;
-    pin_detected_ripples_ = ripple_.count;
+    pin_detected_ripples_ = ripple_counter_.getRippleCount();
     ESP_LOGI(TAG, "Motor %d pin engagement at ripple %" PRIu32
              " (baseline=%.1f mA, current=%.1f mA)",
              current_zone_ + 1, pin_detected_ripples_,
@@ -1505,9 +1565,6 @@ void Hv6ValveController::motor_loop_() {
   if (!motor_turning_)
     return;
 
-  // 1ms: sample ADC + ripple detection
-  sample_ripple_();
-
   // 10ms: run full FSM tick (endstop, fault detection, PWM cycling)
   fsm_tick_count_++;
   if (fsm_tick_count_ >= TICKS_PER_FSM) {
@@ -1516,80 +1573,78 @@ void Hv6ValveController::motor_loop_() {
   }
 }
 
-void Hv6ValveController::sample_ripple_() {
-  if (!ripple_enabled_ || !adc_handle_)
-    return;
+// =============================================================================
+// Ripple counter — DMA processor task
+// =============================================================================
 
-  // Gate: don't sample during PWM off-phase (IPROPI is zero when coasting)
-  if (!drive_output_enabled_) {
-    ripple_.pwm_was_on = false;
-    return;
-  }
+void Hv6ValveController::ripple_task_func_(void *arg) {
+  static_cast<Hv6ValveController *>(arg)->run_ripple_task_();
+}
 
-  // Debounce after PWM on-transition (inrush transient)
-  if (!ripple_.pwm_was_on) {
-    ripple_.pwm_was_on = true;
-    ripple_.pwm_debounce = RIPPLE_PWM_DEBOUNCE_TICKS;
-  }
-  if (ripple_.pwm_debounce > 0) {
-    ripple_.pwm_debounce--;
-    // Still read ADC to initialize DC estimate, with slower filter
-    int raw = read_adc_raw_();
-    if (raw >= 0) {
-      if (ripple_.dc_estimate < 1.0f)
-        ripple_.dc_estimate = static_cast<float>(raw);
-      else
-        ripple_.dc_estimate += RIPPLE_DC_ALPHA_SLOW * (static_cast<float>(raw) - ripple_.dc_estimate);
+void Hv6ValveController::run_ripple_task_() {
+  while (true) {
+    // Sleep until the ISR callback wakes us when a DMA frame is ready
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+    if (!adc_continuous_handle_ || !ripple_enabled_)
+      continue;
+
+    uint32_t bytes_read = 0;
+    auto *h = static_cast<adc_continuous_handle_t>(adc_continuous_handle_);
+    esp_err_t ret = adc_continuous_read(
+        h, adc_frame_buf_, RIPPLE_DMA_FRAME_BYTES, &bytes_read, 0 /* non-blocking */);
+    if (ret != ESP_OK || bytes_read == 0)
+      continue;
+
+    const uint32_t n_frames = bytes_read / sizeof(adc_digi_output_data_t);
+    const auto *frames = reinterpret_cast<const adc_digi_output_data_t *>(adc_frame_buf_);
+    const int expected_chan = ipropi_channel_;
+
+    float sum_ma     = 0.0f;
+    uint32_t n_valid = 0;
+    int last_raw     = -1;
+
+    for (uint32_t i = 0; i < n_frames; ++i) {
+      // ESP32-S3 TYPE2 output format
+      if (static_cast<int>(frames[i].type2.channel) != expected_chan)
+        continue;
+
+      const uint16_t raw = frames[i].type2.data & 0x0FFFu;  // 12-bit value
+
+      // --- PWM drive gate (replaces legacy drive_output_enabled_ check) ---
+      // Track drive_output_enabled_ transitions to apply per-transition debounce,
+      // matching the original sample_ripple_() behaviour for the HOLD/coast phase.
+      if (!drive_output_enabled_.load(std::memory_order_relaxed)) {
+        ripple_drive_was_on_ = false;
+        continue;  // IPROPI reads zero during coast — skip to avoid corrupting filters
+      }
+      if (!ripple_drive_was_on_) {
+        // Drive just turned on — apply inrush debounce
+        ripple_drive_was_on_  = true;
+        dma_debounce_remaining_ = RIPPLE_DMA_DEBOUNCE_SAMPLES;
+      }
+      if (dma_debounce_remaining_ > 0) {
+        --dma_debounce_remaining_;
+        continue;
+      }
+
+      // --- Feed sample to ripple counter ---
+      ripple_counter_.update(raw);
+      sum_ma  += adc_raw_to_ma_(static_cast<int>(raw));
+      last_raw = static_cast<int>(raw);
+      ++n_valid;
     }
-    return;
-  }
 
-  int raw = read_adc_raw_();
-  if (raw < 0)
-    return;
-
-  float sample = static_cast<float>(raw);
-
-  // Update DC estimate (slow lowpass, tau ~100ms at 1kHz)
-  if (ripple_.dc_estimate < 1.0f)
-    ripple_.dc_estimate = sample;
-  else
-    ripple_.dc_estimate += RIPPLE_DC_ALPHA * (sample - ripple_.dc_estimate);
-
-  // Update current reading for publishing
-  latest_current_ma_ = adc_raw_to_ma_(raw);
-
-  // Record sample to trace buffer (for CSV export)
-  trace_sample_(raw, latest_current_ma_);
-
-  // Hysteresis band: % of DC estimate
-  float hyst = ripple_.dc_estimate * RIPPLE_HYSTERESIS_PCT;
-  if (hyst < 5.0f)
-    hyst = 5.0f;  // minimum hysteresis to avoid noise
-
-  // Zero-crossing detector with hysteresis — count on rising edge
-  if (ripple_.above_dc) {
-    if (sample < ripple_.dc_estimate - hyst)
-      ripple_.above_dc = false;
-  } else {
-    if (sample > ripple_.dc_estimate + hyst) {
-      ripple_.above_dc = true;
-      ripple_.count++;
-      live_ripple_count_ = ripple_.count;
+    if (n_valid > 0) {
+      latest_current_ma_ = sum_ma / static_cast<float>(n_valid);
+      live_ripple_count_.store(ripple_counter_.getRippleCount(),
+                               std::memory_order_relaxed);
+      if (last_raw >= 0)
+        trace_sample_(last_raw, latest_current_ma_);
     }
   }
 }
 
-int Hv6ValveController::read_adc_raw_() {
-  if (!adc_handle_)
-    return -1;
-  int raw = 0;
-  auto h = static_cast<adc_oneshot_unit_handle_t>(adc_handle_);
-  auto ch = static_cast<adc_channel_t>(ipropi_channel_);
-  if (adc_oneshot_read(h, ch, &raw) != ESP_OK)
-    return -1;
-  return raw;
-}
 
 float Hv6ValveController::adc_raw_to_ma_(int raw) {
   if (adc_cali_handle_) {
@@ -1603,21 +1658,12 @@ float Hv6ValveController::adc_raw_to_ma_(int raw) {
   return voltage / IPROPI_DIVISOR;
 }
 
-// =============================================================================
-// Hardware Helpers
-// =============================================================================
-
 float Hv6ValveController::read_current_ma_() {
-  // Prefer direct ADC read (fast, from motor task)
-  if (ripple_enabled_ && adc_handle_) {
-    int raw = read_adc_raw_();
-    if (raw >= 0) {
-      float ma = adc_raw_to_ma_(raw);
-      latest_current_ma_ = ma;
-      return ma;
-    }
-  }
-  // Fallback: ESPHome sensor (slower, updated from main loop)
+  // With DMA ripple task running, latest_current_ma_ is updated at ~60 Hz
+  // (per 17 ms frame) — more than sufficient for the 10 ms FSM tick.
+  if (ripple_enabled_)
+    return latest_current_ma_;
+  // Fallback: ESPHome ADC sensor (updated from main loop, slower)
   if (current_sensor_ && current_sensor_->has_state()) {
     float voltage = current_sensor_->state;
     return voltage / IPROPI_DIVISOR;
@@ -1682,7 +1728,7 @@ uint32_t Hv6ValveController::calibration_pass_(uint8_t zone, MotorDirection dir)
 
   ESP_LOGI(TAG, "Calibration pass %s zone %d: %" PRIu32 "ms, %" PRIu32 " ripples",
            dir == MotorDirection::CLOSE ? "CLOSE" : "OPEN",
-           zone + 1, elapsed, ripple_.count);
+           zone + 1, elapsed, ripple_counter_.getRippleCount());
 
   vTaskDelay(pdMS_TO_TICKS(500));
   return elapsed;
@@ -1761,7 +1807,7 @@ void Hv6ValveController::run_calibration_(uint8_t zone) {
 
     // Pass 2: open fully (measure opening travel)
     uint32_t open_ms = calibration_pass_(zone, MotorDirection::OPEN);
-    uint32_t open_ripples = ripple_.count;
+    uint32_t open_ripples = ripple_counter_.getRippleCount();
     if (open_ms == 0) {
       ESP_LOGW(TAG, "Calibration zone %d: open pass failed", zone + 1);
       break;
@@ -1769,7 +1815,7 @@ void Hv6ValveController::run_calibration_(uint8_t zone) {
 
     // Pass 3: close fully again (measure closing travel + compute deadzone)
     uint32_t close2_ms = calibration_pass_(zone, MotorDirection::CLOSE);
-    uint32_t close2_ripples = ripple_.count;
+    uint32_t close2_ripples = ripple_counter_.getRippleCount();
     if (close2_ms == 0) {
       ESP_LOGW(TAG, "Calibration zone %d: second close failed", zone + 1);
       break;
@@ -1870,7 +1916,7 @@ void Hv6ValveController::trace_sample_(int raw_adc, float current_ma) {
 
   MotorTraceSample &sample = trace_samples_[trace_write_index_];
   sample.t_ms = static_cast<uint32_t>((now_us - trace_start_us_) / 1000);
-  sample.ripple_count = ripple_.count;
+  sample.ripple_count = live_ripple_count_.load(std::memory_order_relaxed);
   sample.current_ma_x10 = static_cast<int16_t>(current_ma * 10.0f);
   sample.adc_raw = static_cast<uint16_t>(raw_adc & 0xFFF);
   sample.drive_on = drive_output_enabled_ ? 1 : 0;

@@ -13,7 +13,7 @@ SERIAL_PORT := $(if $(PORT),$(PORT),$(AUTO_PORT))
 DASHBOARD_SRC_DIR ?= web/dashboard-src
 DASHBOARD_OUT_FILE ?= web/dashboard.js
 
-.PHONY: help check config build build-patch build-minor build-major build-verify deploy ota logs discover monitor erase erase-nvs clean dashboard dashboard-tooling dashboard-build dashboard-watch
+.PHONY: help check config build build-patch build-minor build-major build-verify deploy ota logs discover monitor erase erase-nvs clean dashboard dashboard-tooling dashboard-build dashboard-watch test test-ripple
 
 help:
 	@echo "HeatValve-6 ESPHome tasks"
@@ -30,6 +30,8 @@ help:
 	@echo "  make monitor       Open serial monitor on PORT"
 	@echo "  make erase         Erase flash on PORT"
 	@echo "  make erase-nvs     Erase NVS partition only (clears calibration data)"
+	@echo "  make test          Run all host unit tests"
+	@echo "  make test-ripple   Run ripple-counter unit tests (5 rates × 5 cases)"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make build"
@@ -78,6 +80,22 @@ build-verify: check dashboard-build
 
 deploy: check
 	$(MAKE) build
+
+# =============================================================================
+# Host unit tests (no ESP-IDF, runs on macOS/Linux with clang++)
+# =============================================================================
+RIPPLE_CXX      ?= clang++
+RIPPLE_CXXFLAGS  = -std=c++17 -O2 -Wall -Wextra -Wno-unused-parameter \
+                   -I components/hv6_valve_controller
+RIPPLE_SRCS      = components/hv6_valve_controller/ripple_counter.cpp \
+                   test/ripple_counter/test_ripple_counter.cpp
+RIPPLE_OUT       = /tmp/test_ripple_counter
+
+test-ripple:
+	$(RIPPLE_CXX) $(RIPPLE_CXXFLAGS) $(RIPPLE_SRCS) -o $(RIPPLE_OUT) -lm
+	$(RIPPLE_OUT)
+
+test: test-ripple
 	@if [ -n "$(PORT)" ]; then \
 		$(PIO) run -d $(BUILD_ROOT) -t upload --upload-port $(PORT); \
 	elif [ -n "$(AUTO_PORT)" ]; then \
