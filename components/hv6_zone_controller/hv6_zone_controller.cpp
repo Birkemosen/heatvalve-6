@@ -1236,10 +1236,23 @@ void Hv6ZoneController::recalculate_dynamic_balance_factors_() {
 
     xSemaphoreTake(snapshot_mutex_, portMAX_DELAY);
     snapshots_[i].return_temp_c = return_temp;
+    ZoneState last_state = snapshots_[i].state;
     xSemaphoreGive(snapshot_mutex_);
 
     if (std::isnan(return_temp)) {
       // No return temp sensor for this zone — keep existing factor
+      continue;
+    }
+
+    // Only update balance factors for zones that had active flow last cycle.
+    // A zone at 0% or maintenance flow has stagnant water whose return temp
+    // drifts to floor/ambient temperature — not a valid ΔT measurement.
+    if (last_state != ZoneState::DEMAND) {
+      // If zone is re-entering demand next cycle, reset factor to 1.0f so we
+      // don't carry over a factor computed during stagnant conditions.
+      if (last_state == ZoneState::SATISFIED || last_state == ZoneState::OVERHEATED) {
+        balance_factors_[i] = 1.0f;
+      }
       continue;
     }
 
