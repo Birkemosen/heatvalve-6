@@ -77,10 +77,34 @@ struct LegacyControlConfigV9 {
   float tanh_steepness;
 };
 
+// Frozen snapshot of ZoneConfig before v11 added helios offset/abs limit fields.
+struct LegacyZoneConfigV10 {
+  bool enabled;
+  float area_m2;
+  float max_opening_pct;
+  PipeType pipe_type;
+  FloorType floor_type;
+  float pipe_spacing_mm;
+  float floor_cover_thickness_mm;
+  float setpoint_c;
+  ControlAlgorithm algorithm;
+  float heat_loss_w_m2;
+  float supply_pipe_length_m;
+  float cooling_delta_c;
+  float concrete_thickness_mm;
+  char name[16];
+  uint8_t exterior_walls;
+  ProbeRole probe_role;
+  int8_t sync_to_zone;
+  MotorProfile motor_profile_override;
+  float motor_close_current_factor_override;
+  float motor_open_current_factor_override;
+};
+
 struct LegacyDeviceConfigV9 {
   uint32_t config_version;
   SystemConfig system;
-  ZoneConfig zones[NUM_ZONES];
+  LegacyZoneConfigV10 zones[NUM_ZONES];
   LegacyControlConfigV9 control;
   ProbeConfig probes;
   PIDParams pid;
@@ -89,6 +113,21 @@ struct LegacyDeviceConfigV9 {
   MqttTempConfig mqtt_temp;
   BalancingConfig balancing;
   MqttBrokerConfig mqtt_broker;
+};
+
+struct LegacyDeviceConfigV10 {
+  uint32_t config_version;
+  SystemConfig system;
+  LegacyZoneConfigV10 zones[NUM_ZONES];
+  ControlConfig control;  ///< Includes simple_preheat_enabled (added in v10)
+  ProbeConfig probes;
+  PIDParams pid;
+  MotorConfig motor;
+  ManifoldType manifold_type;
+  MqttTempConfig mqtt_temp;
+  BalancingConfig balancing;
+  MqttBrokerConfig mqtt_broker;
+  // No helios field — that was added in v11
 };
 
 struct LegacyDeviceConfigV8 {
@@ -198,8 +237,29 @@ DeviceConfig migrate_v9_config(const LegacyDeviceConfigV9 &legacy) {
   DeviceConfig cfg;
   cfg.config_version = CONFIG_VERSION;
   cfg.system = legacy.system;
-  for (uint8_t i = 0; i < NUM_ZONES; i++)
-    cfg.zones[i] = legacy.zones[i];
+  for (uint8_t i = 0; i < NUM_ZONES; i++) {
+    cfg.zones[i].enabled = legacy.zones[i].enabled;
+    cfg.zones[i].area_m2 = legacy.zones[i].area_m2;
+    cfg.zones[i].max_opening_pct = legacy.zones[i].max_opening_pct;
+    cfg.zones[i].pipe_type = legacy.zones[i].pipe_type;
+    cfg.zones[i].floor_type = legacy.zones[i].floor_type;
+    cfg.zones[i].pipe_spacing_mm = legacy.zones[i].pipe_spacing_mm;
+    cfg.zones[i].floor_cover_thickness_mm = legacy.zones[i].floor_cover_thickness_mm;
+    cfg.zones[i].setpoint_c = legacy.zones[i].setpoint_c;
+    cfg.zones[i].algorithm = legacy.zones[i].algorithm;
+    cfg.zones[i].heat_loss_w_m2 = legacy.zones[i].heat_loss_w_m2;
+    cfg.zones[i].supply_pipe_length_m = legacy.zones[i].supply_pipe_length_m;
+    cfg.zones[i].cooling_delta_c = legacy.zones[i].cooling_delta_c;
+    cfg.zones[i].concrete_thickness_mm = legacy.zones[i].concrete_thickness_mm;
+    memcpy(cfg.zones[i].name, legacy.zones[i].name, sizeof(cfg.zones[i].name));
+    cfg.zones[i].exterior_walls = legacy.zones[i].exterior_walls;
+    cfg.zones[i].probe_role = legacy.zones[i].probe_role;
+    cfg.zones[i].sync_to_zone = legacy.zones[i].sync_to_zone;
+    cfg.zones[i].motor_profile_override = legacy.zones[i].motor_profile_override;
+    cfg.zones[i].motor_close_current_factor_override = legacy.zones[i].motor_close_current_factor_override;
+    cfg.zones[i].motor_open_current_factor_override = legacy.zones[i].motor_open_current_factor_override;
+    // New v11 helios fields use C++ defaults: min_offset=-2, max_offset=2, abs_min=5, abs_max=30
+  }
 
   cfg.control.comfort_band_c = legacy.control.comfort_band_c;
   cfg.control.min_valve_opening_pct = legacy.control.min_valve_opening_pct;
@@ -217,6 +277,45 @@ DeviceConfig migrate_v9_config(const LegacyDeviceConfigV9 &legacy) {
   cfg.mqtt_temp = legacy.mqtt_temp;
   cfg.balancing = legacy.balancing;
   cfg.mqtt_broker = legacy.mqtt_broker;
+  return cfg;
+}
+
+DeviceConfig migrate_v10_config(const LegacyDeviceConfigV10 &legacy) {
+  DeviceConfig cfg;
+  cfg.config_version = CONFIG_VERSION;
+  cfg.system = legacy.system;
+  for (uint8_t i = 0; i < NUM_ZONES; i++) {
+    cfg.zones[i].enabled = legacy.zones[i].enabled;
+    cfg.zones[i].area_m2 = legacy.zones[i].area_m2;
+    cfg.zones[i].max_opening_pct = legacy.zones[i].max_opening_pct;
+    cfg.zones[i].pipe_type = legacy.zones[i].pipe_type;
+    cfg.zones[i].floor_type = legacy.zones[i].floor_type;
+    cfg.zones[i].pipe_spacing_mm = legacy.zones[i].pipe_spacing_mm;
+    cfg.zones[i].floor_cover_thickness_mm = legacy.zones[i].floor_cover_thickness_mm;
+    cfg.zones[i].setpoint_c = legacy.zones[i].setpoint_c;
+    cfg.zones[i].algorithm = legacy.zones[i].algorithm;
+    cfg.zones[i].heat_loss_w_m2 = legacy.zones[i].heat_loss_w_m2;
+    cfg.zones[i].supply_pipe_length_m = legacy.zones[i].supply_pipe_length_m;
+    cfg.zones[i].cooling_delta_c = legacy.zones[i].cooling_delta_c;
+    cfg.zones[i].concrete_thickness_mm = legacy.zones[i].concrete_thickness_mm;
+    memcpy(cfg.zones[i].name, legacy.zones[i].name, sizeof(cfg.zones[i].name));
+    cfg.zones[i].exterior_walls = legacy.zones[i].exterior_walls;
+    cfg.zones[i].probe_role = legacy.zones[i].probe_role;
+    cfg.zones[i].sync_to_zone = legacy.zones[i].sync_to_zone;
+    cfg.zones[i].motor_profile_override = legacy.zones[i].motor_profile_override;
+    cfg.zones[i].motor_close_current_factor_override = legacy.zones[i].motor_close_current_factor_override;
+    cfg.zones[i].motor_open_current_factor_override = legacy.zones[i].motor_open_current_factor_override;
+    // New v11 helios fields use C++ defaults: min_offset=-2, max_offset=2, abs_min=5, abs_max=30
+  }
+  cfg.control = legacy.control;
+  cfg.probes = legacy.probes;
+  cfg.pid = legacy.pid;
+  cfg.motor = legacy.motor;
+  cfg.manifold_type = legacy.manifold_type;
+  cfg.mqtt_temp = legacy.mqtt_temp;
+  cfg.balancing = legacy.balancing;
+  cfg.mqtt_broker = legacy.mqtt_broker;
+  // cfg.helios uses C++ defaults (enabled=false, host="", port=8080, etc.)
   return cfg;
 }
 
@@ -518,6 +617,27 @@ void Hv6ConfigStore::update_mqtt_broker(const MqttBrokerConfig &mqtt_broker) {
   mark_dirty();
 }
 
+HeliosConfig Hv6ConfigStore::get_helios_config() const {
+  if (mutex_ == nullptr)
+    return config_.helios;
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  HeliosConfig copy = config_.helios;
+  xSemaphoreGive(mutex_);
+  return copy;
+}
+
+void Hv6ConfigStore::update_helios(const HeliosConfig &helios) {
+  if (mutex_ == nullptr) {
+    config_.helios = helios;
+    mark_dirty();
+    return;
+  }
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  config_.helios = helios;
+  xSemaphoreGive(mutex_);
+  mark_dirty();
+}
+
 void Hv6ConfigStore::save_motor_telemetry(uint8_t motor, const MotorTelemetry &telemetry) {
   if (motor >= NUM_ZONES)
     return;
@@ -656,6 +776,15 @@ void Hv6ConfigStore::load_config_() {
         config_ = migrated;
         xSemaphoreGive(mutex_);
         ESP_LOGW(TAG, "Migrated config v9 -> v%" PRIu32, CONFIG_VERSION);
+        mark_dirty();
+      } else if (stored_version == 10 && read_size == sizeof(LegacyDeviceConfigV10)) {
+        LegacyDeviceConfigV10 legacy{};
+        memcpy(&legacy, raw.data(), sizeof(legacy));
+        DeviceConfig migrated = migrate_v10_config(legacy);
+        xSemaphoreTake(mutex_, portMAX_DELAY);
+        config_ = migrated;
+        xSemaphoreGive(mutex_);
+        ESP_LOGW(TAG, "Migrated config v10 -> v%" PRIu32, CONFIG_VERSION);
         mark_dirty();
       } else if (read_size != sizeof(DeviceConfig)) {
         ESP_LOGW(TAG,

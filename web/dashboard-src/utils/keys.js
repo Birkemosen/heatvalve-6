@@ -54,5 +54,13 @@ export const gkey = {
   relearnAfterHours: 'number-relearn_after_hours',
   learnedFactorMinSamples: 'number-learned_factor_min_samples',
   learnedFactorMaxDeviationPct: 'number-learned_factor_max_deviation_pct',
-  simplePreheatEnabled: 'switch-simple_preheat_enabled'
+  simplePreheatEnabled: 'switch-simple_preheat_enabled',
+  heliosEnabled: 'switch-helios_enabled',
+  heliosHost: 'text-helios_host',
+  heliosPort: 'number-helios_port',
+  heliosControllerId: 'text-helios_controller_id',
+  heliosPollIntervalS: 'number-helios_poll_interval_s',
+  heliosStaleAfterS: 'number-helios_stale_after_s',
+  heliosStatus: 'helios_status',
+  heliosDeviceId: 'text-helios_device_id',
 };

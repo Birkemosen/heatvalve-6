@@ -180,6 +180,11 @@ struct ZoneConfig {
   // Motor-specific endstop tuning (0.0 = use global default from MotorConfig)
   float motor_close_current_factor_override = 0.0f;  ///< Per-motor close threshold (slower motors may need 1.6x vs 1.7x to avoid premature pop-off)
   float motor_open_current_factor_override = 0.0f;   ///< Per-motor open threshold
+  // Helios-3 per-zone setpoint offset safety limits
+  float min_offset_c = -2.0f;  ///< Minimum setpoint offset from Helios (firmware safety clamp)
+  float max_offset_c = 2.0f;   ///< Maximum setpoint offset from Helios (firmware safety clamp)
+  float abs_min_c = 5.0f;      ///< Absolute minimum effective setpoint (overrides all offsets)
+  float abs_max_c = 30.0f;     ///< Absolute maximum effective setpoint (overrides all offsets)
 };
 
 struct ControlConfig {
@@ -217,6 +222,18 @@ struct BalancingConfig {
   float flow_decrease_threshold_pct = 30.0f;///< Request lower flow temp when avg zone opening drops below this
   float target_delta_t_c = 5.0f;            ///< Target ΔT (flow − return) for dynamic balancing
   float damping_factor = 0.3f;              ///< EMA damping for balance factor updates (0..1, lower = slower)
+};
+
+static constexpr uint8_t HELIOS_HOST_LEN = 64;
+static constexpr uint8_t HELIOS_CONTROLLER_ID_LEN = 33;
+
+struct HeliosConfig {
+  bool enabled = false;
+  char host[HELIOS_HOST_LEN] = "";                           ///< Helios-3 service hostname or IP
+  uint16_t port = 8080;                                      ///< Helios-3 HTTP port
+  char controller_id[HELIOS_CONTROLLER_ID_LEN] = "";         ///< empty = use system.controller_id
+  uint16_t poll_interval_s = 30;                             ///< Snapshot POST + commands GET interval
+  uint16_t stale_after_s = 600;                              ///< Clear helios offsets if no ack within this period
 };
 
 static constexpr uint8_t MQTT_BROKER_LEN = 64;
@@ -350,7 +367,8 @@ struct SystemConfig {
 /// v8 updates default probe mapping: zones 1..6 -> probes 1..6, flow=7, return=8.
 /// v9 adds motor profiles, runtime safety preset fields, and learned factor confidence controls.
 /// v10 adds control.simple_preheat_enabled.
-static constexpr uint32_t CONFIG_VERSION = 10;
+/// v11 adds HeliosConfig and per-zone offset/abs limits to ZoneConfig.
+static constexpr uint32_t CONFIG_VERSION = 11;
 
 struct DeviceConfig {
   uint32_t config_version = CONFIG_VERSION;
@@ -364,6 +382,7 @@ struct DeviceConfig {
   MqttTempConfig mqtt_temp;
   BalancingConfig balancing;
   MqttBrokerConfig mqtt_broker;
+  HeliosConfig helios;
 };
 
 // =============================================================================

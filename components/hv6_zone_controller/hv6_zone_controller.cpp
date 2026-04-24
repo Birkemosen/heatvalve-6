@@ -42,6 +42,13 @@ void Hv6ZoneController::setup() {
     return;
   }
 
+  helios_mutex_ = xSemaphoreCreateMutex();
+  if (helios_mutex_ == nullptr) {
+    ESP_LOGE(TAG, "Failed to create helios mutex");
+    this->mark_failed();
+    return;
+  }
+
   adj_queue_ = xQueueCreate(ADJ_QUEUE_LEN, sizeof(SetpointAdjustment));
   if (adj_queue_ == nullptr) {
     ESP_LOGE(TAG, "Failed to create adjustment queue");
@@ -50,6 +57,7 @@ void Hv6ZoneController::setup() {
   }
 
   setpoint_offsets_.fill(0.0f);
+  helios_cmds_.fill({});
   balance_factors_.fill(1.0f);
   last_valid_temp_ms_.fill(0);
   mqtt_temp_last_ms_.fill(0);
@@ -244,6 +252,29 @@ bool Hv6ZoneController::apply_setpoint_adjustment(uint8_t zone, float offset_c) 
   last_mqtt_adjustment_ms_ = static_cast<uint32_t>(esp_timer_get_time() / 1000);
   SetpointAdjustment adj = {zone, offset_c};
   return xQueueSend(adj_queue_, &adj, pdMS_TO_TICKS(50)) == pdTRUE;
+}
+
+void Hv6ZoneController::apply_helios_command(uint8_t zone, const HeliosZoneCommand &cmd) {
+  if (zone >= NUM_ZONES)
+    return;
+  if (helios_mutex_ == nullptr) {
+    helios_cmds_[zone] = cmd;
+    return;
+  }
+  xSemaphoreTake(helios_mutex_, portMAX_DELAY);
+  helios_cmds_[zone] = cmd;
+  xSemaphoreGive(helios_mutex_);
+}
+
+void Hv6ZoneController::clear_all_helios_commands() {
+  if (helios_mutex_ == nullptr) {
+    helios_cmds_.fill({});
+    return;
+  }
+  xSemaphoreTake(helios_mutex_, portMAX_DELAY);
+  helios_cmds_.fill({});
+  xSemaphoreGive(helios_mutex_);
+  ESP_LOGI(TAG, "Helios: all zone commands cleared");
 }
 
 void Hv6ZoneController::set_zone_enabled(uint8_t zone, bool enabled) {
@@ -852,7 +883,21 @@ void Hv6ZoneController::run_cycle_() {
     zone_temps[i] = read_zone_temperature_(i);
     if (!std::isnan(zone_temps[i]))
       last_valid_temp_ms_[i] = now_ms;
-    zone_setpoints[i] = requested_setpoints_[i] + setpoint_offsets_[i];
+
+    // Read Helios command under mutex, then apply with per-zone clamping
+    float helios_off = 0.0f;
+    float preheat_floor = 0.0f;
+    if (helios_mutex_ != nullptr && xSemaphoreTake(helios_mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
+      helios_off = helios_cmds_[i].setpoint_offset_c;
+      preheat_floor = helios_cmds_[i].preheat_floor_c;
+      xSemaphoreGive(helios_mutex_);
+    }
+    helios_off = std::clamp(helios_off, cfg.zones[i].min_offset_c, cfg.zones[i].max_offset_c);
+    float eff = requested_setpoints_[i] + setpoint_offsets_[i] + helios_off;
+    eff = std::clamp(eff, cfg.zones[i].abs_min_c, cfg.zones[i].abs_max_c);
+    if (preheat_floor > 0.0f)
+      eff = std::max(eff, std::min(preheat_floor, cfg.zones[i].abs_max_c));
+    zone_setpoints[i] = eff;
   }
 
   // Apply zone sync: synced zones share the primary zone's setpoint

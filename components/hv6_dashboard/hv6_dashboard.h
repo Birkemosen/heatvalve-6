@@ -57,6 +57,9 @@ struct DashboardSnapshot {
   hv6::MotorConfig  motor;
   hv6::ManifoldType manifold_type;
   bool              simple_preheat_enabled;
+  hv6::HeliosConfig helios;             // current helios config
+  char              helios_status[16];  // "active"|"degraded"|"offline"
+  char              helios_device_id[33]; // system.controller_id fallback
 };
 
 struct DashboardAction {
@@ -95,6 +98,7 @@ class HV6Dashboard : public Component, public AsyncWebHandler {
   void set_zone_controller(hv6::Hv6ZoneController *controller) { this->zone_controller_ = controller; }
   void set_valve_controller(hv6::Hv6ValveController *ctrl) { this->valve_controller_ = ctrl; }
   void set_config_store(hv6::Hv6ConfigStore *store) { this->config_store_ = store; }
+  void set_helios_client(esphome::Component *client) { this->helios_client_ = client; }
   void set_wifi_signal_sensor(sensor::Sensor *sensor) { this->wifi_signal_sensor_ = sensor; }
   void set_manifold_flow_sensor(sensor::Sensor *s) { this->manifold_flow_sensor_ = s; }
   void set_manifold_return_sensor(sensor::Sensor *s) { this->manifold_return_sensor_ = s; }
@@ -150,6 +154,7 @@ class HV6Dashboard : public Component, public AsyncWebHandler {
   hv6::Hv6ZoneController *zone_controller_{nullptr};
   hv6::Hv6ValveController *valve_controller_{nullptr};
   hv6::Hv6ConfigStore *config_store_{nullptr};
+  esphome::Component *helios_client_{nullptr};
   sensor::Sensor *wifi_signal_sensor_{nullptr};
   sensor::Sensor *manifold_flow_sensor_{nullptr};
   sensor::Sensor *manifold_return_sensor_{nullptr};

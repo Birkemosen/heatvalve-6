@@ -29,6 +29,14 @@ struct SetpointAdjustment {
   float offset_c;
 };
 
+/// Command received from Helios-3 optimizer for a single zone.
+/// All temporal validation (valid_until, preheat windows) is performed by the
+/// Helios client before writing here; the zone controller only applies the values.
+struct HeliosZoneCommand {
+  float setpoint_offset_c = 0.0f;  ///< Setpoint offset; zone controller clamps to [min_offset_c, max_offset_c]
+  float preheat_floor_c = 0.0f;    ///< If > 0, effective setpoint will be at least this value
+};
+
 class Hv6ZoneController : public esphome::Component {
  public:
   float get_setup_priority() const override { return esphome::setup_priority::DATA; }
@@ -56,6 +64,10 @@ class Hv6ZoneController : public esphome::Component {
 
   void set_zone_setpoint(uint8_t zone, float setpoint_c);
   bool apply_setpoint_adjustment(uint8_t zone, float offset_c);
+
+  // Helios-3 optimizer commands (applied on top of user setpoint + MQTT offset)
+  void apply_helios_command(uint8_t zone, const HeliosZoneCommand &cmd);
+  void clear_all_helios_commands();
 
   /// Enable or disable a zone. Disabled zones close their valve and persist to NVS.
   void set_zone_enabled(uint8_t zone, bool enabled);
@@ -179,6 +191,10 @@ class Hv6ZoneController : public esphome::Component {
   QueueHandle_t adj_queue_ = nullptr;
   std::array<float, NUM_ZONES> requested_setpoints_{};
   std::array<float, NUM_ZONES> setpoint_offsets_;
+
+  // Helios-3 optimizer commands (protected by helios_mutex_)
+  mutable SemaphoreHandle_t helios_mutex_ = nullptr;
+  std::array<HeliosZoneCommand, NUM_ZONES> helios_cmds_;
 
   // Simple response-based preheat (runtime only; not persisted)
   std::array<float, NUM_ZONES> preheat_advance_c_;

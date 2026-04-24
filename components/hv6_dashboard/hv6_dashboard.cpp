@@ -1,6 +1,7 @@
 #include "hv6_dashboard.h"
 
 #include "esphome/core/log.h"
+#include "../hv6_helios_client/hv6_helios_client.h"
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -212,11 +213,28 @@ void HV6Dashboard::update_snapshot_() {
 
   s.drivers_enabled = this->valve_controller_ && this->valve_controller_->are_drivers_enabled();
 
+  // Helios connection status
+  if (this->helios_client_ != nullptr) {
+    auto *hc = static_cast<hv6_helios_client::Hv6HeliosClient *>(this->helios_client_);
+    switch (hc->get_helios_status()) {
+      case hv6_helios_client::HeliosStatus::ACTIVE:    strncpy(s.helios_status, "active",   sizeof(s.helios_status)); break;
+      case hv6_helios_client::HeliosStatus::DEGRADED:  strncpy(s.helios_status, "degraded", sizeof(s.helios_status)); break;
+      default:                                          strncpy(s.helios_status, "offline",  sizeof(s.helios_status)); break;
+    }
+  } else {
+    strncpy(s.helios_status, "offline", sizeof(s.helios_status));
+  }
+  s.helios_status[sizeof(s.helios_status) - 1] = '\0';
+
   if (this->config_store_) {
     s.probes                 = this->config_store_->get_probe_config();
     s.motor                  = this->config_store_->get_motor_config();
     s.manifold_type          = this->config_store_->get_manifold_type();
     s.simple_preheat_enabled = this->config_store_->get_simple_preheat_enabled();
+    s.helios                 = this->config_store_->get_helios_config();
+    const auto dev_cfg = this->config_store_->get_config();
+    strncpy(s.helios_device_id, dev_cfg.system.controller_id, sizeof(s.helios_device_id) - 1);
+    s.helios_device_id[sizeof(s.helios_device_id) - 1] = '\0';
     for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
       s.zones[i]            = this->config_store_->get_zone_config(i);
       s.zone_temp_source[i] = this->config_store_->get_zone_temp_source(i);
@@ -505,6 +523,9 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
     appendf(buf, BUF_SIZE, offset, "\"%s\":{\"state\":\"%s\"},", MOTOR_FAULT_KEYS[i], snap->motor_fault[i]);
   }
 
+  // helios connectivity status
+  appendf(buf, BUF_SIZE, offset, "\"helios_status\":{\"state\":\"%s\"},", snap->helios_status);
+
   // flush before config section; each zone config (~550 bytes) would overflow combined
   if (!flush()) { free(buf); free(snap); return; }
 
@@ -638,6 +659,24 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
   format_float_token(num_buf, sizeof(num_buf), snap->motor.learned_factor_max_deviation_pct * 100.0f, 2);
   appendf(buf, BUF_SIZE, offset,
       "\"number-learned_factor_max_deviation_pct\":{\"value\":%s},", num_buf);
+
+  // --- helios config ---
+  appendf(buf, BUF_SIZE, offset,
+      "\"switch-helios_enabled\":{\"state\":\"%s\"},"
+      "\"text-helios_host\":{\"state\":\"%s\"},"
+      "\"text-helios_controller_id\":{\"state\":\"%s\"},",
+      snap->helios.enabled ? "on" : "off",
+      snap->helios.host,
+      snap->helios.controller_id);
+  appendf(buf, BUF_SIZE, offset,
+      "\"number-helios_port\":{\"value\":%u},"
+      "\"number-helios_poll_interval_s\":{\"value\":%u},"
+      "\"number-helios_stale_after_s\":{\"value\":%u},"
+      "\"text-helios_device_id\":{\"state\":\"%s\"},",
+      static_cast<unsigned>(snap->helios.port),
+      static_cast<unsigned>(snap->helios.poll_interval_s),
+      static_cast<unsigned>(snap->helios.stale_after_s),
+      snap->helios_device_id);
 
   // Sentinel field closes the JSON object and absorbs any trailing comma.
   appendf(buf, BUF_SIZE, offset, "\"_\":{}}");
@@ -842,6 +881,44 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
       this->config_store_->update_motor(motor_cfg);
       this->valve_controller_->reload_motor_config();
     }
+
+  // ---- helios_enabled ----
+  } else if (strcmp(key, "helios_enabled") == 0 && has_str && this->config_store_) {
+    auto helios_cfg = this->config_store_->get_helios_config();
+    helios_cfg.enabled = (strcasecmp(str_val, "on") == 0 || strcmp(str_val, "1") == 0);
+    this->config_store_->update_helios(helios_cfg);
+
+  // ---- helios_host ----
+  } else if (strcmp(key, "helios_host") == 0 && has_str && this->config_store_) {
+    auto helios_cfg = this->config_store_->get_helios_config();
+    strncpy(helios_cfg.host, str_val, sizeof(helios_cfg.host) - 1);
+    helios_cfg.host[sizeof(helios_cfg.host) - 1] = '\0';
+    this->config_store_->update_helios(helios_cfg);
+
+  // ---- helios_port ----
+  } else if (strcmp(key, "helios_port") == 0 && has_num && this->config_store_) {
+    auto helios_cfg = this->config_store_->get_helios_config();
+    helios_cfg.port = static_cast<uint16_t>(std::max(1.0f, std::min(65535.0f, num_val)));
+    this->config_store_->update_helios(helios_cfg);
+
+  // ---- helios_controller_id ----
+  } else if (strcmp(key, "helios_controller_id") == 0 && this->config_store_) {
+    auto helios_cfg = this->config_store_->get_helios_config();
+    strncpy(helios_cfg.controller_id, str_val, sizeof(helios_cfg.controller_id) - 1);
+    helios_cfg.controller_id[sizeof(helios_cfg.controller_id) - 1] = '\0';
+    this->config_store_->update_helios(helios_cfg);
+
+  // ---- helios_poll_interval_s ----
+  } else if (strcmp(key, "helios_poll_interval_s") == 0 && has_num && this->config_store_) {
+    auto helios_cfg = this->config_store_->get_helios_config();
+    helios_cfg.poll_interval_s = static_cast<uint16_t>(std::max(5.0f, std::min(3600.0f, num_val)));
+    this->config_store_->update_helios(helios_cfg);
+
+  // ---- helios_stale_after_s ----
+  } else if (strcmp(key, "helios_stale_after_s") == 0 && has_num && this->config_store_) {
+    auto helios_cfg = this->config_store_->get_helios_config();
+    helios_cfg.stale_after_s = static_cast<uint16_t>(std::max(10.0f, std::min(86400.0f, num_val)));
+    this->config_store_->update_helios(helios_cfg);
 
   // ---- motor config numeric setters ----
   } else if (has_num && this->config_store_ && this->valve_controller_) {

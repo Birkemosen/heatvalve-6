@@ -86,7 +86,8 @@ const globalSelectMap = {
   manifold_flow_probe: gkey.manifoldFlowProbe,
   manifold_return_probe: gkey.manifoldReturnProbe,
   motor_profile_default: gkey.motorProfileDefault,
-  simple_preheat_enabled: gkey.simplePreheatEnabled
+  simple_preheat_enabled: gkey.simplePreheatEnabled,
+  helios_enabled: gkey.heliosEnabled
 };
 
 const globalNumberMap = {
@@ -102,7 +103,10 @@ const globalNumberMap = {
   relearn_after_movements: gkey.relearnAfterMovements,
   relearn_after_hours: gkey.relearnAfterHours,
   learned_factor_min_samples: gkey.learnedFactorMinSamples,
-  learned_factor_max_deviation_pct: gkey.learnedFactorMaxDeviationPct
+  learned_factor_max_deviation_pct: gkey.learnedFactorMaxDeviationPct,
+  helios_port: gkey.heliosPort,
+  helios_poll_interval_s: gkey.heliosPollIntervalS,
+  helios_stale_after_s: gkey.heliosStaleAfterS
 };
 
 export function setZoneSelect(zone, settingKey, value) {

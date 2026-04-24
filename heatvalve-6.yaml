@@ -91,6 +91,7 @@ packages:
   api:          !include packages/network/api.yaml
   mqtt:         !include packages/network/mqtt.yaml
   ota:          !include packages/network/ota.yaml
+  helios:       !include packages/network/helios.yaml
   # Hardware
   i2c:          !include packages/hardware/i2c.yaml
   onewire:      !include packages/hardware/onewire.yaml
@@ -116,7 +117,8 @@ external_components:
       - hv6_valve_controller
       - hv6_zone_controller
       - hv6_config_store
-      - hv6_dashboard  
+      - hv6_dashboard
+      - hv6_helios_client
 
 # =============================================================================
 # Logger
