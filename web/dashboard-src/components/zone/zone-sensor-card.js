@@ -1,7 +1,7 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
 import { es, getDashboardValue, subscribeDashboard } from '../../core/store.js';
-import { key } from '../../utils/keys.js';
+import { key, gkey } from '../../utils/keys.js';
 import { setZoneSelect, setZoneText } from '../../core/api.js';
 
 // ========================================
@@ -80,14 +80,10 @@ const template = () => {
       </div>
       <div class="cfg-row">
         <span class="lbl">Temperature Source</span>
-        <select class="sel zs-source">
-          <option>Local Probe</option>
-          <option>Zigbee MQTT</option>
-          <option>BLE Sensor</option>
-        </select>
+        <select class="sel zs-source"></select>
       </div>
       <div class="cfg-row zs-row-zigbee">
-        <span class="lbl">Zigbee Device</span>
+        <span class="lbl">MQTT Device</span>
         <input class="txt zs-zigbee" maxlength="47" placeholder="zone_x_sensor">
       </div>
       <div class="cfg-row zs-row-ble">
@@ -113,6 +109,44 @@ function buildSyncOptions(selectEl, zone) {
   selectEl.value = current || 'None';
 }
 
+function getVariant() {
+  const raw = String(es(gkey.deviceVariant) || '').toLowerCase();
+  if (raw === 'mqtt') return 'mqtt';
+  if (raw === 'ble') return 'ble';
+  return 'local';
+}
+
+function getVariantSourceLabel(variant) {
+  if (variant === 'mqtt') return 'MQTT';
+  if (variant === 'ble') return 'BLE';
+  return 'Local Probe';
+}
+
+function sourceToUiValue(source, variant) {
+  if (source === 'Local Probe') return 'Local Probe';
+  if ((source === 'MQTT' || source === 'Zigbee MQTT' || source === 'MQTT Sensor' || source === 'MQTT Variant') && variant === 'mqtt') return 'MQTT';
+  if ((source === 'BLE' || source === 'BLE Sensor' || source === 'BLE Variant') && variant === 'ble') return 'BLE';
+  return 'Local Probe';
+}
+
+function uiValueToApiValue(value, variant) {
+  if (value === 'Local Probe') return 'Local Probe';
+  if (variant === 'mqtt') return 'MQTT';
+  if (variant === 'ble') return 'BLE';
+  return 'Local Probe';
+}
+
+function setSourceOptions(selectEl, variant, value) {
+  const variantLabel = getVariantSourceLabel(variant);
+  const html = variant === 'local'
+    ? '<option>Local Probe</option>'
+    : '<option>Local Probe</option><option>' + variantLabel + '</option>';
+  if (selectEl.innerHTML !== html) {
+    selectEl.innerHTML = html;
+  }
+  selectEl.value = value;
+}
+
 // ========================================
 // COMPONENT
 // ========================================
@@ -127,6 +161,7 @@ export default component({
     const syncEl = el.querySelector('.zs-sync');
     const rowZigbee = el.querySelector('.zs-row-zigbee');
     const rowBle = el.querySelector('.zs-row-ble');
+    const autoDefaultApplied = new Set();
     let syncZone = 0;
 
     function selectedZone() {
@@ -141,18 +176,26 @@ export default component({
       }
 
       const probe = es(key.probe(zone));
-      const source = es(key.tempSource(zone)) || 'Local Probe';
+      const variant = getVariant();
+      const sourceRaw = String(es(key.tempSource(zone)) || '');
+      const sourceUi = sourceToUiValue(sourceRaw, variant);
       const syncTo = es(key.syncTo(zone)) || 'None';
       const zigbee = es(key.zigbee(zone)) || '';
       const ble = es(key.ble(zone)) || '';
 
       if (probe) probeEl.value = probe;
-      sourceEl.value = source;
+      setSourceOptions(sourceEl, variant, sourceUi);
       syncEl.value = syncTo;
       if (document.activeElement !== zigbeeEl) zigbeeEl.value = zigbee;
       if (document.activeElement !== bleEl) bleEl.value = ble;
-      rowZigbee.style.display = source === 'Zigbee MQTT' ? '' : 'none';
-      rowBle.style.display = source === 'BLE Sensor' ? '' : 'none';
+      rowZigbee.style.display = variant === 'mqtt' && sourceUi === 'MQTT' ? '' : 'none';
+      rowBle.style.display = variant === 'ble' && sourceUi === 'BLE' ? '' : 'none';
+
+      // One-time auto-default: if a zone still uses Local Probe, switch to the active firmware variant source.
+      if (!autoDefaultApplied.has(zone) && variant !== 'local' && sourceRaw === 'Local Probe') {
+        autoDefaultApplied.add(zone);
+        setZoneSelect(zone, 'zone_temp_source', uiValueToApiValue(getVariantSourceLabel(variant), variant));
+      }
     }
 
     function updateIfSelectedZone(id) {
@@ -162,7 +205,8 @@ export default component({
         id === key.tempSource(zone) ||
         id === key.syncTo(zone) ||
         id === key.zigbee(zone) ||
-        id === key.ble(zone)
+        id === key.ble(zone) ||
+        id === gkey.deviceVariant
       ) {
         update();
       }
@@ -172,7 +216,8 @@ export default component({
       setZoneSelect(selectedZone(), 'zone_probe', probeEl.value);
     });
     sourceEl.addEventListener('change', () => {
-      setZoneSelect(selectedZone(), 'zone_temp_source', sourceEl.value);
+      const variant = getVariant();
+      setZoneSelect(selectedZone(), 'zone_temp_source', uiValueToApiValue(sourceEl.value, variant));
     });
     syncEl.addEventListener('change', () => {
       setZoneSelect(selectedZone(), 'zone_sync_to', syncEl.value);
@@ -192,6 +237,7 @@ export default component({
       subscribe(key.zigbee(zone), updateIfSelectedZone);
       subscribe(key.ble(zone), updateIfSelectedZone);
     }
+    subscribe(gkey.deviceVariant, update);
     update();
   }
 });

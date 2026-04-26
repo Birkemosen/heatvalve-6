@@ -12,6 +12,9 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
 
 namespace hv6 {
 
@@ -59,14 +62,24 @@ class Hv6ConfigStore : public esphome::Component {
   static constexpr const char *KEY_CONFIG = "config";
   static constexpr const char *KEY_MOTOR_PFX = "mot";
   static constexpr uint64_t DIRTY_DELAY_US = 1000000ULL;  // 1 second
+  // Dedicated NVS persistence task — keeps flash commits off the main loop
+  // task so loopTask isn't blocked for the 50–500 ms a commit can take.
+  // Pinned to Core 1, low priority, modest stack. Triggered by save_sem_.
+  static constexpr uint32_t NVS_TASK_STACK = 8192;
+  static constexpr UBaseType_t NVS_TASK_PRIO = 1;
+  static constexpr BaseType_t NVS_TASK_CORE = 1;
 
   void load_config_();
   void save_config_();
 
   static void dirty_timer_cb_(void *arg);
+  static void nvs_task_entry_(void *arg);
+  void nvs_task_loop_();
 
   DeviceConfig config_{};
   SemaphoreHandle_t mutex_ = nullptr;
+  SemaphoreHandle_t save_sem_ = nullptr;
+  TaskHandle_t nvs_task_ = nullptr;
   esp_timer_handle_t dirty_timer_ = nullptr;
   volatile bool save_pending_ = false;
   bool initialized_ = false;

@@ -1,17 +1,19 @@
 # =============================================================================
-# Helios-3 Integration — HeatValve-6 HTTP client
+# Helios-3 Integration — HeatValve-6 client
 # =============================================================================
-# Configure connection in secrets.yaml or override helios_host/port here.
-# The client sends a state snapshot to Helios every poll_interval_s seconds
-# and collects optimizer commands (setpoint offsets + preheat windows).
+# All HTTP I/O is performed by the C++ component `hv6_helios_client` from a
+# FreeRTOS task pinned to Core 1 (loopTask's core). Core 0 — which runs lwIP,
+# wifi and the IDF webserver — is left entirely untouched, and the task body
+# spends >99% of its wall-clock time blocked on socket I/O so it cooperatively
+# yields the CPU back to loopTask. This keeps MQTT keepalive healthy even on
+# weak WiFi and prevents the dashboard / web_server from hanging.
 #
-# Configuration is stored in NVS and can be updated at runtime via the
-# dashboard settings. These YAML values are only the compiled-in defaults.
+# Stability gates inside the component delay the first poll until WiFi has
+# been stable for 10 s and MQTT for 30 s after a 30 s post-boot warmup.
 # =============================================================================
 
 hv6_helios_client:
   id: hv6_helios
   zone_controller_id: hv6_zones
   config_store_id: hv6_config
-  # time_id: ha_time  # Optional: wire an SNTP time component for epoch-based
-  #                     valid_until and preheat window support.
+  # time_id: ha_time   # optional — wire an SNTP time component for epoch use

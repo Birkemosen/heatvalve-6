@@ -209,7 +209,7 @@ const template = (ctx) => `
     <div class="zd-grid">
       <div class="zd-stat"><span>Current Temperature</span><strong class="zd-temp">---</strong></div>
       <div class="zd-stat"><span>Return Temperature</span><strong class="zd-ret">---</strong></div>
-      <div class="zd-stat"><span>Valve Opening</span><strong class="zd-valve">---</strong></div>
+      <div class="zd-stat"><span>Flow %</span><strong class="zd-valve">---</strong></div>
     </div>
   </div>
 `;

@@ -5,6 +5,7 @@
 #include "hv6_config_store.h"
 #include "esphome/core/log.h"
 #include <cinttypes>
+#include <cctype>
 #include <cstring>
 #include <algorithm>
 #include <vector>
@@ -19,6 +20,38 @@ namespace hv6 {
 static const char *const TAG = "hv6_config_store";
 
 namespace {
+
+bool is_blank_or_whitespace(const char *s) {
+  if (s == nullptr)
+    return true;
+  for (size_t i = 0; s[i] != '\0'; i++) {
+    if (!std::isspace(static_cast<unsigned char>(s[i])))
+      return false;
+  }
+  return true;
+}
+
+void trim_copy(char *dst, size_t dst_len, const char *src) {
+  if (dst == nullptr || dst_len == 0) {
+    return;
+  }
+  dst[0] = '\0';
+  if (src == nullptr)
+    return;
+
+  size_t start = 0;
+  size_t len = std::strlen(src);
+  while (start < len && std::isspace(static_cast<unsigned char>(src[start])))
+    start++;
+  while (len > start && std::isspace(static_cast<unsigned char>(src[len - 1])))
+    len--;
+
+  size_t out_len = std::min(dst_len - 1, len - start);
+  if (out_len > 0) {
+    std::memcpy(dst, src + start, out_len);
+  }
+  dst[out_len] = '\0';
+}
 
 struct LegacyZoneConfigV8 {
   bool enabled;
@@ -128,6 +161,57 @@ struct LegacyDeviceConfigV10 {
   BalancingConfig balancing;
   MqttBrokerConfig mqtt_broker;
   // No helios field — that was added in v11
+};
+
+struct LegacyHeliosConfigV11 {
+  bool enabled;
+  char host[HELIOS_HOST_LEN];
+  uint16_t port;
+  char controller_id[HELIOS_CONTROLLER_ID_LEN];
+  uint16_t poll_interval_s;
+  uint16_t stale_after_s;
+};
+
+struct LegacyDeviceConfigV11 {
+  uint32_t config_version;
+  SystemConfig system;
+  ZoneConfig zones[NUM_ZONES];
+  ControlConfig control;
+  ProbeConfig probes;
+  PIDParams pid;
+  MotorConfig motor;
+  ManifoldType manifold_type;
+  MqttTempConfig mqtt_temp;
+  BalancingConfig balancing;
+  MqttBrokerConfig mqtt_broker;
+  LegacyHeliosConfigV11 helios;
+};
+
+struct LegacyHeliosConfigV12 {
+  bool enabled;
+  char host[HELIOS_HOST_LEN];
+  uint16_t port;
+  char controller_id[HELIOS_CONTROLLER_ID_LEN];
+  uint16_t poll_interval_s;
+  uint16_t stale_after_s;
+  bool auto_discover;
+  char mdns_host[HELIOS_HOST_LEN];
+  uint16_t mdns_resolve_interval_s;
+};
+
+struct LegacyDeviceConfigV12 {
+  uint32_t config_version;
+  SystemConfig system;
+  ZoneConfig zones[NUM_ZONES];
+  ControlConfig control;
+  ProbeConfig probes;
+  PIDParams pid;
+  MotorConfig motor;
+  ManifoldType manifold_type;
+  MqttTempConfig mqtt_temp;
+  BalancingConfig balancing;
+  MqttBrokerConfig mqtt_broker;
+  LegacyHeliosConfigV12 helios;
 };
 
 struct LegacyDeviceConfigV8 {
@@ -319,6 +403,61 @@ DeviceConfig migrate_v10_config(const LegacyDeviceConfigV10 &legacy) {
   return cfg;
 }
 
+DeviceConfig migrate_v11_config(const LegacyDeviceConfigV11 &legacy) {
+  DeviceConfig cfg;
+  cfg.config_version = CONFIG_VERSION;
+  cfg.system = legacy.system;
+  for (uint8_t i = 0; i < NUM_ZONES; i++)
+    cfg.zones[i] = legacy.zones[i];
+  cfg.control = legacy.control;
+  cfg.probes = legacy.probes;
+  cfg.pid = legacy.pid;
+  cfg.motor = legacy.motor;
+  cfg.manifold_type = legacy.manifold_type;
+  cfg.mqtt_temp = legacy.mqtt_temp;
+  cfg.balancing = legacy.balancing;
+  cfg.mqtt_broker = legacy.mqtt_broker;
+
+  cfg.helios.enabled = legacy.helios.enabled;
+  memcpy(cfg.helios.host, legacy.helios.host, sizeof(cfg.helios.host));
+  cfg.helios.port = legacy.helios.port;
+  memcpy(cfg.helios.controller_id, legacy.helios.controller_id, sizeof(cfg.helios.controller_id));
+  cfg.helios.poll_interval_s = legacy.helios.poll_interval_s;
+  cfg.helios.stale_after_s = legacy.helios.stale_after_s;
+  // New v12 fields keep safe defaults: auto_discover=false, mdns_host="helios.local", mdns_resolve_interval_s=60
+  return cfg;
+}
+
+DeviceConfig migrate_v12_config(const LegacyDeviceConfigV12 &legacy) {
+  DeviceConfig cfg;
+  cfg.config_version = CONFIG_VERSION;
+  cfg.system = legacy.system;
+  for (uint8_t i = 0; i < NUM_ZONES; i++)
+    cfg.zones[i] = legacy.zones[i];
+  cfg.control = legacy.control;
+  cfg.probes = legacy.probes;
+  cfg.pid = legacy.pid;
+  cfg.motor = legacy.motor;
+  cfg.manifold_type = legacy.manifold_type;
+  cfg.mqtt_temp = legacy.mqtt_temp;
+  cfg.balancing = legacy.balancing;
+  cfg.mqtt_broker = legacy.mqtt_broker;
+
+  cfg.helios.enabled = legacy.helios.enabled;
+  memcpy(cfg.helios.host, legacy.helios.host, sizeof(cfg.helios.host));
+  cfg.helios.port = legacy.helios.port;
+  memcpy(cfg.helios.controller_id, legacy.helios.controller_id, sizeof(cfg.helios.controller_id));
+  cfg.helios.poll_interval_s = legacy.helios.poll_interval_s;
+  cfg.helios.stale_after_s = legacy.helios.stale_after_s;
+  memcpy(cfg.helios.mdns_host, legacy.helios.mdns_host, sizeof(cfg.helios.mdns_host));
+  cfg.helios.mdns_resolve_interval_s = legacy.helios.mdns_resolve_interval_s;
+
+  // v13 safety: only keep auto_discover if a manual host is also configured.
+  // This avoids unexpected background probing on previously unconfigured devices.
+  cfg.helios.auto_discover = legacy.helios.auto_discover && legacy.helios.host[0] != '\0';
+  return cfg;
+}
+
 MotorTelemetry migrate_v8_telemetry(const LegacyMotorTelemetryV8 &legacy) {
   MotorTelemetry t;
   t.movement_count = legacy.movement_count;
@@ -366,6 +505,26 @@ void Hv6ConfigStore::setup() {
     return;
   }
 
+  // Binary semaphore + dedicated NVS task. The timer callback gives the
+  // semaphore; the task wakes, takes a config snapshot, and performs the
+  // NVS commit (which can block 50\u2013500 ms) without ever stalling the main
+  // loop, the lwIP task, or the IDF httpd. Pinned to Core 1 at the lowest
+  // useful priority so it yields to networking immediately when needed.
+  save_sem_ = xSemaphoreCreateBinary();
+  if (save_sem_ == nullptr) {
+    ESP_LOGE(TAG, "Failed to create save semaphore");
+    this->mark_failed();
+    return;
+  }
+  BaseType_t task_ok = xTaskCreatePinnedToCore(
+      &Hv6ConfigStore::nvs_task_entry_, "hv6_nvs", NVS_TASK_STACK, this,
+      NVS_TASK_PRIO, &nvs_task_, NVS_TASK_CORE);
+  if (task_ok != pdPASS) {
+    ESP_LOGE(TAG, "Failed to create NVS persistence task");
+    this->mark_failed();
+    return;
+  }
+
   initialized_ = true;
   load_config_();
 
@@ -375,20 +534,37 @@ void Hv6ConfigStore::setup() {
 #ifdef USE_MQTT
   if (esphome::mqtt::global_mqtt_client != nullptr) {
     const auto &mb = config_.mqtt_broker;
-    if (mb.broker[0] != '\0') {
-      esphome::mqtt::global_mqtt_client->set_broker_address(std::string(mb.broker));
-      ESP_LOGI(TAG, "MQTT broker overridden from NVS: %s", mb.broker);
+    if (!is_blank_or_whitespace(mb.broker)) {
+      char broker_sanitized[MQTT_BROKER_LEN] = {};
+      trim_copy(broker_sanitized, sizeof(broker_sanitized), mb.broker);
+      if (broker_sanitized[0] != '\0') {
+        esphome::mqtt::global_mqtt_client->set_broker_address(std::string(broker_sanitized));
+        ESP_LOGI(TAG, "MQTT broker overridden from NVS: %s", broker_sanitized);
+      }
+    } else {
+      ESP_LOGI(TAG, "MQTT broker using YAML default");
     }
     if (mb.port > 0) {
       esphome::mqtt::global_mqtt_client->set_broker_port(mb.port);
       ESP_LOGI(TAG, "MQTT port overridden from NVS: %" PRIu16, mb.port);
+    } else {
+      ESP_LOGI(TAG, "MQTT port using YAML default");
     }
-    if (mb.username[0] != '\0') {
-      esphome::mqtt::global_mqtt_client->set_username(std::string(mb.username));
+    if (!is_blank_or_whitespace(mb.username)) {
+      char username_sanitized[MQTT_CRED_LEN] = {};
+      trim_copy(username_sanitized, sizeof(username_sanitized), mb.username);
+      esphome::mqtt::global_mqtt_client->set_username(std::string(username_sanitized));
       ESP_LOGI(TAG, "MQTT username overridden from NVS");
+    } else {
+      ESP_LOGI(TAG, "MQTT username using YAML default");
     }
-    if (mb.password[0] != '\0') {
-      esphome::mqtt::global_mqtt_client->set_password(std::string(mb.password));
+    if (!is_blank_or_whitespace(mb.password)) {
+      char password_sanitized[MQTT_CRED_LEN] = {};
+      trim_copy(password_sanitized, sizeof(password_sanitized), mb.password);
+      esphome::mqtt::global_mqtt_client->set_password(std::string(password_sanitized));
+      ESP_LOGI(TAG, "MQTT password overridden from NVS");
+    } else {
+      ESP_LOGI(TAG, "MQTT password using YAML default");
     }
   }
 #endif
@@ -397,11 +573,8 @@ void Hv6ConfigStore::setup() {
 }
 
 void Hv6ConfigStore::loop() {
-  if (!save_pending_)
-    return;
-
-  save_pending_ = false;
-  save_config_();
+  // Persistence runs on the dedicated nvs_task_; loop() is intentionally
+  // empty so the main loop task is never blocked by an NVS commit.
 }
 
 void Hv6ConfigStore::dump_config() {
@@ -606,13 +779,19 @@ void Hv6ConfigStore::update_balancing(const BalancingConfig &balancing) {
 }
 
 void Hv6ConfigStore::update_mqtt_broker(const MqttBrokerConfig &mqtt_broker) {
+  MqttBrokerConfig sanitized{};
+  sanitized.port = mqtt_broker.port;
+  trim_copy(sanitized.broker, sizeof(sanitized.broker), mqtt_broker.broker);
+  trim_copy(sanitized.username, sizeof(sanitized.username), mqtt_broker.username);
+  trim_copy(sanitized.password, sizeof(sanitized.password), mqtt_broker.password);
+
   if (mutex_ == nullptr) {
-    config_.mqtt_broker = mqtt_broker;
+    config_.mqtt_broker = sanitized;
     mark_dirty();
     return;
   }
   xSemaphoreTake(mutex_, portMAX_DELAY);
-  config_.mqtt_broker = mqtt_broker;
+  config_.mqtt_broker = sanitized;
   xSemaphoreGive(mutex_);
   mark_dirty();
 }
@@ -627,13 +806,23 @@ HeliosConfig Hv6ConfigStore::get_helios_config() const {
 }
 
 void Hv6ConfigStore::update_helios(const HeliosConfig &helios) {
+  HeliosConfig sanitized = helios;
+  trim_copy(sanitized.host, sizeof(sanitized.host), helios.host);
+  trim_copy(sanitized.controller_id, sizeof(sanitized.controller_id), helios.controller_id);
+  trim_copy(sanitized.mdns_host, sizeof(sanitized.mdns_host), helios.mdns_host);
+  if (sanitized.port == 0)
+    sanitized.port = 8080;
+  sanitized.poll_interval_s = std::max<uint16_t>(5, sanitized.poll_interval_s);
+  sanitized.stale_after_s = std::max<uint16_t>(10, sanitized.stale_after_s);
+  sanitized.mdns_resolve_interval_s = std::max<uint16_t>(15, sanitized.mdns_resolve_interval_s);
+
   if (mutex_ == nullptr) {
-    config_.helios = helios;
+    config_.helios = sanitized;
     mark_dirty();
     return;
   }
   xSemaphoreTake(mutex_, portMAX_DELAY);
-  config_.helios = helios;
+  config_.helios = sanitized;
   xSemaphoreGive(mutex_);
   mark_dirty();
 }
@@ -786,6 +975,24 @@ void Hv6ConfigStore::load_config_() {
         xSemaphoreGive(mutex_);
         ESP_LOGW(TAG, "Migrated config v10 -> v%" PRIu32, CONFIG_VERSION);
         mark_dirty();
+      } else if (stored_version == 11 && read_size == sizeof(LegacyDeviceConfigV11)) {
+        LegacyDeviceConfigV11 legacy{};
+        memcpy(&legacy, raw.data(), sizeof(legacy));
+        DeviceConfig migrated = migrate_v11_config(legacy);
+        xSemaphoreTake(mutex_, portMAX_DELAY);
+        config_ = migrated;
+        xSemaphoreGive(mutex_);
+        ESP_LOGW(TAG, "Migrated config v11 -> v%" PRIu32, CONFIG_VERSION);
+        mark_dirty();
+      } else if (stored_version == 12 && read_size == sizeof(LegacyDeviceConfigV12)) {
+        LegacyDeviceConfigV12 legacy{};
+        memcpy(&legacy, raw.data(), sizeof(legacy));
+        DeviceConfig migrated = migrate_v12_config(legacy);
+        xSemaphoreTake(mutex_, portMAX_DELAY);
+        config_ = migrated;
+        xSemaphoreGive(mutex_);
+        ESP_LOGW(TAG, "Migrated config v12 -> v%" PRIu32, CONFIG_VERSION);
+        mark_dirty();
       } else if (read_size != sizeof(DeviceConfig)) {
         ESP_LOGW(TAG,
                  "Config size mismatch for version %" PRIu32 " (stored %u vs expected %u), using defaults",
@@ -823,8 +1030,37 @@ void Hv6ConfigStore::save_config_() {
 
 void Hv6ConfigStore::dirty_timer_cb_(void *arg) {
   auto *store = static_cast<Hv6ConfigStore *>(arg);
+  if (store == nullptr)
+    return;
+  // Mark dirty (legacy flag preserved for diagnostics) and wake the NVS
+  // task. xSemaphoreGive coalesces \u2014 if the task is already running, the
+  // pending give is harmless and the next iteration will pick up the
+  // newest snapshot.
+  store->save_pending_ = true;
+  if (store->save_sem_ != nullptr)
+    xSemaphoreGive(store->save_sem_);
+}
+
+void Hv6ConfigStore::nvs_task_entry_(void *arg) {
+  auto *store = static_cast<Hv6ConfigStore *>(arg);
   if (store != nullptr)
-    store->save_pending_ = true;
+    store->nvs_task_loop_();
+  vTaskDelete(nullptr);
+}
+
+void Hv6ConfigStore::nvs_task_loop_() {
+  ESP_LOGI(TAG, "NVS persistence task started (core %d, prio %u, stack %u)",
+           (int) NVS_TASK_CORE, (unsigned) NVS_TASK_PRIO, (unsigned) NVS_TASK_STACK);
+  for (;;) {
+    if (xSemaphoreTake(save_sem_, portMAX_DELAY) != pdTRUE)
+      continue;
+    // Coalesce bursts: drain any additional gives so we don't write twice
+    // for a back-to-back batch of dirty marks.
+    while (xSemaphoreTake(save_sem_, 0) == pdTRUE) {
+    }
+    save_pending_ = false;
+    save_config_();
+  }
 }
 
 }  // namespace hv6

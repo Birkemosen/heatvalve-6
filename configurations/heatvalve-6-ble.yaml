@@ -1,0 +1,21 @@
+# =============================================================================
+# HeatValve-6 \u2014 BLE Variant   (BTHome temperature sensors, no MQTT)
+# =============================================================================
+# Build:   make build VARIANT=ble
+# Deploy:  make deploy VARIANT=ble
+#
+# Includes BLE passive scanning for BTHome temperature sensors (Shelly BLU
+# H&T, etc.). Does NOT include MQTT \u2014 temperatures and HA integration go via
+# the ESPHome native API. Helios + custom dashboard are present.
+#
+# Hostname: heatvalve-6-ble-XXXXXX  (distinct from the MQTT variant so both
+# can coexist on the same network during staging).
+# =============================================================================
+
+substitutions:
+  device_name: heatvalve-6-ble
+  friendly_name: "HeatValve-6 UFH (BLE)"
+
+packages:
+  base: !include ../heatvalve-6.yaml
+  ble:  !include ../packages/hardware/ble.yaml

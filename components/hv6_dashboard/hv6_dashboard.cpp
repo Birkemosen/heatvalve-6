@@ -1,7 +1,9 @@
 #include "hv6_dashboard.h"
 
 #include "esphome/core/log.h"
+#ifdef USE_HV6_HELIOS_CLIENT
 #include "../hv6_helios_client/hv6_helios_client.h"
+#endif
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -118,9 +120,39 @@ static bool parse_probe_option(const char *raw, int8_t *out) {
 
 static bool parse_temp_source(const char *raw, hv6::TempSource *out) {
   if (strcasecmp(raw, "Local Probe") == 0) { *out = hv6::TempSource::LOCAL_PROBE; return true; }
-  if (strcasecmp(raw, "MQTT Sensor") == 0 || strcasecmp(raw, "Zigbee MQTT") == 0) { *out = hv6::TempSource::MQTT_EXTERNAL; return true; }
-  if (strcasecmp(raw, "BLE Sensor") == 0) { *out = hv6::TempSource::BLE_SENSOR; return true; }
+  if (strcasecmp(raw, "MQTT") == 0 || strcasecmp(raw, "MQTT Sensor") == 0 || strcasecmp(raw, "Zigbee MQTT") == 0 ||
+      strcasecmp(raw, "MQTT Variant") == 0) {
+    *out = hv6::TempSource::MQTT_EXTERNAL;
+    return true;
+  }
+  if (strcasecmp(raw, "BLE") == 0 || strcasecmp(raw, "BLE Sensor") == 0 || strcasecmp(raw, "BLE Variant") == 0) {
+    *out = hv6::TempSource::BLE_SENSOR;
+    return true;
+  }
   return false;
+}
+
+static const char *dashboard_variant_str() {
+#ifdef USE_MQTT
+  return "mqtt";
+#elif defined(USE_ESP32_BLE)
+  return "ble";
+#else
+  return "local";
+#endif
+}
+
+static const char *temp_source_to_dashboard_str(hv6::TempSource src) {
+  switch (src) {
+    case hv6::TempSource::LOCAL_PROBE:
+      return "Local Probe";
+    case hv6::TempSource::MQTT_EXTERNAL:
+  return "MQTT";
+    case hv6::TempSource::BLE_SENSOR:
+  return "BLE";
+    default:
+      return "Local Probe";
+  }
 }
 
 static bool parse_pipe_type(const char *raw, hv6::PipeType *out) {
@@ -214,16 +246,53 @@ void HV6Dashboard::update_snapshot_() {
   s.drivers_enabled = this->valve_controller_ && this->valve_controller_->are_drivers_enabled();
 
   // Helios connection status
+#ifdef USE_HV6_HELIOS_CLIENT
   if (this->helios_client_ != nullptr) {
     auto *hc = static_cast<hv6_helios_client::Hv6HeliosClient *>(this->helios_client_);
     switch (hc->get_helios_status()) {
-      case hv6_helios_client::HeliosStatus::ACTIVE:    strncpy(s.helios_status, "active",   sizeof(s.helios_status)); break;
-      case hv6_helios_client::HeliosStatus::DEGRADED:  strncpy(s.helios_status, "degraded", sizeof(s.helios_status)); break;
-      default:                                          strncpy(s.helios_status, "offline",  sizeof(s.helios_status)); break;
+      case hv6_helios_client::HeliosStatus::ACTIVE:
+        strncpy(s.helios_status, "active", sizeof(s.helios_status));
+        break;
+      case hv6_helios_client::HeliosStatus::DEGRADED:
+        strncpy(s.helios_status, "degraded", sizeof(s.helios_status));
+        break;
+      default:
+        strncpy(s.helios_status, "offline", sizeof(s.helios_status));
+        break;
     }
+    const auto copy_text = [](const char *src, char *dst, size_t len) {
+      if (dst == nullptr || len == 0)
+        return;
+      if (src == nullptr) {
+        dst[0] = '\0';
+        return;
+      }
+      size_t out = 0;
+      for (size_t i = 0; src[i] && out + 1 < len; i++) {
+        const char c = src[i];
+        dst[out++] = (c == '"' || c == '\\') ? '_' : c;
+      }
+      dst[out] = '\0';
+    };
+    copy_text(hc->get_active_endpoint(), s.helios_endpoint, sizeof(s.helios_endpoint));
+    copy_text(hc->get_endpoint_source_str(), s.helios_endpoint_source, sizeof(s.helios_endpoint_source));
+    copy_text(hc->get_last_error(), s.helios_last_error, sizeof(s.helios_last_error));
+    s.helios_last_http_status = hc->get_last_http_status();
+    s.helios_fail_streak = hc->get_consecutive_failures();
+    s.helios_next_retry_s = hc->get_next_retry_s();
+    s.helios_last_success_age_s = hc->get_last_success_age_s();
   } else {
     strncpy(s.helios_status, "offline", sizeof(s.helios_status));
+    s.helios_endpoint[0] = '\0';
+    strncpy(s.helios_endpoint_source, "none", sizeof(s.helios_endpoint_source));
+    s.helios_last_error[0] = '\0';
   }
+#else
+  strncpy(s.helios_status, "offline", sizeof(s.helios_status));
+  s.helios_endpoint[0] = '\0';
+  strncpy(s.helios_endpoint_source, "none", sizeof(s.helios_endpoint_source));
+  s.helios_last_error[0] = '\0';
+#endif
   s.helios_status[sizeof(s.helios_status) - 1] = '\0';
 
   if (this->config_store_) {
@@ -515,6 +584,7 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
   appendf(buf, BUF_SIZE, offset, "\"text_sensor-ip_address\":{\"state\":\"%s\"},", snap->ip_address);
   appendf(buf, BUF_SIZE, offset, "\"text_sensor-connected_ssid\":{\"state\":\"%s\"},", snap->connected_ssid);
   appendf(buf, BUF_SIZE, offset, "\"text_sensor-mac_address\":{\"state\":\"%s\"},", snap->mac_address);
+  appendf(buf, BUF_SIZE, offset, "\"text-device_variant\":{\"state\":\"%s\"},", dashboard_variant_str());
 
   for (uint8_t i = 0; i < 6; i++) {
     appendf(buf, BUF_SIZE, offset, "\"%s\":{\"state\":\"%s\"},", ZONE_STATE_KEYS[i], snap->zone_state[i]);
@@ -533,9 +603,6 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
   static const char *const PIPE_TYPE_STR[] = {
     "PEX 12mm", "PEX 14mm", "PEX 16mm", "PEX 17mm",
     "PEX 18mm", "PEX 20mm", "ALUPEX 16mm", "ALUPEX 20mm"
-  };
-  static const char *const TEMP_SOURCE_STR[] = {
-    "Local Probe", "Zigbee MQTT", "BLE Sensor"
   };
   static const char *const MOTOR_PROFILE_STR[] = {
     "Inherit", "Generic", "HmIP VdMot"
@@ -568,8 +635,7 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
       appendf(buf, BUF_SIZE, offset, "\"select-zone_%u_probe\":{\"state\":\"None\"},", zn);
     }
 
-    const uint8_t src_idx = static_cast<uint8_t>(snap->zone_temp_source[i]);
-    const char *src_str = (src_idx < 3) ? TEMP_SOURCE_STR[src_idx] : "Local Probe";
+    const char *src_str = temp_source_to_dashboard_str(snap->zone_temp_source[i]);
     appendf(buf, BUF_SIZE, offset,
         "\"select-zone_%u_temp_source\":{\"state\":\"%s\"},", zn, src_str);
 
@@ -663,20 +729,44 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
   // --- helios config ---
   appendf(buf, BUF_SIZE, offset,
       "\"switch-helios_enabled\":{\"state\":\"%s\"},"
+      "\"switch-helios_auto_discover\":{\"state\":\"%s\"},"
       "\"text-helios_host\":{\"state\":\"%s\"},"
+      "\"text-helios_mdns_host\":{\"state\":\"%s\"},"
       "\"text-helios_controller_id\":{\"state\":\"%s\"},",
       snap->helios.enabled ? "on" : "off",
+      snap->helios.auto_discover ? "on" : "off",
       snap->helios.host,
+      snap->helios.mdns_host,
       snap->helios.controller_id);
   appendf(buf, BUF_SIZE, offset,
       "\"number-helios_port\":{\"value\":%u},"
       "\"number-helios_poll_interval_s\":{\"value\":%u},"
       "\"number-helios_stale_after_s\":{\"value\":%u},"
+      "\"number-helios_mdns_resolve_interval_s\":{\"value\":%u},"
       "\"text-helios_device_id\":{\"state\":\"%s\"},",
       static_cast<unsigned>(snap->helios.port),
       static_cast<unsigned>(snap->helios.poll_interval_s),
       static_cast<unsigned>(snap->helios.stale_after_s),
+      static_cast<unsigned>(snap->helios.mdns_resolve_interval_s),
       snap->helios_device_id);
+    appendf(buf, BUF_SIZE, offset,
+      "\"text-helios_status\":{\"state\":\"%s\"},"
+      "\"text-helios_endpoint\":{\"state\":\"%s\"},"
+      "\"text-helios_endpoint_source\":{\"state\":\"%s\"},"
+      "\"text-helios_last_error\":{\"state\":\"%s\"},",
+      snap->helios_status,
+      snap->helios_endpoint,
+      snap->helios_endpoint_source,
+      snap->helios_last_error);
+    appendf(buf, BUF_SIZE, offset,
+      "\"sensor-helios_last_http_status\":{\"state\":%ld},"
+      "\"sensor-helios_fail_streak\":{\"state\":%lu},"
+      "\"sensor-helios_next_retry_s\":{\"state\":%lu},"
+      "\"sensor-helios_last_success_age_s\":{\"state\":%lu},",
+      static_cast<long>(snap->helios_last_http_status),
+      static_cast<unsigned long>(snap->helios_fail_streak),
+      static_cast<unsigned long>(snap->helios_next_retry_s),
+      static_cast<unsigned long>(snap->helios_last_success_age_s));
 
   // Sentinel field closes the JSON object and absorbs any trailing comma.
   appendf(buf, BUF_SIZE, offset, "\"_\":{}}");
@@ -888,11 +978,24 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
     helios_cfg.enabled = (strcasecmp(str_val, "on") == 0 || strcmp(str_val, "1") == 0);
     this->config_store_->update_helios(helios_cfg);
 
+  // ---- helios_auto_discover ----
+  } else if (strcmp(key, "helios_auto_discover") == 0 && has_str && this->config_store_) {
+    auto helios_cfg = this->config_store_->get_helios_config();
+    helios_cfg.auto_discover = (strcasecmp(str_val, "on") == 0 || strcmp(str_val, "1") == 0);
+    this->config_store_->update_helios(helios_cfg);
+
   // ---- helios_host ----
   } else if (strcmp(key, "helios_host") == 0 && has_str && this->config_store_) {
     auto helios_cfg = this->config_store_->get_helios_config();
     strncpy(helios_cfg.host, str_val, sizeof(helios_cfg.host) - 1);
     helios_cfg.host[sizeof(helios_cfg.host) - 1] = '\0';
+    this->config_store_->update_helios(helios_cfg);
+
+  // ---- helios_mdns_host ----
+  } else if (strcmp(key, "helios_mdns_host") == 0 && has_str && this->config_store_) {
+    auto helios_cfg = this->config_store_->get_helios_config();
+    strncpy(helios_cfg.mdns_host, str_val, sizeof(helios_cfg.mdns_host) - 1);
+    helios_cfg.mdns_host[sizeof(helios_cfg.mdns_host) - 1] = '\0';
     this->config_store_->update_helios(helios_cfg);
 
   // ---- helios_port ----
@@ -918,6 +1021,12 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
   } else if (strcmp(key, "helios_stale_after_s") == 0 && has_num && this->config_store_) {
     auto helios_cfg = this->config_store_->get_helios_config();
     helios_cfg.stale_after_s = static_cast<uint16_t>(std::max(10.0f, std::min(86400.0f, num_val)));
+    this->config_store_->update_helios(helios_cfg);
+
+  // ---- helios_mdns_resolve_interval_s ----
+  } else if (strcmp(key, "helios_mdns_resolve_interval_s") == 0 && has_num && this->config_store_) {
+    auto helios_cfg = this->config_store_->get_helios_config();
+    helios_cfg.mdns_resolve_interval_s = static_cast<uint16_t>(std::max(15.0f, std::min(3600.0f, num_val)));
     this->config_store_->update_helios(helios_cfg);
 
   // ---- motor config numeric setters ----

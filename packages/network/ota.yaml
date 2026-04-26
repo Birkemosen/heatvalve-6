@@ -3,5 +3,8 @@ ota:
     password: !secret ota_password
 
 safe_mode:
-  # Mark OTA boots as successful sooner to avoid rollback during early high-load startup.
-  boot_is_good_after: 10s
+  # Mark OTA boots as successful only after a long settle window. Boot now
+  # includes Helios client task spawn, NVS migration, dashboard snapshot
+  # priming and valve auto-start which can collectively exceed 30s on a
+  # cold start with a populated config.
+  boot_is_good_after: 60s

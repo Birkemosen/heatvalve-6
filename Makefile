@@ -1,9 +1,26 @@
-CONFIG ?= heatvalve-6.yaml
+# -----------------------------------------------------------------------------
+# Firmware variant selection
+#   VARIANT=mqtt (default) -> configurations/heatvalve-6-mqtt.yaml
+#                             MQTT + Z2M, BT compiled out, hostname
+#                             heatvalve-6-XXXXXX (legacy-compatible)
+#   VARIANT=ble            -> configurations/heatvalve-6-ble.yaml
+#                             BLE BTHome sensors, no MQTT, hostname
+#                             heatvalve-6-ble-XXXXXX
+# Both variants ship the custom dashboard, native API (HA), and Helios.
+# -----------------------------------------------------------------------------
+VARIANT ?= mqtt
+CONFIG ?= configurations/heatvalve-6-$(VARIANT).yaml
+ifeq ($(VARIANT),mqtt)
+  BUILD_NAME ?= heatvalve-6
+else
+  BUILD_NAME ?= heatvalve-6-$(VARIANT)
+endif
 ESPHOME ?= $(if $(wildcard .venv313/bin/esphome),.venv313/bin/esphome,$(if $(wildcard .venv/bin/esphome),.venv/bin/esphome,esphome))
 PIO ?= $(if $(wildcard .venv313/bin/platformio),.venv313/bin/platformio,$(if $(wildcard .venv/bin/platformio),.venv/bin/platformio,platformio))
 PYTHON ?= $(if $(wildcard .venv313/bin/python3),.venv313/bin/python3,$(if $(wildcard .venv/bin/python3),.venv/bin/python3,python3))
-BUILD_NAME ?= heatvalve-6
-BUILD_ROOT ?= .esphome/build/$(BUILD_NAME)
+# ESPHome materialises generated sources next to the config file, so the
+# build root for the configurations/ entrypoints lives under that directory.
+BUILD_ROOT ?= configurations/.esphome/build/$(BUILD_NAME)
 PIO_BUILD_DIR ?= $(BUILD_ROOT)/.pio/build/$(BUILD_NAME)
 FIRMWARE_BIN ?= $(PIO_BUILD_DIR)/firmware.bin
 HOST ?=
@@ -33,11 +50,16 @@ help:
 	@echo "  make test          Run all host unit tests"
 	@echo "  make test-ripple   Run ripple-counter unit tests (5 rates × 5 cases)"
 	@echo ""
+	@echo "Firmware variants (VARIANT=mqtt|ble, default mqtt):"
+	@echo "  make build VARIANT=mqtt   MQTT (Zigbee via z2m), BT compiled out"
+	@echo "  make build VARIANT=ble    BLE BTHome temperature sensors, no MQTT"
+	@echo ""
 	@echo "Examples:"
 	@echo "  make build"
+	@echo "  make build VARIANT=ble"
 	@echo "  make build-patch"
 	@echo "  make deploy"
-	@echo "  make deploy PORT=/dev/cu.usbmodemXXXX"
+	@echo "  make deploy VARIANT=ble PORT=/dev/cu.usbmodemXXXX"
 	@echo "  make monitor PORT=/dev/cu.usbmodemXXXX"
 	@echo "  make erase PORT=/dev/cu.usbmodemXXXX"
 	@echo "  make ota HOST=heatvalve-6-a1b2c3.local"

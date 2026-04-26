@@ -36,6 +36,15 @@ class Hv6HeliosClient : public esphome::Component {
   HeliosStatus get_helios_status() const { return helios_status_; }
   uint32_t get_last_seen_s() const { return last_helios_seen_s_; }
 
+  // Diagnostic accessors (consumed by hv6_dashboard)
+  const char *get_active_endpoint() const { return active_endpoint_; }
+  const char *get_endpoint_source_str() const { return "manual"; }
+  const char *get_last_error() const { return last_error_; }
+  int32_t  get_last_http_status() const { return last_http_status_; }
+  uint32_t get_consecutive_failures() const { return consecutive_failures_; }
+  uint32_t get_next_retry_s() const;
+  uint32_t get_last_success_age_s() const;
+
  protected:
   static constexpr uint32_t STACK_SIZE = 8192;
   static constexpr UBaseType_t PRIORITY = 3;
@@ -72,6 +81,14 @@ class Hv6HeliosClient : public esphome::Component {
 
   // Cache current config for staleness check in loop()
   hv6::HeliosConfig cached_cfg_{};
+
+  // Diagnostic state (populated by HTTP task, read by dashboard)
+  char active_endpoint_[64]{0};
+  char last_error_[64]{0};
+  int32_t  last_http_status_{0};
+  uint32_t consecutive_failures_{0};
+  uint32_t last_success_s_{0};
+  uint32_t next_retry_at_s_{0};
 };
 
 }  // namespace hv6_helios_client

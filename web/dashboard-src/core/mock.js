@@ -35,7 +35,7 @@ function seed() {
     setEntity(key.state(zone), { state: state.valve[index] > 5 ? 'heating' : 'idle' });
     setEntity(key.enabled(zone), { value: !!state.enabled[index], state: state.enabled[index] ? 'on' : 'off' });
     setEntity(key.probe(zone), { state: 'Probe ' + zone });
-    setEntity(key.tempSource(zone), { state: zone % 2 ? 'Local Probe' : 'BLE Sensor' });
+    setEntity(key.tempSource(zone), { state: zone % 2 ? 'Local Probe' : 'BLE' });
     setEntity(key.syncTo(zone), { state: 'None' });
     setEntity(key.pipeType(zone), { state: 'PEX 16mm' });
     setEntity(key.area(zone), { value: 8 + zone * 3.5 });

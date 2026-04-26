@@ -8,8 +8,10 @@
 esp32_ble_tracker:
   scan_parameters:
     active: false
-    interval: 1200ms
-    window: 120ms
+    # Lower BLE duty cycle to reduce event pressure and heap churn during
+    # MQTT/TLS reconnect windows on low-free-heap boots.
+    interval: 3000ms
+    window: 30ms
   on_ble_advertise:
     then:
       - lambda: |-
@@ -27,11 +29,35 @@ esp32_ble_tracker:
                      addr_raw[0], addr_raw[1], addr_raw[2], addr_raw[3], addr_raw[4], addr_raw[5]);
             std::string device_mac(mac_buf);
 
-            // Rate-limit: accept at most one update per MAC per 60 seconds
-            static std::map<std::string, uint32_t> last_update;
+            // Rate-limit: accept at most one update per MAC per 60 seconds.
+            // Use a fixed-size cache (no heap allocations) to avoid
+            // fragmentation from dynamic std::map growth.
+            struct LastSeen {
+              char mac[18];
+              uint32_t ts;
+              bool used;
+            };
+            static LastSeen last_update[16] = {};
             uint32_t now = millis();
-            auto it = last_update.find(device_mac);
-            if (it != last_update.end() && (now - it->second) < 60000)
+            int slot = -1;
+            for (int i = 0; i < 16; i++) {
+              if (!last_update[i].used)
+                continue;
+              bool same = true;
+              for (int j = 0; j < 18; j++) {
+                if (last_update[i].mac[j] != mac_buf[j]) {
+                  same = false;
+                  break;
+                }
+                if (mac_buf[j] == '\0')
+                  break;
+              }
+              if (same) {
+                slot = i;
+                break;
+              }
+            }
+            if (slot >= 0 && (now - last_update[slot].ts) < 60000)
               continue;
 
             // Parse BTHome v2 payload for temperature
@@ -126,7 +152,23 @@ esp32_ble_tracker:
               }
 
               if (match) {
-                last_update[device_mac] = now;
+                if (slot < 0) {
+                  for (int i = 0; i < 16; i++) {
+                    if (!last_update[i].used) {
+                      slot = i;
+                      break;
+                    }
+                  }
+                  if (slot < 0)
+                    slot = 0;  // deterministic overwrite when cache is full
+                  for (int j = 0; j < 18; j++) {
+                    last_update[slot].mac[j] = mac_buf[j];
+                    if (mac_buf[j] == '\0')
+                      break;
+                  }
+                  last_update[slot].used = true;
+                }
+                last_update[slot].ts = now;
                 ESP_LOGI("ble_temp", "Zone %d BLE temp: %.1f°C (%s)", z + 1, temperature, mac_buf);
                 id(hv6_zones).set_zone_mqtt_temperature(z, temperature);
                 switch (z) {

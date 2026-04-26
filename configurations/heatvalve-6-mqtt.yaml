@@ -1,0 +1,43 @@
+# =============================================================================
+# HeatValve-6 \u2014 MQTT Variant   (Zigbee via z2m, no BLE)
+# =============================================================================
+# Build:   make build               (mqtt is the default VARIANT)
+# Deploy:  make deploy
+#
+# Includes MQTT for Home Assistant discovery and for receiving temperature
+# updates from external sensor coordinators (Zigbee2MQTT / ZHA bridge /
+# Mosquitto-published BTHome). Does NOT include BLE \u2014 the ESP-IDF Bluetooth
+# controller is compiled out (CONFIG_BT_ENABLED=n) to free ~40\u201360 KB of
+# internal DRAM, which is what made room for MQTT+TLS+Helios on N4R2.
+#
+# Helios + custom dashboard + ESPHome native API are present.
+#
+# Hostname: heatvalve-6-XXXXXX  (kept identical to legacy single-binary builds
+# so existing devices upgrade in-place via OTA without changing mDNS name).
+# =============================================================================
+
+substitutions:
+  device_name: heatvalve-6
+  friendly_name: "HeatValve-6 UFH (MQTT)"
+
+packages:
+  base: !include ../heatvalve-6.yaml
+  mqtt: !include ../packages/network/mqtt.yaml
+
+# -----------------------------------------------------------------------------
+# Compile out the ESP-IDF Bluetooth controller and host stacks. Reclaims the
+# internal DRAM block the NimBLE/Bluedroid stacks would otherwise reserve
+# permanently and removes BLE link-layer ISR pressure that competes with
+# WiFi/MQTT for radio time. Without this the MQTT variant offers no memory
+# advantage over BLE.
+# -----------------------------------------------------------------------------
+esp32:
+  framework:
+    sdkconfig_options:
+      CONFIG_BT_ENABLED: n
+      CONFIG_BT_BLUEDROID_ENABLED: n
+      CONFIG_BT_NIMBLE_ENABLED: n
+      CONFIG_BT_CONTROLLER_ENABLED: n
+      # Meaningless once BT is off; explicit `n` silences sdkconfig conflict
+      # warnings between this variant and the base board package.
+      CONFIG_BT_ALLOCATION_FROM_SPIRAM_FIRST: n

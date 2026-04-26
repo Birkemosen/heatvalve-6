@@ -27,6 +27,7 @@ export const key = {
 };
 
 export const gkey = {
+  deviceVariant: 'text-device_variant',
   flow: 'sensor-manifold_flow_temperature',
   ret: 'sensor-manifold_return_temperature',
   uptime: 'sensor-uptime',

@@ -10,7 +10,10 @@ import esphome.config_validation as cv
 from esphome.const import CONF_ID
 
 CODEOWNERS = ["@birkemosen"]
-DEPENDENCIES = ["mqtt"]
+# MQTT is optional; all MQTT-touching code in hv6_config_store.cpp is
+# gated by #ifdef USE_MQTT. Listing it here as a hard dependency would
+# force every firmware variant to link the MQTT client.
+DEPENDENCIES = []
 
 hv6_config_store_ns = cg.esphome_ns.namespace("hv6")
 Hv6ConfigStore = hv6_config_store_ns.class_("Hv6ConfigStore", cg.Component)

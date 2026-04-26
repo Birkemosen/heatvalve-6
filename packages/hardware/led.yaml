@@ -25,7 +25,7 @@ light:
     id: rgb_status_led
     internal: true
     chipset: WS2812
-    rgb_order: RGB
+    rgb_order: GRB
     pin: ${pin_rgb_status_led}
     num_leds: 1
     restore_mode: ALWAYS_OFF
@@ -37,17 +37,37 @@ light:
           update_interval: 2s
           min_brightness: 10%
           max_brightness: 40%
+      # Explicit-color strobe effects avoids using undefined "current state"
       - strobe:
-          name: "Fast Blink"
+          name: "Blue Fast Blink"
           colors:
             - state: true
+              brightness: 15%
+              red: 0%
+              green: 0%
+              blue: 100%
               duration: 200ms
             - state: false
               duration: 200ms
       - strobe:
-          name: "Slow Blink"
+          name: "Red Fast Blink"
           colors:
             - state: true
+              brightness: 80%
+              red: 100%
+              green: 0%
+              blue: 0%
+              duration: 200ms
+            - state: false
+              duration: 200ms
+      - strobe:
+          name: "Orange Slow Blink"
+          colors:
+            - state: true
+              brightness: 50%
+              red: 100%
+              green: 25%
+              blue: 0%
               duration: 500ms
             - state: false
               duration: 500ms
@@ -58,9 +78,9 @@ script:
       - lambda: id(led_status_code) = 0;
       - lambda: |-
           auto call = id(rgb_status_led).turn_on();
-          call.set_brightness(0.4f);
+          call.set_brightness(0.15f);
           call.set_rgb(0.0f, 0.0f, 1.0f);
-          call.set_effect("Fast Blink");
+          call.set_effect("Blue Fast Blink");
           call.perform();
 
   - id: led_status_ok
@@ -110,7 +130,7 @@ script:
           auto call = id(rgb_status_led).turn_on();
           call.set_brightness(0.5f);
           call.set_rgb(1.0f, 0.4f, 0.0f);
-          call.set_effect("Slow Blink");
+          call.set_effect("Orange Slow Blink");
           call.perform();
 
   - id: led_status_error
@@ -130,7 +150,7 @@ script:
           auto call = id(rgb_status_led).turn_on();
           call.set_brightness(0.8f);
           call.set_rgb(1.0f, 0.0f, 0.0f);
-          call.set_effect("Fast Blink");
+          call.set_effect("Red Fast Blink");
           call.perform();
 
   - id: led_status_calibrating

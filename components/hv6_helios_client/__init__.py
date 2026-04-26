@@ -1,6 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.const import CONF_ID
+from esphome.components.esp32 import include_builtin_idf_component
 
 DEPENDENCIES = ["network"]
 AUTO_LOAD = []
@@ -38,3 +39,8 @@ async def to_code(config):
     if CONF_TIME_ID in config:
         time_comp = await cg.get_variable(config[CONF_TIME_ID])
         cg.add(var.set_time_component(time_comp))
+
+    # The Helios client uses esp_http_client (built-in IDF component) directly
+    # from a FreeRTOS task pinned to Core 1. Register the built-in component
+    # so the linker can resolve esp_http_client_* symbols.
+    include_builtin_idf_component("esp_http_client")

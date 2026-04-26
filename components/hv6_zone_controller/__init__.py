@@ -11,7 +11,9 @@ from esphome.const import CONF_ID
 from esphome.components import sensor
 
 CODEOWNERS = ["@birkemosen"]
-DEPENDENCIES = ["mqtt", "json"]
+# MQTT is optional; zigbee2mqtt subscription paths are #ifdef USE_MQTT
+# gated. JSON is required for trace batches and for parsing z2m payloads.
+DEPENDENCIES = ["json"]
 AUTO_LOAD = ["hv6_config_store", "hv6_valve_controller"]
 
 CONF_CONFIG_STORE_ID = "config_store_id"

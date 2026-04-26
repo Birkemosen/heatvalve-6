@@ -83,4 +83,4 @@ hv6_dashboard:
     - motor_4_last_fault
     - motor_5_last_fault
     - motor_6_last_fault
-  dashboard_js: web/dashboard.js
+  dashboard_js: ../web/dashboard.js

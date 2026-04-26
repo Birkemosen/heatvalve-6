@@ -140,6 +140,14 @@ enum class TempSource : uint8_t {
   BLE_SENSOR = 2,
 };
 
+#ifdef USE_MQTT
+static constexpr TempSource DEFAULT_ZONE_TEMP_SOURCE = TempSource::MQTT_EXTERNAL;
+#elif defined(USE_ESP32_BLE)
+static constexpr TempSource DEFAULT_ZONE_TEMP_SOURCE = TempSource::BLE_SENSOR;
+#else
+static constexpr TempSource DEFAULT_ZONE_TEMP_SOURCE = TempSource::LOCAL_PROBE;
+#endif
+
 /// What the zone's local DS18B20 probe measures.
 enum class ProbeRole : uint8_t {
   ROOM_TEMPERATURE = 0,   ///< Measures room/air temperature (used as control input)
@@ -209,7 +217,14 @@ static constexpr uint8_t MQTT_DEVICE_NAME_LEN = 48;
 static constexpr uint8_t BLE_MAC_LEN = 18;  // "AA:BB:CC:DD:EE:FF" + null
 
 struct MqttTempConfig {
-  TempSource zone_temp_source[NUM_ZONES] = {};
+  TempSource zone_temp_source[NUM_ZONES] = {
+      DEFAULT_ZONE_TEMP_SOURCE,
+      DEFAULT_ZONE_TEMP_SOURCE,
+      DEFAULT_ZONE_TEMP_SOURCE,
+      DEFAULT_ZONE_TEMP_SOURCE,
+      DEFAULT_ZONE_TEMP_SOURCE,
+      DEFAULT_ZONE_TEMP_SOURCE,
+  };
   char zone_mqtt_device[NUM_ZONES][MQTT_DEVICE_NAME_LEN] = {};
   char zone_ble_mac[NUM_ZONES][BLE_MAC_LEN] = {};
 };
@@ -234,6 +249,9 @@ struct HeliosConfig {
   char controller_id[HELIOS_CONTROLLER_ID_LEN] = "";         ///< empty = use system.controller_id
   uint16_t poll_interval_s = 30;                             ///< Snapshot POST + commands GET interval
   uint16_t stale_after_s = 600;                              ///< Clear helios offsets if no ack within this period
+  bool auto_discover = false;                                ///< Enable mDNS discovery fallback when host is empty (opt-in)
+  char mdns_host[HELIOS_HOST_LEN] = "helios.local";         ///< mDNS hostname to resolve when host is empty
+  uint16_t mdns_resolve_interval_s = 60;                     ///< Re-resolve interval for mDNS host
 };
 
 static constexpr uint8_t MQTT_BROKER_LEN = 64;
@@ -368,7 +386,9 @@ struct SystemConfig {
 /// v9 adds motor profiles, runtime safety preset fields, and learned factor confidence controls.
 /// v10 adds control.simple_preheat_enabled.
 /// v11 adds HeliosConfig and per-zone offset/abs limits to ZoneConfig.
-static constexpr uint32_t CONFIG_VERSION = 11;
+/// v12 extends HeliosConfig with mDNS auto-discovery settings.
+/// v13 changes Helios auto_discover default to opt-in.
+static constexpr uint32_t CONFIG_VERSION = 13;
 
 struct DeviceConfig {
   uint32_t config_version = CONFIG_VERSION;

@@ -12,7 +12,7 @@ const css = `
   background: var(--panel-bg-vibrant);
   border: 1px solid var(--panel-border);
   border-radius: 18px;
-  padding: 20px;
+  padding: 18px;
   box-shadow: var(--panel-shadow);
 }
 
@@ -31,7 +31,24 @@ const css = `
   display: grid;
   grid-template-columns: 1fr;
   gap: 6px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+}
+
+.zone-room-card .cfg-row.two-col {
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.zone-room-card .cfg-row > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+@media (max-width: 480px) {
+  .zone-room-card .cfg-row.two-col {
+    grid-template-columns: 1fr;
+  }
 }
 
 .zone-room-card .lbl {
@@ -61,31 +78,53 @@ const css = `
   border-color: rgba(83,168,255,.55);
 }
 
-.zone-room-card .wall-btn-group {
+.zone-room-card .wall-lbl-hint {
   display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .75rem;
+  color: var(--text-secondary);
+  margin-top: -4px;
+  margin-bottom: 8px;
+}
+
+.zone-room-card .wall-lbl-hint::after {
+  content: 'Select all that apply';
+  font-style: italic;
+}
+
+.zone-room-card .wall-btn-group {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 6px;
-  flex-wrap: wrap;
 }
 
 .zone-room-card .wall-btn {
-  flex: 1;
-  min-width: 46px;
-  padding: 7px 4px;
+  padding: 8px 4px;
   border: 1px solid var(--control-border);
   background: var(--control-bg);
   color: var(--text-secondary);
   border-radius: 8px;
-  font-size: .82rem;
+  font-size: .79rem;
   font-weight: 700;
-  letter-spacing: .4px;
+  letter-spacing: .3px;
   cursor: pointer;
-  transition: background .12s ease, color .12s ease, border-color .12s ease;
+  transition: background .12s ease, color .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+
+.zone-room-card .wall-btn:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(83,168,255,.2);
 }
 
 .zone-room-card .wall-btn.active {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
+}
+
+.zone-room-card .wall-btn[data-wall="None"] {
+  grid-column: 1 / -1;
 }
 `;
 
@@ -96,10 +135,12 @@ injectStyle('zone-room-card', css);
 // ========================================
 const template = () => `
   <div class="zone-room-card">
-    <div class="card-title">Room Settings</div>
+    <div class="card-title">Zone Settings</div>
     <div class="cfg-row"><span class="lbl">Friendly Name</span><input class="txt zr-friendly" maxlength="24" placeholder="e.g. Living Room"></div>
-    <div class="cfg-row"><span class="lbl">Zone Area</span><input class="txt zr-area" type="number" min="1" step="0.1" placeholder="m2"></div>
-    <div class="cfg-row"><span class="lbl">Pipe Spacing C-C</span><input class="txt zr-spacing" type="number" min="50" step="5" placeholder="200"></div>
+    <div class="cfg-row two-col">
+      <div><span class="lbl">Zone Area</span><input class="txt zr-area" type="number" min="1" step="0.1" placeholder="m2"></div>
+      <div><span class="lbl">Pipe Spacing C-C</span><input class="txt zr-spacing" type="number" min="50" step="5" placeholder="200"></div>
+    </div>
     <div class="cfg-row"><span class="lbl">Pipe Type</span>
       <select class="sel zr-pipe">
         <option>PEX 16mm</option><option>PEX 12mm</option><option>PEX 14mm</option><option>PEX 17mm</option><option>PEX 18mm</option><option>PEX 20mm</option><option>ALUPEX 16mm</option><option>ALUPEX 20mm</option><option>Unknown</option>

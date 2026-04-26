@@ -60,6 +60,13 @@ struct DashboardSnapshot {
   hv6::HeliosConfig helios;             // current helios config
   char              helios_status[16];  // "active"|"degraded"|"offline"
   char              helios_device_id[33]; // system.controller_id fallback
+  char              helios_endpoint[SNAPSHOT_TEXT_LEN];
+  char              helios_endpoint_source[16];
+  char              helios_last_error[SNAPSHOT_TEXT_LEN];
+  int32_t           helios_last_http_status{0};
+  uint32_t          helios_fail_streak{0};
+  uint32_t          helios_next_retry_s{0};
+  uint32_t          helios_last_success_age_s{0};
 };
 
 struct DashboardAction {

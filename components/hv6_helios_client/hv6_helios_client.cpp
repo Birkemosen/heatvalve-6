@@ -80,6 +80,21 @@ void Hv6HeliosClient::task_func_(void *arg) {
   self->run_();
 }
 
+static uint32_t mono_s_() {
+  return static_cast<uint32_t>(esp_timer_get_time() / 1000000ULL);
+}
+
+uint32_t Hv6HeliosClient::get_next_retry_s() const {
+  uint32_t now = mono_s_();
+  return (next_retry_at_s_ > now) ? (next_retry_at_s_ - now) : 0;
+}
+
+uint32_t Hv6HeliosClient::get_last_success_age_s() const {
+  if (last_success_s_ == 0) return 0;
+  uint32_t now = mono_s_();
+  return (now > last_success_s_) ? (now - last_success_s_) : 0;
+}
+
 void Hv6HeliosClient::run_() {
   // Initial startup delay — let WiFi and config store settle.
   vTaskDelay(pdMS_TO_TICKS(5000));
@@ -87,12 +102,24 @@ void Hv6HeliosClient::run_() {
   while (true) {
     hv6::HeliosConfig cfg = config_store_->get_helios_config();
 
+    // Track active endpoint for diagnostics
+    strncpy(active_endpoint_, cfg.host, sizeof(active_endpoint_) - 1);
+    active_endpoint_[sizeof(active_endpoint_) - 1] = '\0';
+
     if (cfg.enabled && strlen(cfg.host) > 0) {
-      post_snapshot_(cfg);
-      get_commands_(cfg);
+      bool ok_post = post_snapshot_(cfg);
+      bool ok_get  = get_commands_(cfg);
+      if (ok_post && ok_get) {
+        consecutive_failures_ = 0;
+        last_success_s_ = mono_s_();
+        last_error_[0] = '\0';
+      } else {
+        if (consecutive_failures_ < 0xFFFFFFFFu) consecutive_failures_++;
+      }
     }
 
     uint32_t sleep_s = (cfg.poll_interval_s > 0) ? cfg.poll_interval_s : 30;
+    next_retry_at_s_ = mono_s_() + sleep_s;
     vTaskDelay(pdMS_TO_TICKS(sleep_s * 1000));
   }
 }
@@ -144,6 +171,7 @@ bool Hv6HeliosClient::post_snapshot_(const hv6::HeliosConfig &cfg) {
   bool ok = false;
   if (err == ESP_OK) {
     int status = esp_http_client_get_status_code(client);
+    last_http_status_ = status;
     if (status == 204) {
       ok = true;
       if (send_configs) {
@@ -154,9 +182,12 @@ bool Hv6HeliosClient::post_snapshot_(const hv6::HeliosConfig &cfg) {
         ESP_LOGD(TAG, "Helios snapshot OK (204)");
       }
     } else {
+      snprintf(last_error_, sizeof(last_error_), "snapshot http %d", status);
       ESP_LOGW(TAG, "Helios snapshot returned %d (expected 204)", status);
     }
   } else {
+    last_http_status_ = -1;
+    snprintf(last_error_, sizeof(last_error_), "snapshot %s", esp_err_to_name(err));
     ESP_LOGW(TAG, "Helios snapshot POST failed: %s", esp_err_to_name(err));
   }
 
@@ -191,6 +222,7 @@ bool Hv6HeliosClient::get_commands_(const hv6::HeliosConfig &cfg) {
 
   if (err == ESP_OK) {
     int status = esp_http_client_get_status_code(client);
+    last_http_status_ = status;
     if (status == 200) {
       int content_length = esp_http_client_get_content_length(client);
       if (content_length > 0 && content_length < 4096) {
@@ -265,9 +297,12 @@ bool Hv6HeliosClient::get_commands_(const hv6::HeliosConfig &cfg) {
         ok = true;
       }
     } else {
+      snprintf(last_error_, sizeof(last_error_), "commands http %d", status);
       ESP_LOGW(TAG, "Helios commands returned %d", status);
     }
   } else {
+    last_http_status_ = -1;
+    snprintf(last_error_, sizeof(last_error_), "commands %s", esp_err_to_name(err));
     ESP_LOGW(TAG, "Helios commands GET failed: %s", esp_err_to_name(err));
   }
 
