@@ -214,6 +214,28 @@ Key additions to be aware of (read relevant reference files for details):
 
 ## Common Mistakes
 
+### Runtime Concurrency Pattern (ESPHome + FreeRTOS)
+
+When adding custom C++ components that do network I/O or heavy work, enforce this pattern:
+
+1. Keep `Component::loop()` non-blocking and fast.
+2. Move slow work to a background FreeRTOS task.
+3. Trigger the task from `loop()` via semaphore/queue; do not perform heavy work inline.
+4. Worker should block while idle (`xSemaphoreTake` or queue receive), then run one cycle.
+5. Add readiness gates (WiFi/MQTT/time sync) before outgoing calls.
+6. Add exponential backoff with jitter and a cooldown not-before timestamp.
+7. Throttle task start retries to avoid startup floods.
+
+Recommended behavior for optional integrations:
+- Default to disabled/inert when not configured.
+- Do not start worker if required host/endpoint config is missing.
+- Clear stale state after timeout rather than continuously retrying.
+
+Avoid:
+- HTTP requests in `loop()`.
+- Tight polling loops with fixed short delays.
+- Log spam on each iteration; log only transitions and failures.
+
 ### GPIO Issues
 - **Strapping pins** - GPIO0, GPIO2, GPIO15 on ESP8266; GPIO0, GPIO2, GPIO12, GPIO15 on ESP32 - avoid for outputs
 - **ADC2 + WiFi** - ADC2 pins cannot be used while WiFi is active on ESP32

@@ -8,6 +8,50 @@ description: functional skills for each UFH PCB based on ESP32-S3
 ## Purpose
 This file describes the functional skills for each UFH PCB based on the ESP32-S3.
 
+## Runtime Architecture Pattern (Required)
+
+Use this pattern for all networked or potentially slow integrations so ESPHome stays responsive:
+
+1. Keep `loop()` short and non-blocking.
+2. Run HTTP/MQTT bridge work in a dedicated FreeRTOS worker task.
+3. Trigger work from `loop()` using a semaphore or queue.
+4. In the worker, block on `xSemaphoreTake(..., portMAX_DELAY)` instead of busy polling.
+5. Gate expensive work behind readiness checks (WiFi connected, MQTT stable, endpoint resolved).
+6. Apply exponential backoff + jitter after failures.
+7. Use cooldown windows so repeated failures cannot starve other subsystems.
+8. Use low worker priority unless strict real-time requirements demand otherwise.
+9. Avoid long critical sections; lock only around shared resources.
+10. Keep watchdog safety by yielding in long worker code paths.
+
+### Why
+- Prevents blocking the ESPHome main scheduler.
+- Reduces contention with MQTT and API tasks.
+- Avoids retry storms that can look like system instability.
+
+### Anti-Patterns (Do Not Use)
+- Network calls directly inside `loop()`.
+- Infinite polling loops with short `vTaskDelay` intervals.
+- Repeated task creation attempts on every `loop()` tick.
+- High-priority worker tasks for best-effort telemetry.
+- Global mutex hold across full HTTP transactions when not required.
+
+## FreeRTOS Task Rules
+
+- Create long-lived tasks once; do not churn tasks.
+- Use clear ownership for task handle, trigger primitive, and lifecycle flags.
+- Prefer pinned-core tasks only when justified by measured contention.
+- Make all retries time-based and monotonic-clock driven.
+- Separate "trigger time" from "not-before time" to combine interval + cooldown behavior.
+- Log state transitions (started, gated, backed off, recovered), not every loop iteration.
+
+## ESPHome Interaction Rules
+
+- `setup()`: initialize semaphores/queues and create worker task only if feature is enabled/configured.
+- `loop()`: schedule triggers, refresh cached config, and perform stale-state cleanup only.
+- Worker task: execute one cycle per trigger and return to blocked wait state.
+- Runtime enable/disable should not require reboot; handle task start retry with throttling.
+- Treat optional integrations as inert by default when unconfigured.
+
 ---
 
 ## High Priority

@@ -80,6 +80,27 @@ build-verify: check dashboard-build
 
 deploy: check
 	$(MAKE) build
+	@if [ -n "$(PORT)" ]; then \
+		echo "Flashing via serial port: $(PORT)"; \
+		$(PIO) run -d $(BUILD_ROOT) -t upload --upload-port $(PORT); \
+	elif [ -n "$(AUTO_PORT)" ]; then \
+		echo "Auto-detected serial port: $(AUTO_PORT)"; \
+		$(PIO) run -d $(BUILD_ROOT) -t upload --upload-port $(AUTO_PORT); \
+	elif [ -n "$(HOST)" ]; then \
+		$(ESPHOME) upload $(CONFIG) --file $(FIRMWARE_BIN) --device $(HOST); \
+	else \
+		echo "No serial port detected. Scanning for HeatValve-6 devices (3s)..."; \
+		hosts=$$($(PYTHON) discover_devices.py 2>/dev/null); \
+		if [ -z "$$hosts" ]; then echo "No devices found. Use PORT=/dev/cu.usbmodemXXXX or HOST=heatvalve-6-XXXXXX.local"; exit 1; fi; \
+		count=$$(echo "$$hosts" | wc -l | tr -d ' '); \
+		echo "Found devices:"; \
+		i=1; for h in $$hosts; do printf "  %d) %s\n" $$i $$h; i=$$((i+1)); done; \
+		printf "Select device [1-$$count]: "; \
+		read choice < /dev/tty; \
+		selected=$$(echo "$$hosts" | sed -n "$${choice}p"); \
+		[ -z "$$selected" ] && { echo "Invalid selection"; exit 1; }; \
+		$(ESPHOME) upload $(CONFIG) --file $(FIRMWARE_BIN) --device $$selected; \
+	fi
 
 # =============================================================================
 # Host unit tests (no ESP-IDF, runs on macOS/Linux with clang++)
@@ -96,26 +117,6 @@ test-ripple:
 	$(RIPPLE_OUT)
 
 test: test-ripple
-	@if [ -n "$(PORT)" ]; then \
-		$(PIO) run -d $(BUILD_ROOT) -t upload --upload-port $(PORT); \
-	elif [ -n "$(AUTO_PORT)" ]; then \
-		echo "Auto-detected serial port: $(AUTO_PORT)"; \
-		$(PIO) run -d $(BUILD_ROOT) -t upload --upload-port $(AUTO_PORT); \
-	elif [ -n "$(HOST)" ]; then \
-		$(ESPHOME) upload $(CONFIG) --file $(FIRMWARE_BIN) --device $(HOST); \
-	else \
-		echo "No serial port detected. Scanning for HeatValve-6 devices (3s)..."; \
-		hosts=$$($(PYTHON) discover_devices.py 2>/dev/null); \
-		if [ -z "$$hosts" ]; then echo "No devices found. Use PORT= or HOST=heatvalve-6-XXXXXX.local"; exit 1; fi; \
-		count=$$(echo "$$hosts" | wc -l | tr -d ' '); \
-		echo "Found devices:"; \
-		i=1; for h in $$hosts; do printf "  %d) %s\n" $$i $$h; i=$$((i+1)); done; \
-		printf "Select device [1-$$count]: "; \
-		read choice < /dev/tty; \
-		selected=$$(echo "$$hosts" | sed -n "$${choice}p"); \
-		[ -z "$$selected" ] && { echo "Invalid selection"; exit 1; }; \
-		$(ESPHOME) upload $(CONFIG) --file $(FIRMWARE_BIN) --device $$selected; \
-	fi
 
 ota: check
 	$(MAKE) build
