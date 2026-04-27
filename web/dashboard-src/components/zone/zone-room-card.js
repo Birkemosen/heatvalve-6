@@ -14,6 +14,8 @@ const css = `
   border-radius: 18px;
   padding: 18px;
   box-shadow: var(--panel-shadow);
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .zone-room-card .card-title {
@@ -36,13 +38,18 @@ const css = `
 
 .zone-room-card .cfg-row.two-col {
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 14px;
+  align-items: start;
 }
 
-.zone-room-card .cfg-row > div {
+.zone-room-card .cfg-row > div:not(.wall-btn-group) {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.zone-room-card .cfg-row.two-col > div {
+  margin-bottom: 0;
 }
 
 @media (max-width: 480px) {
@@ -57,6 +64,7 @@ const css = `
   font-weight: 700;
   letter-spacing: .45px;
   text-transform: uppercase;
+  line-height: 1.2;
 }
 
 .zone-room-card .txt,
@@ -84,7 +92,7 @@ const css = `
   gap: 8px;
   font-size: .75rem;
   color: var(--text-secondary);
-  margin-top: -4px;
+  margin-top: 0;
   margin-bottom: 8px;
 }
 
@@ -95,7 +103,7 @@ const css = `
 
 .zone-room-card .wall-btn-group {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 6px;
 }
 
@@ -123,8 +131,10 @@ const css = `
   border-color: var(--accent);
 }
 
-.zone-room-card .wall-btn[data-wall="None"] {
-  grid-column: 1 / -1;
+@media (max-width: 680px) {
+  .zone-room-card .wall-btn-group {
+    grid-template-columns: repeat(5, 1fr);
+  }
 }
 `;
 
@@ -148,6 +158,7 @@ const template = () => `
     </div>
     <div class="cfg-row">
       <span class="lbl">Exterior Walls</span>
+      <div class="wall-lbl-hint"></div>
       <div class="wall-btn-group">
         <button class="wall-btn" data-wall="None">None</button>
         <button class="wall-btn" data-wall="N">N</button>

@@ -83,13 +83,13 @@ const css = `
 @media (max-width: 560px) { .dz-grid { grid-template-columns: 1fr; } }
 
 .dz-zone-card {
-  background: var(--panel-bg);
-  border: 1px solid var(--panel-border);
+  background: linear-gradient(180deg, rgba(20,44,79,.30), rgba(13,31,58,.24));
+  border: 1px solid rgba(120,168,255,.30);
   border-radius: 14px;
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .dz-zone-head {
@@ -135,13 +135,12 @@ const css = `
 .dz-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  gap: 10px;
 }
 .dz-stat {
-  background: var(--control-bg);
-  border: 1px solid var(--control-border);
-  border-radius: 8px;
-  padding: 6px 8px;
+  border-radius: 0;
+  padding: 2px 0 6px;
+  border-bottom: 1px solid rgba(120,168,255,.22);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -165,7 +164,7 @@ const css = `
 
 .dz-motor-section {
   border-top: 1px solid var(--panel-border);
-  padding-top: 8px;
+  padding-top: 10px;
 }
 .dz-motor-label {
   font-size: .64rem;
@@ -178,18 +177,19 @@ const css = `
 .dz-motor-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 5px;
+  gap: 8px 12px;
 }
 .dz-motor-param {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: var(--control-bg);
-  border: 1px solid var(--control-border);
-  border-radius: 7px;
-  padding: 5px 8px;
+  border-bottom: 1px dashed rgba(120,168,255,.24);
+  padding: 2px 0 5px;
   font-size: .76rem;
   gap: 4px;
+}
+.dz-motor-param.preheat-advance {
+  grid-column: 1 / -1;
 }
 .dz-motor-param-name {
   color: var(--text-secondary);
@@ -271,7 +271,7 @@ const template = () => {
             <div class="dz-motor-param"><span class="dz-motor-param-name">Close ripples</span><span class="dz-motor-param-val" data-dz-crip="${zone}">---</span></div>
             <div class="dz-motor-param"><span class="dz-motor-param-name">Open factor</span><span class="dz-motor-param-val" data-dz-ofac="${zone}">---</span></div>
             <div class="dz-motor-param"><span class="dz-motor-param-name">Close factor</span><span class="dz-motor-param-val" data-dz-cfac="${zone}">---</span></div>
-            <div class="dz-motor-param"><span class="dz-motor-param-name">Preheat advance</span><span class="dz-motor-param-val" data-dz-ph="${zone}">---</span></div>
+            <div class="dz-motor-param preheat-advance"><span class="dz-motor-param-name">Preheat advance</span><span class="dz-motor-param-val" data-dz-ph="${zone}">---</span></div>
           </div>
           <div class="dz-fault-row" data-dz-faultrow="${zone}" style="display:none">
             <span class="dz-fault-label">Last fault</span>

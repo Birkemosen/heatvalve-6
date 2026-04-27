@@ -62,8 +62,8 @@ const css = `
 .settings-helios-card .cfg-row {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 5px;
-  margin-bottom: 10px;
+  gap: 6px;
+  margin-bottom: 12px;
 }
 
 .settings-helios-card .lbl {
@@ -72,6 +72,7 @@ const css = `
   font-weight: 700;
   letter-spacing: .45px;
   text-transform: uppercase;
+  line-height: 1.2;
 }
 
 .settings-helios-card .inp {
@@ -95,8 +96,13 @@ const css = `
 .settings-helios-card .row-2col {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 14px;
+  margin-bottom: 12px;
+  align-items: start;
+}
+
+.settings-helios-card .row-2col .cfg-row {
+  margin-bottom: 0;
 }
 
 .settings-helios-card .enable-row {
@@ -123,30 +129,37 @@ const css = `
 }
 
 .settings-helios-card .enable-toggle {
-  border: 1px solid var(--control-border);
-  background: var(--control-bg);
-  color: var(--text-strong);
-  border-radius: 8px;
-  padding: 6px 14px;
-  font-size: .78rem;
-  font-weight: 800;
-  letter-spacing: .5px;
-  text-transform: uppercase;
+  width: 48px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--control-bg-hover);
+  position: relative;
   cursor: pointer;
-  transition: .18s ease;
+  border: 1px solid var(--control-border);
+  transition: background .2s ease, border-color .2s ease;
   flex-shrink: 0;
 }
 
-.settings-helios-card .enable-row.is-on .enable-toggle {
-  border-color: rgba(255,100,100,.5);
-  background: rgba(255,80,80,.2);
-  color: #FFD0D0;
+.settings-helios-card .enable-toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  background: #dbe8ff;
+  border-radius: 999px;
+  transition: transform .2s ease;
 }
 
-.settings-helios-card .enable-row.is-off .enable-toggle {
-  border-color: rgba(100,255,100,.5);
-  background: rgba(45,110,45,.3);
-  color: #CBFFD0;
+.settings-helios-card .enable-row.is-on .enable-toggle {
+  background: rgba(121, 209, 126, 0.25);
+  border-color: rgba(121, 209, 126, 0.5);
+}
+
+.settings-helios-card .enable-row.is-on .enable-toggle::after {
+  transform: translateX(22px);
+  background: #0f213c;
 }
 
 .settings-helios-card .section-title {
@@ -155,14 +168,25 @@ const css = `
   font-weight: 700;
   letter-spacing: .8px;
   text-transform: uppercase;
-  margin: 14px 0 8px;
+  margin: 16px 0 10px;
 }
 
 .settings-helios-card .note {
   color: var(--text-secondary);
   font-size: .75rem;
-  margin-top: 3px;
+  margin-top: 4px;
   line-height: 1.4;
+}
+
+@media (max-width: 980px) {
+  .settings-helios-card .row-2col {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .settings-helios-card .row-2col .cfg-row {
+    margin-bottom: 0;
+  }
 }
 `;
 
@@ -180,7 +204,7 @@ const template = () => `
 
     <div class="enable-row is-off">
       <span class="enable-label">Integration enabled</span>
-      <button class="enable-toggle">Enable</button>
+      <div class="enable-toggle" role="switch" aria-label="Toggle Helios integration"></div>
     </div>
 
     <div class="section-title">Connection</div>
@@ -244,7 +268,7 @@ export default component({
       const on = isEntityOn(gkey.heliosEnabled);
       enableRow.classList.toggle('is-on', on);
       enableRow.classList.toggle('is-off', !on);
-      toggleBtn.textContent = on ? 'Disable' : 'Enable';
+      toggleBtn.setAttribute('aria-checked', on ? 'true' : 'false');
     }
 
     toggleBtn.addEventListener('click', () => {

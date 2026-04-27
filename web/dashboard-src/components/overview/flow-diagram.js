@@ -70,8 +70,8 @@ var FD_SPREAD = 11;
 var FD_SRC_HW = 6;
 var FD_BG_DST_HW = 24;
 var FD_COL_ZONE_X = FD_EX + 20;
-var FD_COL_TEMP_X = FD_EX + 210;
-var FD_COL_FLOW_X = FD_EX + 328;
+var FD_COL_TEMP_X = FD_EX + 200;
+var FD_COL_FLOW_X = FD_EX + 360;
 var FD_COL_RET_X = FD_EX + 420;
 var FD_COLOR_DISABLED = '#7D8BA7';
 var FD_COLOR_EMPTY = '#6C7892';
@@ -185,7 +185,8 @@ function buildFlowDiagram() {
       var yy = FD_ZY[z - 1];
       p.push('<text id="fd-zn' + z + '" x="' + FD_COL_ZONE_X + '" y="' + (yy + 2) + '" font-size="14" fill="#CFE0FF" font-weight="700" letter-spacing="2">ZONE ' + z + '</text>');
       p.push('<text id="fd-zf' + z + '" x="' + FD_COL_ZONE_X + '" y="' + (yy + 18) + '" font-size="11" fill="#A8BCE3" font-weight="700" letter-spacing="1">---</text>');
-      p.push('<text id="fd-zt' + z + '" x="' + FD_COL_TEMP_X + '" y="' + (yy + 10) + '" font-size="19" fill="#ECECEC" font-weight="700" font-family="var(--mono)">---°C</text>');
+      p.push('<text id="fd-zsp' + z + '" x="' + (FD_COL_ZONE_X + 82) + '" y="' + (yy + 18) + '" font-size="11" fill="' + FD_COLOR_FRIENDLY_OFF + '" font-weight="600" font-family="var(--mono)"></text>');
+      p.push('<text id="fd-zt' + z + '" x="' + FD_COL_TEMP_X + '" y="' + (yy + 10) + '" font-size="16" fill="#ECECEC" font-weight="700" font-family="var(--mono)">---°C</text>');
       p.push('<text id="fd-zv' + z + '" x="' + FD_COL_FLOW_X + '" y="' + (yy + 10) + '" font-size="16" fill="#AEC0E6" font-weight="700" font-family="var(--mono)">---%</text>');
       p.push('<text id="fd-zr' + z + '" x="' + FD_COL_RET_X + '" y="' + (yy + 10) + '" font-size="16" fill="#AEC0E6" font-weight="700" font-family="var(--mono)">---</text>');
     }
@@ -221,6 +222,7 @@ component({
     for (let zone = 1; zone <= ZONES; zone++) {
       refs.zones[zone] = {
         textTemp: el.querySelector('#fd-zt' + zone),
+        textSetpoint: el.querySelector('#fd-zsp' + zone),
         textFlow: el.querySelector('#fd-zv' + zone),
         textRet: el.querySelector('#fd-zr' + zone),
         label: el.querySelector('#fd-zn' + zone),
@@ -248,6 +250,7 @@ component({
 
       for (let zone = 1; zone <= ZONES; zone++) {
         const temp = ev(key.temp(zone));
+        const setpoint = ev(key.setpoint(zone));
         const valve = ev(key.valve(zone));
         const enabled = isEntityOn(key.enabled(zone));
         const source = String(es(key.tempSource(zone)) || 'Local Probe');
@@ -255,6 +258,7 @@ component({
         const returnTemp = probe ? ev(key.probeTemp(probe)) : null;
         const zoneRefs = refs.zones[zone];
         const textTemp = zoneRefs.textTemp;
+        const textSetpoint = zoneRefs.textSetpoint;
         const textFlow = zoneRefs.textFlow;
         const textRet = zoneRefs.textRet;
         const label = zoneRefs.label;
@@ -267,7 +271,13 @@ component({
         friendly.textContent = tag || '---';
         label.setAttribute('fill', enabled ? FD_COLOR_ZONE_ON : FD_COLOR_ZONE_OFF);
         friendly.setAttribute('fill', enabled ? FD_COLOR_FRIENDLY_ON : FD_COLOR_FRIENDLY_OFF);
-        textTemp.textContent = fmtT(temp);
+        textSetpoint.setAttribute('fill', enabled ? FD_COLOR_FRIENDLY_ON : FD_COLOR_FRIENDLY_OFF);
+        const fnWidth = friendly.getComputedTextLength ? friendly.getComputedTextLength() : 0;
+        textSetpoint.setAttribute('x', String(FD_COL_ZONE_X + fnWidth + 8));
+        const tempStr = fmtT(temp);
+        const setpointStr = setpoint != null ? fmtT(setpoint) : null;
+        textTemp.textContent = tempStr;
+        textSetpoint.textContent = setpointStr ? '(' + setpointStr + ')' : '';
         textFlow.textContent = fmtV(valve);
         textFlow.setAttribute('fill', flowColorByPercent(pct, enabled));
         if (source !== 'Local Probe' && returnTemp != null && !Number.isNaN(Number(returnTemp))) {
@@ -296,6 +306,7 @@ component({
     subscribeDashboard('zoneNames', update);
     for (let zone = 1; zone <= ZONES; zone++) {
       subscribe(key.temp(zone), update);
+      subscribe(key.setpoint(zone), update);
       subscribe(key.valve(zone), update);
       subscribe(key.enabled(zone), update);
       subscribe(key.probe(zone), update);

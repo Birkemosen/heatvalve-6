@@ -32,7 +32,7 @@ const css = `
   display: grid;
   grid-template-columns: 1fr;
   gap: 6px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .settings-manifold-card .lbl {
@@ -41,6 +41,7 @@ const css = `
   font-weight: 700;
   letter-spacing: .45px;
   text-transform: uppercase;
+  line-height: 1.2;
 }
 
 .settings-manifold-card .sel {
@@ -63,7 +64,7 @@ const css = `
 .settings-manifold-card .probe-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
   margin-top: 12px;
 }
 
@@ -131,7 +132,7 @@ export default component({
     const retEl = el.querySelector('.sm-ret');
 
     function update() {
-      typeEl.value = es(gkey.manifoldType) || 'NC (Normally Closed)';
+      typeEl.value = es(gkey.manifoldType) || 'NO (Normally Open)';
       flowEl.value = es(gkey.manifoldFlowProbe) || 'Probe 7';
       retEl.value = es(gkey.manifoldReturnProbe) || 'Probe 8';
       for (let probe = 1; probe <= 8; probe++) {

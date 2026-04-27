@@ -84,9 +84,23 @@ body {
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: 1.2fr .8fr .8fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 14px;
   margin-top: 14px;
+  align-items: stretch;
+}
+
+.overview-connectivity,
+.overview-flow-return,
+.overview-demand {
+  display: flex;
+  flex-direction: column;
+}
+
+.overview-connectivity > *,
+.overview-flow-return > *,
+.overview-demand > * {
+  flex: 1;
 }
 
 .zone-layout,
@@ -97,12 +111,20 @@ body {
 }
 
 .zone-layout {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: stretch;
 }
 
-.zone-right-stack {
-  display: grid;
-  gap: 14px;
+.zone-detail-slot,
+.zone-sensor-slot,
+.zone-room-slot {
+  display: flex;
+}
+
+.zone-detail-slot > *,
+.zone-sensor-slot > *,
+.zone-room-slot > * {
+  flex: 1;
 }
 
 .settings-layout {
@@ -147,6 +169,10 @@ body {
   .zone-layout,
   .dashboard-grid,
   .settings-layout { grid-template-columns: 1fr; }
+
+  .zone-detail-slot {
+    grid-column: 1;
+  }
 }
 
 /* ============================
@@ -183,21 +209,19 @@ const template = (ctx) => `
       <div class="hdr"></div>
       <section class="sec active" data-section="overview">
         <div class="overview-flow"></div>
-        <div class="dashboard-grid">
-          <div class="overview-status"></div>
-          <div class="overview-connectivity"></div>
-          <div class="overview-graphs"></div>
-        </div>
         <div class="overview-timeline" style="margin-top:14px"></div>
+        <div class="dashboard-grid">
+          <div class="overview-connectivity"></div>
+          <div class="overview-flow-return"></div>
+          <div class="overview-demand"></div>
+        </div>
       </section>
       <section class="sec" data-section="zones">
         <div class="zone-selector"></div>
         <div class="zone-layout">
           <div class="zone-detail-slot"></div>
-          <div class="zone-right-stack">
-            <div class="zone-sensor-slot"></div>
-            <div class="zone-room-slot"></div>
-          </div>
+          <div class="zone-sensor-slot"></div>
+          <div class="zone-room-slot"></div>
         </div>
       </section>
       <section class="sec" data-section="diagnostics">
@@ -228,10 +252,10 @@ component({
   onMount(ctx, el) {
     el.querySelector('.hdr').appendChild(mountComponent('hv6-header'));
     el.querySelector('.overview-flow').appendChild(mountComponent('flow-diagram'));
-    el.querySelector('.overview-status').appendChild(mountComponent('status-card'));
-    el.querySelector('.overview-connectivity').appendChild(mountComponent('connectivity-card'));
-    el.querySelector('.overview-graphs').appendChild(mountComponent('graph-widgets'));
     el.querySelector('.overview-timeline').appendChild(mountComponent('zone-state-timeline'));
+    el.querySelector('.overview-connectivity').appendChild(mountComponent('connectivity-card'));
+    el.querySelector('.overview-flow-return').appendChild(mountComponent('graph-widgets', { variant: 'flow-return' }));
+    el.querySelector('.overview-demand').appendChild(mountComponent('graph-widgets', { variant: 'demand' }));
     el.querySelector('.zone-selector').appendChild(mountComponent('zone-grid'));
     el.querySelector('.zone-detail-slot').appendChild(mountComponent('zone-detail', { zone: getDashboardValue('selectedZone') }));
     el.querySelector('.zone-sensor-slot').appendChild(mountComponent('zone-sensor-card'));

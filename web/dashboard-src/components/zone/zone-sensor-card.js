@@ -14,6 +14,8 @@ const css = `
   border-radius: 18px;
   padding: 20px;
   box-shadow: var(--panel-shadow);
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .zone-sensor-card .card-title {
@@ -40,6 +42,13 @@ const css = `
   font-weight: 700;
   letter-spacing: .45px;
   text-transform: uppercase;
+}
+
+.zone-sensor-card .lbl-help {
+  margin-top: -2px;
+  color: var(--text-faint);
+  font-size: .74rem;
+  font-style: italic;
 }
 
 .zone-sensor-card .sel,
@@ -92,6 +101,7 @@ const template = () => {
       </div>
       <div class="cfg-row">
         <span class="lbl">Sync To Zone</span>
+        <span class="lbl-help">Mirror target and control state from another zone.</span>
         <select class="sel zs-sync"></select>
       </div>
     </div>

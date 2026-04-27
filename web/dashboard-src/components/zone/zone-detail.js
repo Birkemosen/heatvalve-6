@@ -10,48 +10,56 @@ import { key } from '../../utils/keys.js';
 // ========================================
 const css = `
 .zone-detail {
-  background: radial-gradient(700px 220px at 88% -42%, rgba(83,168,255,.22), transparent 62%), linear-gradient(180deg, rgba(20,44,79,.44), rgba(13,31,58,.38));
-  border: 1px solid var(--panel-border);
+  background: linear-gradient(180deg, rgba(20,44,79,.30), rgba(13,31,58,.24));
+  border: 1px solid rgba(120,168,255,.30);
   border-radius: 18px;
-  padding: 20px;
+  padding: 16px 18px;
   box-shadow: var(--panel-shadow);
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .zone-detail .zd-head {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--panel-border);
 }
 
 .zone-detail .zd-title {
-  font-size: 1.12rem;
-  font-weight: 700;
+  font-size: .95rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: var(--text-strong);
 }
 
 .zone-detail .zd-badge {
   border-radius: 999px;
-  padding: 4px 10px;
+  padding: 3px 9px;
   font-size: .62rem;
   text-transform: uppercase;
   font-weight: 800;
-  letter-spacing: .8px;
-  background: rgba(83,168,255,.22);
-  color: var(--text-secondary);
-  border: 1px solid transparent;
+  letter-spacing: .7px;
+  background: rgba(125,139,167,.12);
+  color: var(--state-disabled);
+  border: 1px solid rgba(125,139,167,.22);
   transition: .18s ease;
 }
 
 .zone-detail .zd-badge.badge-heating {
-  background: rgba(238,161,17,.18);
+  background: rgba(238,161,17,.15);
   color: var(--state-warn);
-  border-color: rgba(238,161,17,.32);
+  border-color: rgba(238,161,17,.3);
 }
 
 .zone-detail .zd-badge.badge-idle {
-  background: rgba(121,209,126,.14);
+  background: rgba(121,209,126,.12);
   color: var(--state-ok);
-  border-color: rgba(121,209,126,.26);
+  border-color: rgba(121,209,126,.24);
 }
 
 .zone-detail .zd-badge.badge-disabled {
@@ -61,93 +69,89 @@ const css = `
 }
 
 .zone-detail .zd-badge.badge-fault {
-  background: rgba(255,118,118,.18);
+  background: rgba(255,118,118,.16);
   color: var(--state-danger);
-  border-color: rgba(255,100,100,.32);
+  border-color: rgba(255,100,100,.3);
 }
 
-.zone-detail .zd-control {
-  border: 1px solid var(--control-border);
-  border-radius: 14px;
-  padding: 14px;
-  background: linear-gradient(180deg, rgba(83,168,255,.16), rgba(83,168,255,.06));
-  margin-bottom: 12px;
+/* Body layout */
+.zone-detail .zd-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(120,168,255,.18);
 }
 
 .zone-detail .zd-kicker {
-  font-size: .72rem;
+  font-size: .62rem;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: .8px;
   color: var(--text-secondary);
   font-weight: 700;
+  margin-bottom: 4px;
 }
 
 .zone-detail .zd-setpoint {
   font-family: var(--mono);
-  font-size: 2.2rem;
+  font-size: 2rem;
   font-weight: 800;
   line-height: 1;
-  margin-top: 4px;
   color: var(--accent);
 }
 
-.zone-detail .zd-actions {
+.zone-detail .zd-target-row {
   display: flex;
-  gap: 10px;
-  margin-top: 12px;
-  margin-bottom: 8px;
-}
-
-.zone-detail .zd-toggle {
-  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  color: var(--text-secondary);
-  font-size: .78rem;
-  font-weight: 600;
+  gap: 12px;
 }
 
-.zone-detail .zd-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-}
-
-.zone-detail .zd-stat {
-  border: 1px solid var(--control-border);
-  border-radius: 12px;
-  padding: 10px;
-  background: var(--control-bg);
-}
-
-.zone-detail .zd-stat span {
-  display: block;
-  font-size: .72rem;
-  color: var(--text-secondary);
-  margin-bottom: 4px;
-}
-
-.zone-detail .zd-stat strong {
-  font-size: 1.1rem;
-  font-weight: 800;
+.zone-detail .zd-btns {
+  display: flex;
+  gap: 6px;
 }
 
 .zone-detail .spb {
-  width: 48px;
-  height: 40px;
-  border-radius: 10px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   border: 1px solid var(--control-border);
   background: var(--control-bg);
   color: var(--text);
   cursor: pointer;
-  font-size: 1.45rem;
+  font-size: 1.15rem;
   transition: .18s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .zone-detail .spb:hover {
   border-color: rgba(238,161,17,.55);
   color: var(--accent);
   background: rgba(238,161,17,.1);
+}
+
+.zone-detail .zd-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--control-border);
+  border-radius: 12px;
+  background: var(--control-bg);
+}
+
+.zone-detail .zd-toggle-label {
+  font-size: .88rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.zone-detail .zd-toggle-row.is-on {
+  border-color: rgba(100,255,100,.4);
+  background: rgba(45,110,45,.2);
 }
 
 .zone-detail .sw {
@@ -157,6 +161,9 @@ const css = `
   background: var(--control-bg-hover);
   position: relative;
   cursor: pointer;
+  flex-shrink: 0;
+  border: 1px solid var(--control-border);
+  transition: background .2s ease, border-color .2s ease;
 }
 
 .zone-detail .sw::after {
@@ -164,15 +171,16 @@ const css = `
   position: absolute;
   top: 3px;
   left: 3px;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   background: #dbe8ff;
   border-radius: 999px;
-  transition: .2s ease;
+  transition: transform .2s ease;
 }
 
 .zone-detail .sw.on {
-  background: var(--blue);
+  background: rgba(121, 209, 126, 0.25);
+  border-color: rgba(121, 209, 126, 0.5);
 }
 
 .zone-detail .sw.on::after {
@@ -180,8 +188,34 @@ const css = `
   background: #0f213c;
 }
 
-@media (max-width: 560px) {
-  .zone-detail .zd-grid { grid-template-columns: 1fr; }
+.zone-detail .zd-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.zone-detail .zd-stat {
+  padding: 2px 0 6px;
+  border-bottom: 1px solid rgba(120,168,255,.22);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.zone-detail .zd-stat-label {
+  font-size: .62rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+
+.zone-detail .zd-stat-value {
+  font-family: var(--mono);
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--text-strong);
+  line-height: 1;
 }
 `;
 
@@ -197,19 +231,21 @@ const template = (ctx) => `
       <div class="zd-title">${zoneLabel(ctx.zone)}</div>
       <span class="zd-badge">---</span>
     </div>
-    <div class="zd-control">
-      <div class="zd-kicker">Target Temperature</div>
-      <div class="zd-setpoint">---</div>
-      <div class="zd-actions">
-        <button class="spb btn-dec">−</button>
-        <button class="spb btn-inc">+</button>
+    <div class="zd-body">
+      <div>
+        <div class="zd-kicker">Target Temperature</div>
+        <div class="zd-target-row">
+          <button class="spb btn-dec">−</button>
+          <div class="zd-setpoint">---</div>
+          <button class="spb btn-inc">+</button>
+        </div>
       </div>
-      <div class="zd-toggle"><span>Zone Enabled</span><div class="sw btn-toggle"></div></div>
-    </div>
-    <div class="zd-grid">
-      <div class="zd-stat"><span>Current Temperature</span><strong class="zd-temp">---</strong></div>
-      <div class="zd-stat"><span>Return Temperature</span><strong class="zd-ret">---</strong></div>
-      <div class="zd-stat"><span>Flow %</span><strong class="zd-valve">---</strong></div>
+      <div class="zd-toggle-row"><span class="zd-toggle-label">Zone Enabled</span><div class="sw btn-toggle"></div></div>
+      <div class="zd-stats">
+        <div class="zd-stat"><div class="zd-stat-label">Current Temp</div><div class="zd-stat-value zd-temp">---</div></div>
+        <div class="zd-stat"><div class="zd-stat-label">Return Temp</div><div class="zd-stat-value zd-ret">---</div></div>
+        <div class="zd-stat"><div class="zd-stat-label">Flow %</div><div class="zd-stat-value zd-valve">---</div></div>
+      </div>
     </div>
   </div>
 `;
@@ -247,6 +283,7 @@ export default component({
       badge.textContent = enabled ? (state || 'IDLE') : 'DISABLED';
       const badgeClass = !enabled ? 'badge-disabled' : state === 'HEATING' ? 'badge-heating' : state === 'IDLE' ? 'badge-idle' : state === 'FAULT' ? 'badge-fault' : '';
       badge.className = 'zd-badge' + (badgeClass ? ' ' + badgeClass : '');
+      refs.toggleRow.classList.toggle('is-on', enabled);
       refs.toggle.classList.toggle('on', enabled);
     },
 
@@ -277,6 +314,7 @@ export default component({
       ret: el.querySelector('.zd-ret'),
       valve: el.querySelector('.zd-valve'),
       badge: el.querySelector('.zd-badge'),
+      toggleRow: el.querySelector('.zd-toggle-row'),
       toggle: el.querySelector('.btn-toggle'),
       inc: el.querySelector('.btn-inc'),
       dec: el.querySelector('.btn-dec')

@@ -17,6 +17,8 @@ const css = `
   background: var(--panel-bg);
   padding: 10px 12px;
   box-shadow: var(--panel-shadow);
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .graph-head {
@@ -50,12 +52,15 @@ injectStyle('graph-widgets', css);
 // ========================================
 // TEMPLATE
 // ========================================
-const template = () => `
-  <div class="graph-widgets">
-    <div class="graph-card"><div class="graph-head"><span>Flow / Return</span><strong class="gw-dt">---</strong></div><svg class="gw-flow"></svg></div>
-    <div class="graph-card"><div class="graph-head"><span>Demand Index</span><strong class="gw-demand-text">---</strong></div><svg class="gw-demand"></svg></div>
-  </div>
-`;
+const template = (ctx) => {
+  if (ctx.variant === 'flow-return') {
+    return '<div class="graph-widgets"><div class="graph-card"><div class="graph-head"><span>Flow / Return</span><strong class="gw-dt">---</strong></div><svg class="gw-flow"></svg></div></div>';
+  }
+  if (ctx.variant === 'demand') {
+    return '<div class="graph-widgets"><div class="graph-card"><div class="graph-head"><span>Demand Index</span><strong class="gw-demand-text">---</strong></div><svg class="gw-demand"></svg></div></div>';
+  }
+  return '<div class="graph-widgets"><div class="graph-card"><div class="graph-head"><span>Flow / Return</span><strong class="gw-dt">---</strong></div><svg class="gw-flow"></svg></div><div class="graph-card"><div class="graph-head"><span>Demand Index</span><strong class="gw-demand-text">---</strong></div><svg class="gw-demand"></svg></div></div>';
+};
 
 function linePath(values, width, height, pad) {
   if (!values.length) return '';
@@ -105,6 +110,9 @@ const DEMAND_LINE = 'var(--blue)';
 // ========================================
 export default component({
   tag: 'graph-widgets',
+  state: (props) => ({
+    variant: (props && props.variant) || 'both'
+  }),
   render: template,
   onMount(ctx, el) {
     const dtEl = el.querySelector('.gw-dt');
@@ -120,10 +128,14 @@ export default component({
       const lastRet = ret.length ? ret[ret.length - 1] : null;
       const lastDemand = demand.length ? demand[demand.length - 1] : null;
 
-      dtEl.textContent = lastFlow != null && lastRet != null ? (lastFlow - lastRet).toFixed(1) + ' C' : '---';
-      demandTextEl.textContent = lastDemand != null ? Math.round(lastDemand) + '%' : '---';
-      renderSpark(flowSvg, flow, FLOW_LINE, ret, RETURN_LINE);
-      renderSpark(demandSvg, demand, DEMAND_LINE);
+      if (dtEl && flowSvg) {
+        dtEl.textContent = lastFlow != null && lastRet != null ? (lastFlow - lastRet).toFixed(1) + ' C' : '---';
+        renderSpark(flowSvg, flow, FLOW_LINE, ret, RETURN_LINE);
+      }
+      if (demandTextEl && demandSvg) {
+        demandTextEl.textContent = lastDemand != null ? Math.round(lastDemand) + '%' : '---';
+        renderSpark(demandSvg, demand, DEMAND_LINE);
+      }
     }
 
     subscribeDashboard('historyFlow', update);

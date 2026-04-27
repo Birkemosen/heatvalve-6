@@ -14,6 +14,8 @@ const css = `
   border-radius: 18px;
   padding: 20px;
   box-shadow: var(--panel-shadow);
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .connectivity-card .card-title {
