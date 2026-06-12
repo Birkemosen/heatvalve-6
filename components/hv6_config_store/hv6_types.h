@@ -136,17 +136,10 @@ enum class ManifoldType : uint8_t {
 
 enum class TempSource : uint8_t {
   LOCAL_PROBE = 0,
-  MQTT_EXTERNAL = 1,
-  BLE_SENSOR = 2,
+  BLE_SENSOR = 1,
 };
 
-#ifdef USE_MQTT
-static constexpr TempSource DEFAULT_ZONE_TEMP_SOURCE = TempSource::MQTT_EXTERNAL;
-#elif defined(USE_ESP32_BLE)
 static constexpr TempSource DEFAULT_ZONE_TEMP_SOURCE = TempSource::BLE_SENSOR;
-#else
-static constexpr TempSource DEFAULT_ZONE_TEMP_SOURCE = TempSource::LOCAL_PROBE;
-#endif
 
 /// What the zone's local DS18B20 probe measures.
 enum class ProbeRole : uint8_t {
@@ -204,6 +197,14 @@ struct ControlConfig {
   float min_movement_pct = 5.0f;
   float tanh_steepness = 0.70f;
   bool simple_preheat_enabled = true;
+  // Preheat absorption — when an external optimizer (Odin via Asgard) pre-buffers
+  // the slab, hot water arrives while no zone demands heat. Without this, zones
+  // hit OVERHEATED and close, blocking the buffer. While absorbing, the overheat
+  // cutoff is raised by preheat_absorb_band_c (scaled per zone by floor thermal
+  // mass) so satisfied zones keep their maintenance opening.
+  bool preheat_absorb_enabled = true;
+  float preheat_absorb_band_c = 1.0f;   ///< Extra °C above comfort band before OVERHEATED while absorbing
+  float preheat_detect_delta_c = 8.0f;  ///< Flow must exceed house-average temp by this to detect pre-buffering
 };
 
 struct ProbeConfig {
@@ -213,10 +214,9 @@ struct ProbeConfig {
   int8_t zone_return_probe[NUM_ZONES] = {0, 1, 2, 3, 4, 5};  // Zone N -> Probe N
 };
 
-static constexpr uint8_t MQTT_DEVICE_NAME_LEN = 48;
 static constexpr uint8_t BLE_MAC_LEN = 18;  // "AA:BB:CC:DD:EE:FF" + null
 
-struct MqttTempConfig {
+struct SensorConfig {
   TempSource zone_temp_source[NUM_ZONES] = {
       DEFAULT_ZONE_TEMP_SOURCE,
       DEFAULT_ZONE_TEMP_SOURCE,
@@ -225,7 +225,6 @@ struct MqttTempConfig {
       DEFAULT_ZONE_TEMP_SOURCE,
       DEFAULT_ZONE_TEMP_SOURCE,
   };
-  char zone_mqtt_device[NUM_ZONES][MQTT_DEVICE_NAME_LEN] = {};
   char zone_ble_mac[NUM_ZONES][BLE_MAC_LEN] = {};
 };
 
@@ -247,21 +246,29 @@ struct HeliosConfig {
   char host[HELIOS_HOST_LEN] = "";                           ///< Helios-3 service hostname or IP
   uint16_t port = 8080;                                      ///< Helios-3 HTTP port
   char controller_id[HELIOS_CONTROLLER_ID_LEN] = "";         ///< empty = use system.controller_id
-  uint16_t poll_interval_s = 30;                             ///< Snapshot POST + commands GET interval
+  uint16_t poll_interval_s = 60;                             ///< Snapshot POST + commands GET interval (increased from 30s to reduce blocking)
   uint16_t stale_after_s = 600;                              ///< Clear helios offsets if no ack within this period
   bool auto_discover = false;                                ///< Enable mDNS discovery fallback when host is empty (opt-in)
   char mdns_host[HELIOS_HOST_LEN] = "helios.local";         ///< mDNS hostname to resolve when host is empty
   uint16_t mdns_resolve_interval_s = 60;                     ///< Re-resolve interval for mDNS host
 };
 
-static constexpr uint8_t MQTT_BROKER_LEN = 64;
-static constexpr uint8_t MQTT_CRED_LEN = 48;
+static constexpr uint8_t ASGARD_HOST_LEN = 64;
+static constexpr uint8_t ASGARD_ENTITY_LEN = 48;
 
-struct MqttBrokerConfig {
-  char broker[MQTT_BROKER_LEN] = "";   ///< MQTT broker hostname/IP (empty = use YAML default)
-  uint16_t port = 0;                     ///< MQTT broker port (0 = use YAML default)
-  char username[MQTT_CRED_LEN] = "";   ///< MQTT username (empty = use YAML default)
-  char password[MQTT_CRED_LEN] = "";   ///< MQTT password (empty = use YAML default)
+/// Asgard (Ecodan heat-pump bridge) integration. Two HV6 boards run identical
+/// firmware; exactly one has `coordinator = true` and pushes the house-weighted
+/// room temperature to Asgard's virtual thermostat z1 (see docs/ecodan_integration.md).
+struct AsgardConfig {
+  bool enabled = false;
+  bool coordinator = false;                   ///< This board aggregates + pushes to Asgard
+  char host[ASGARD_HOST_LEN] = "";            ///< Asgard hostname or IP
+  uint16_t port = 80;                         ///< Asgard HTTP port
+  char entity_name[ASGARD_ENTITY_LEN] = "virtual_thermostat_input_z1";  ///< Asgard number entity (REST object_id)
+  uint16_t push_interval_s = 30;              ///< Weighted-temp push cadence
+  char peer_host[ASGARD_HOST_LEN] = "";       ///< The other HV6 board (coordinator only; empty = single board)
+  uint16_t peer_port = 80;                    ///< Peer dashboard HTTP port
+  uint16_t peer_stale_after_s = 300;          ///< Exclude peer zones when its snapshot is older than this
 };
 
 struct PIDParams {
@@ -367,6 +374,7 @@ struct SystemSnapshot {
   float manifold_return_temp_c = NAN;
   bool flow_temp_increase_requested = false;  ///< Avg opening > threshold → need higher flow temp
   bool flow_temp_decrease_requested = false;  ///< Avg opening < threshold → can lower flow temp
+  bool preheat_absorbing = false;             ///< External pre-buffering detected; overheat cutoff raised
   uint32_t uptime_s = 0;
   uint32_t free_heap = 0;
   uint32_t cycle_count = 0;
@@ -384,11 +392,9 @@ struct SystemConfig {
 /// v7 adds per-zone motor endstop current-factor overrides.
 /// v8 updates default probe mapping: zones 1..6 -> probes 1..6, flow=7, return=8.
 /// v9 adds motor profiles, runtime safety preset fields, and learned factor confidence controls.
-/// v10 adds control.simple_preheat_enabled.
-/// v11 adds HeliosConfig and per-zone offset/abs limits to ZoneConfig.
-/// v12 extends HeliosConfig with mDNS auto-discovery settings.
-/// v13 changes Helios auto_discover default to opt-in.
-static constexpr uint32_t CONFIG_VERSION = 13;
+/// v15 adds AsgardConfig (Ecodan heat-pump bridge, weighted z1 temperature push).
+/// v16 adds preheat absorption fields to ControlConfig.
+static constexpr uint32_t CONFIG_VERSION = 16;
 
 struct DeviceConfig {
   uint32_t config_version = CONFIG_VERSION;
@@ -399,10 +405,10 @@ struct DeviceConfig {
   PIDParams pid;
   MotorConfig motor;
   ManifoldType manifold_type = ManifoldType::NO;
-  MqttTempConfig mqtt_temp;
+  SensorConfig sensor_config;
   BalancingConfig balancing;
-  MqttBrokerConfig mqtt_broker;
   HeliosConfig helios;
+  AsgardConfig asgard;
 };
 
 // =============================================================================

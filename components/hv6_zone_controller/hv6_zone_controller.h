@@ -52,7 +52,7 @@ class Hv6ZoneController : public esphome::Component {
       probe_sensors_[probe] = sensor;
   }
 
-  // Thread-safe public API (callable from lambdas, MQTT handlers, etc.)
+  // Thread-safe public API (callable from lambdas, etc.)
   ZoneSnapshot get_zone_snapshot(uint8_t zone) const;
   bool try_get_system_snapshot(SystemSnapshot *out, uint32_t timeout_ms = 25) const;
   SystemSnapshot get_system_snapshot() const;
@@ -65,7 +65,7 @@ class Hv6ZoneController : public esphome::Component {
   void set_zone_setpoint(uint8_t zone, float setpoint_c);
   bool apply_setpoint_adjustment(uint8_t zone, float offset_c);
 
-  // Helios-3 optimizer commands (applied on top of user setpoint + MQTT offset)
+  // Helios-3 optimizer commands (applied on top of user setpoint)
   void apply_helios_command(uint8_t zone, const HeliosZoneCommand &cmd);
   void clear_all_helios_commands();
 
@@ -91,17 +91,28 @@ class Hv6ZoneController : public esphome::Component {
   void set_manifold_return_probe(int8_t probe);
   int8_t get_manifold_return_probe() const;
 
-  // MQTT external temperature source (zigbee2mqtt etc.)
-  void set_zone_mqtt_temperature(uint8_t zone, float temp_c);
-  float get_zone_mqtt_temperature(uint8_t zone) const;
+  // External temperature source (BLE sensor, etc.)
+  void set_zone_external_temperature(uint8_t zone, float temp_c);
+  float get_zone_external_temperature(uint8_t zone) const;
   void set_zone_temp_source(uint8_t zone, TempSource source);
   TempSource get_zone_temp_source(uint8_t zone) const;
-  void set_zone_mqtt_device(uint8_t zone, const std::string &name);
-  std::string get_zone_mqtt_device(uint8_t zone) const;
 
   // BLE sensor (Shelly BLU H&T, BTHome, etc.)
   void set_zone_ble_mac(uint8_t zone, const std::string &mac);
   std::string get_zone_ble_mac(uint8_t zone) const;
+
+  // BLE sensor discovery — callable from BLE advertise lambda (loopTask)
+  struct BleSensorSeen {
+    char mac[18];       ///< "AA:BB:CC:DD:EE:FF\0"
+    float temp_c;
+    int8_t rssi;
+    uint32_t last_ms;
+  };
+  static constexpr uint8_t BLE_SEEN_SLOTS = 16;
+  static constexpr uint32_t BLE_SEEN_STALE_MS = 10 * 60 * 1000UL;  ///< 10 min
+
+  void report_ble_sensor_seen(const char *mac, float temp_c, int8_t rssi);
+  uint8_t get_ble_discovered(BleSensorSeen *out, uint8_t max) const;
 
   // Zone physical properties
   void set_zone_area_m2(uint8_t zone, float area_m2);
@@ -137,19 +148,10 @@ class Hv6ZoneController : public esphome::Component {
 
   void set_simple_preheat_enabled(bool enabled);
   bool is_simple_preheat_enabled() const;
+  bool is_preheat_absorbing() const { return preheat_absorb_active_.load(); }
   float get_zone_preheat_advance(uint8_t zone) const;
 
   bool is_connected() const { return true; }  // WiFi managed by ESPHome
-
-  // MQTT broker configuration (NVS-persisted overrides)
-  void set_mqtt_broker(const std::string &broker);
-  std::string get_mqtt_broker() const;
-  void set_mqtt_port(uint16_t port);
-  uint16_t get_mqtt_port() const;
-  void set_mqtt_username(const std::string &username);
-  std::string get_mqtt_username() const;
-  void set_mqtt_password(const std::string &password);
-  std::string get_mqtt_password() const;
 
   uint32_t get_cycle_count() const { return cycle_count_.load(std::memory_order_relaxed); }
 
@@ -160,8 +162,7 @@ class Hv6ZoneController : public esphome::Component {
   static constexpr uint8_t ADJ_QUEUE_LEN = 12;
 
   static constexpr uint32_t TEMP_FAILSAFE_MS = 60 * 60 * 1000;
-  static constexpr uint32_t MQTT_STALE_MS = 60 * 60 * 1000;
-  static constexpr uint32_t MQTT_FALLBACK_MS = 30 * 60 * 1000;
+  static constexpr uint32_t EXTERNAL_TEMP_STALE_MS = 60 * 60 * 1000;
   static constexpr float FALLBACK_SETPOINT_C = 20.0f;
   static constexpr bool DEVELOPMENT_MANUAL_ONLY = false;
   static constexpr float SIMPLE_PREHEAT_MAX_ADVANCE_C = 0.8f;
@@ -196,6 +197,10 @@ class Hv6ZoneController : public esphome::Component {
   mutable SemaphoreHandle_t helios_mutex_ = nullptr;
   std::array<HeliosZoneCommand, NUM_ZONES> helios_cmds_;
 
+  // Preheat absorption (external pre-buffering; runtime only)
+  std::atomic<bool> preheat_absorb_active_{false};
+  uint8_t preheat_absorb_detect_cycles_ = 0;
+
   // Simple response-based preheat (runtime only; not persisted)
   std::array<float, NUM_ZONES> preheat_advance_c_;
   std::array<bool, NUM_ZONES> preheat_episode_active_;
@@ -205,16 +210,10 @@ class Hv6ZoneController : public esphome::Component {
 
   // Failsafe tracking
   std::array<uint32_t, NUM_ZONES> last_valid_temp_ms_;
-  uint32_t last_mqtt_adjustment_ms_ = 0;
 
-  // MQTT external temperatures
-  std::array<float, NUM_ZONES> mqtt_temperatures_;
-  std::array<uint32_t, NUM_ZONES> mqtt_temp_last_ms_;
-  uint8_t mqtt_startup_query_retry_count_ = 0;
-  uint32_t mqtt_startup_query_next_retry_ms_ = 0;
-  uint8_t mqtt_startup_query_next_zone_ = 0;
-  bool mqtt_startup_query_round_active_ = false;
-  uint8_t mqtt_startup_query_round_remaining_ = 0;
+  // External temperatures (BLE sensor, etc.)
+  std::array<float, NUM_ZONES> external_temperatures_;
+  std::array<uint32_t, NUM_ZONES> external_temp_last_ms_;
 
   std::atomic<uint32_t> cycle_count_{0};
   uint32_t cycle_interval_ms_ = 10000;
@@ -225,6 +224,11 @@ class Hv6ZoneController : public esphome::Component {
   std::atomic<SystemConditionState> system_condition_state_{SystemConditionState::UNKNOWN};
 
   TaskHandle_t task_handle_ = nullptr;
+
+  // BLE discovery cache (written and read from loopTask; protected by ble_seen_mutex_)
+  mutable SemaphoreHandle_t ble_seen_mutex_ = nullptr;
+  std::array<BleSensorSeen, BLE_SEEN_SLOTS> ble_seen_{};
+  uint8_t ble_seen_count_ = 0;
 
   // FreeRTOS task
   static void task_func_(void *arg);
@@ -242,14 +246,15 @@ class Hv6ZoneController : public esphome::Component {
   float read_zone_return_temperature_(uint8_t zone) const;
   float read_manifold_flow_() const;
   float read_manifold_return_() const;
-  void setup_mqtt_subscription_();
-  void handle_zigbee_mqtt_(const std::string &topic, const std::string &payload);
-  void request_zigbee_temperature_(const std::string &device_name);
 
-  ZoneState classify_zone_(float temp, float setpoint, float comfort_band, float preheat_advance_c) const;
+  ZoneState classify_zone_(float temp, float setpoint, float comfort_band, float preheat_advance_c,
+                           float absorb_band_c = 0.0f) const;
   float compute_raw_position_(uint8_t zone, float temp, float setpoint);
   void update_simple_preheat_(uint8_t zone, float temp, float setpoint, float comfort_band, ZoneState state);
   void reset_simple_preheat_(uint8_t zone);
+  void update_preheat_absorb_(const DeviceConfig &cfg,
+                              const std::array<float, NUM_ZONES> &temps,
+                              const std::array<float, NUM_ZONES> &setpoints);
 
   // Hydraulic balancing
   void recalculate_balance_factors_();

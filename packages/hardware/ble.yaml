@@ -43,16 +43,7 @@ esp32_ble_tracker:
             for (int i = 0; i < 16; i++) {
               if (!last_update[i].used)
                 continue;
-              bool same = true;
-              for (int j = 0; j < 18; j++) {
-                if (last_update[i].mac[j] != mac_buf[j]) {
-                  same = false;
-                  break;
-                }
-                if (mac_buf[j] == '\0')
-                  break;
-              }
-              if (same) {
+              if (memcmp(last_update[i].mac, mac_buf, 18) == 0) {
                 slot = i;
                 break;
               }
@@ -134,22 +125,18 @@ esp32_ble_tracker:
             if (std::isnan(temperature))
               continue;
 
+            // Record in discovery cache so the dashboard can offer tap-to-assign
+            id(hv6_zones).report_ble_sensor_seen(mac_buf, temperature,
+                                                  static_cast<int8_t>(x.get_rssi()));
+
             // Match against zone BLE MACs
             for (uint8_t z = 0; z < 6; z++) {
               std::string cfg_mac = id(hv6_zones).get_zone_ble_mac(z);
               if (cfg_mac.empty())
                 continue;
 
-              // Case-insensitive MAC comparison
-              bool match = (cfg_mac.size() == device_mac.size());
-              if (match) {
-                for (size_t i = 0; i < cfg_mac.size(); i++) {
-                  if (toupper(cfg_mac[i]) != toupper(device_mac[i])) {
-                    match = false;
-                    break;
-                  }
-                }
-              }
+              bool match = (cfg_mac.size() == 17 && device_mac.size() == 17 &&
+                            memcmp(cfg_mac.c_str(), device_mac.c_str(), 17) == 0);
 
               if (match) {
                 if (slot < 0) {
@@ -161,16 +148,12 @@ esp32_ble_tracker:
                   }
                   if (slot < 0)
                     slot = 0;  // deterministic overwrite when cache is full
-                  for (int j = 0; j < 18; j++) {
-                    last_update[slot].mac[j] = mac_buf[j];
-                    if (mac_buf[j] == '\0')
-                      break;
-                  }
+                  memcpy(last_update[slot].mac, mac_buf, 18);
                   last_update[slot].used = true;
                 }
                 last_update[slot].ts = now;
                 ESP_LOGI("ble_temp", "Zone %d BLE temp: %.1f°C (%s)", z + 1, temperature, mac_buf);
-                id(hv6_zones).set_zone_mqtt_temperature(z, temperature);
+                id(hv6_zones).set_zone_external_temperature(z, temperature);
                 switch (z) {
                   case 0: id(ble_temp_zone_1).publish_state(temperature); break;
                   case 1: id(ble_temp_zone_2).publish_state(temperature); break;

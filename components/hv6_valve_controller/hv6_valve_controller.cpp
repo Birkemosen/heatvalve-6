@@ -11,6 +11,7 @@
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
 #include "esp_timer.h"
+#include "esp_heap_caps.h"
 #include "esp_adc/adc_oneshot.h"   // adc_oneshot_io_to_channel() for GPIO→channel mapping
 #include "esp_adc/adc_continuous.h"
 #include "esp_adc/adc_cali.h"
@@ -58,6 +59,16 @@ void Hv6ValveController::setup() {
     ESP_LOGE(TAG, "Failed to create trace mutex");
     this->mark_failed();
     return;
+  }
+
+  trace_samples_ = static_cast<MotorTraceSample *>(
+      heap_caps_malloc(TRACE_MAX_SAMPLES * sizeof(MotorTraceSample), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (trace_samples_ == nullptr) {
+    ESP_LOGW(TAG, "PSRAM alloc for trace buffer failed — motor trace disabled");
+  } else {
+    memset(trace_samples_, 0, TRACE_MAX_SAMPLES * sizeof(MotorTraceSample));
+    ESP_LOGI(TAG, "Motor trace buffer: %u samples (%.1f KB) in PSRAM",
+             TRACE_MAX_SAMPLES, TRACE_MAX_SAMPLES * sizeof(MotorTraceSample) / 1024.0f);
   }
 
   cmd_queue_ = xQueueCreate(CMD_QUEUE_LEN, sizeof(ValveCommand));
@@ -302,10 +313,6 @@ void Hv6ValveController::loop() {
     last_publish_ms_ = now;
     current_sensor_->publish_state(latest_current_ma_);
   }
-
-  // Trace MQTT streaming is disabled by default to avoid heap corruption from
-  // repeated ~4KB JSON allocations triggering web_server SSE serialization.
-  // Use trace_publish_to_mqtt_() on-demand via the Python capture tool instead.
 }
 
 // =============================================================================
@@ -317,7 +324,7 @@ void Hv6ValveController::set_drivers_enabled(bool enabled) {
     return;
 
   // Ignore disable commands briefly after boot to reduce sensitivity to
-  // retained MQTT state replay. Always allow disable while a motor is turning
+  // replayed startup commands. Always allow disable while a motor is turning
   // so STOP actions remain responsive during startup.
   if (!enabled && !motor_turning_ && boot_time_ms_ > 0) {
     uint32_t uptime_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000) - boot_time_ms_;
@@ -1119,8 +1126,6 @@ bool Hv6ValveController::start_motor_(uint8_t zone, MotorDirection dir, bool ove
   ripple_drive_was_on_ = false;
   fsm_tick_count_ = 0;
   trace_reset_();
-  trace_last_mqtt_index_ = 0;
-  trace_last_mqtt_publish_ms_ = 0;
 
   if (ripple_enabled_ && adc_continuous_handle_)
     adc_continuous_start(static_cast<adc_continuous_handle_t>(adc_continuous_handle_));
@@ -1903,7 +1908,7 @@ void Hv6ValveController::trace_reset_() {
 }
 
 void Hv6ValveController::trace_sample_(int raw_adc, float current_ma) {
-  if (trace_mutex_ == nullptr)
+  if (trace_mutex_ == nullptr || trace_samples_ == nullptr)
     return;
 
   uint32_t now_us = esp_timer_get_time();
@@ -1940,70 +1945,6 @@ uint16_t Hv6ValveController::get_motor_trace_sample_count() const {
   return count;
 }
 
-void Hv6ValveController::trace_publish_to_mqtt_() {
-  if (trace_mutex_ == nullptr)
-    return;
-
-  xSemaphoreTake(trace_mutex_, portMAX_DELAY);
-
-  // Determine how many new samples to send (since last publish)
-  uint16_t current_write_idx = trace_write_index_;
-  uint16_t samples_to_publish = 0;
-  uint16_t new_samples_start = 0;
-
-  if (trace_last_mqtt_index_ <= current_write_idx) {
-    // No wrap since last publish
-    samples_to_publish = current_write_idx - trace_last_mqtt_index_;
-    new_samples_start = trace_last_mqtt_index_;
-  } else if (trace_wrapped_) {
-    // Wrapped: publish from last_index to end, then 0 to current
-    samples_to_publish = (TRACE_MAX_SAMPLES - trace_last_mqtt_index_) + current_write_idx;
-    new_samples_start = trace_last_mqtt_index_;
-  } else {
-    samples_to_publish = 0;
-  }
-
-  if (samples_to_publish == 0) {
-    xSemaphoreGive(trace_mutex_);
-    return;
-  }
-
-  // Limit batch size to keep JSON safely under ESPHome's 5120-byte JSON buffer
-  const uint16_t MAX_BATCH = 70;  // 70 * ~65 bytes = ~4.5KB
-  if (samples_to_publish > MAX_BATCH)
-    samples_to_publish = MAX_BATCH;
-
-  // Build JSON array
-  std::string json;
-  json.reserve(samples_to_publish * 60);  // Pre-allocate to avoid reallocations
-  json = "[";
-
-  for (uint16_t i = 0; i < samples_to_publish; i++) {
-    uint16_t idx = (new_samples_start + i) % TRACE_MAX_SAMPLES;
-    const MotorTraceSample &s = trace_samples_[idx];
-
-    if (i > 0)
-      json += ",";
-    
-    char buf[80];
-    std::snprintf(buf, sizeof(buf),
-                  "{\"t\":%" PRIu32 ",\"r\":%" PRIu32 ",\"i\":%.1f,\"a\":%" PRIu16 ",\"p\":%u}",
-                  s.t_ms, s.ripple_count, s.current_ma_x10 / 10.0f, s.adc_raw, s.drive_on);
-    json += buf;
-  }
-  json += "]";
-
-  // Update last published index
-  trace_last_mqtt_index_ = (new_samples_start + samples_to_publish) % TRACE_MAX_SAMPLES;
-
-  xSemaphoreGive(trace_mutex_);
-
-  // Publish to text sensor (ESPHome will forward to MQTT)
-  // Only publish if sensor is configured
-  if (trace_text_sensor_)
-    trace_text_sensor_->publish_state(json);
-}
-
 void Hv6ValveController::clear_motor_trace() {
   if (trace_mutex_ == nullptr)
     return;
@@ -2011,7 +1952,8 @@ void Hv6ValveController::clear_motor_trace() {
   xSemaphoreTake(trace_mutex_, portMAX_DELAY);
   trace_write_index_ = 0;
   trace_wrapped_ = false;
-  trace_samples_.fill({});
+  if (trace_samples_ != nullptr)
+    memset(trace_samples_, 0, TRACE_MAX_SAMPLES * sizeof(MotorTraceSample));
   xSemaphoreGive(trace_mutex_);
 }
 

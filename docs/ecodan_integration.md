@@ -1,168 +1,101 @@
 # Ecodan Heat Pump Integration (Asgard Virtual Thermostat)
 
-Integration between HeatValve-6 floor heating controllers and the Mitsubishi Ecodan heat pump via [esphome-ecodan-hp](https://github.com/gekkekoe/esphome-ecodan-hp)'s Asgard virtual thermostat.
+Integration between HeatValve-6 floor heating controllers and the Mitsubishi Ecodan heat
+pump via [esphome-ecodan-hp](https://github.com/gekkekoe/esphome-ecodan-hp)'s Asgard
+virtual thermostat.
+
+> **Status:** Implemented (`components/hv6_asgard_bridge/`, configured via the
+> dashboard's Asgard card). An earlier MQTT-based multi-board bridge existed but was
+> removed together with MQTT support; all communication is plain HTTP over LAN.
 
 ## Architecture
 
-```
-┌─────────────────────┐  MQTT   ┌──────────────────────┐  HTTP REST  ┌──────────────┐
-│  HeatValve-6 Board  │────────>│  Coordinator Board   │────────────>│  Asgard PCB  │
-│  (6 zones each)     │  zone   │  (aggregates demand) │  derived    │  (Ecodan HP) │
-│                     │  data   │                      │  temp       │              │
-└─────────────────────┘         └──────────────────────┘             └──────────────┘
-                                   ▲  also a HeatValve-6
-                                   │  board with 6 zones
-                                   │
-                        ┌──────────┘
-                        │ local zone data
-```
-
-Multiple HeatValve-6 boards feed zone data (temperature, setpoint, state, valve position, area) via MQTT. One board acts as **coordinator** (runtime-switchable) and:
-
-1. Aggregates demand from all boards into a single "derived temperature"
-2. Pushes that derived temperature to the Asgard virtual thermostat via HTTP REST
-3. Publishes system-wide derived temp via MQTT for Home Assistant fallback
-
-## Derived Temperature Algorithm
-
-The core idea: produce a synthetic room temperature that falls below the Asgard's setpoint when heating is demanded, causing the heat pump relay to activate.
+Two HeatValve-6 boards (one per manifold/floor, 6 zones each = 12 zones). Both boards run
+identical firmware; the **coordinator (master)** role is a runtime toggle persisted in NVS.
 
 ```
-For each zone across ALL boards:
-  if DEMAND (state=2):   delta = setpoint - current_temp  (positive)
-  if SATISFIED (state=1): delta = 0
-  if OVERHEATED (state=0): delta = -(current_temp - setpoint)  (negative)
-
-demand_delta = Σ(delta × area) / Σ(area)
-derived_temp = reference_setpoint - demand_delta
-derived_temp = clamp(derived_temp, 10.0, 30.0)
+┌─────────────────────┐   GET /api/hv6/v1/peer    ┌─────────────────────┐
+│  HeatValve-6 slave  │◀──────────────────────────│ HeatValve-6 master  │
+│  (manifold B)       │                           │ (manifold A,        │
+└─────────────────────┘                           │  coordinator)       │
+                                                  └──────────┬──────────┘
+                                                             │ HTTP REST push
+                                                             │ (weighted house temp)
+                                                             ▼
+                                                  ┌─────────────────────┐
+                                                  │     Asgard PCB      │
+                                                  │ virtual thermostat  │
+                                                  │  z1 → relay1 → IN1  │
+                                                  └──────────┬──────────┘
+                                                             ▼
+                                                       Ecodan (FTC)
 ```
 
-- When zones demand heat → `derived_temp` drops below `reference_setpoint` → Asgard relay ON → heat pump fires
-- When zones are satisfied → `derived_temp` ≈ `reference_setpoint` → Asgard relay OFF → heat pump idles
+1. The master polls the slave's compact `/api/hv6/v1/peer` snapshot every push cycle and
+   extracts zone temperatures + areas. Slave data older than `peer_stale_after_s`
+   (default 5 minutes) is excluded; if the slave is unreachable, the master weights only
+   its own zones and shows peer status "stale"/"unreachable" in the dashboard.
+2. The master computes the **house-weighted average of real zone temperatures** across
+   all 12 zones: `Σ(temp × area) / Σ(area)` (enabled zones with a valid temperature).
+3. The master pushes that value to Asgard's virtual thermostat z1 input via REST.
 
-## Setup
+## Why a real weighted temperature (not a synthetic demand signal)
 
-### 1. Asgard Virtual Thermostat Configuration
+The earlier design pushed a synthetic "derived temperature" (`reference_setpoint −
+demand_delta`) to force the relay on/off. With an MPC optimizer (Odin) attached to
+Asgard, the z1 input is also the signal the optimizer uses to learn house physics
+(thermal mass, heat-loss rate, solar gain). A synthetic signal corrupts that learning,
+so the z1 feed must be a physical temperature. Heat demand is expressed through the
+optimizer's comfort band instead.
 
-On the Asgard PCB, ensure the virtual thermostat is enabled and configured:
-- **Virtual Thermostat Setpoint** (zone 1): Set to match the `Asgard Reference Setpoint` on the HeatValve-6 coordinator (default: 21°C)
-- **Mode**: The Asgard controls relay IN1 (zone 1) based on whether the virtual thermostat input is above or below its setpoint
+## Asgard Configuration
 
-### 2. HeatValve-6 Configuration
+- Wire relay 1 → IN1 on the FTC (single-zone operation).
+- Enable the virtual thermostat for zone 1.
+- The z1 input is writable via REST, e.g.:
+  `POST http://<asgard>/number/virtual_thermostat_input_z1/set?value=21.0`
+  (verify the exact entity name against the installed Asgard firmware).
 
-#### Enable MQTT (all boards)
+## HeatValve-6 Configuration (`hv6_asgard_bridge`)
 
-Each board needs MQTT enabled. In your deployment file (e.g., `deploy/local-mqtt.yaml`), ensure `mqtt_ecodan.yaml` is included in the packages:
+`AsgardConfig` in NVS (pattern follows `HeliosConfig`), editable at runtime from the
+dashboard's Asgard card:
 
-```yaml
-packages:
-  ecodan: !include ../optional/mqtt_ecodan.yaml
-```
-
-The `mqtt_ecodan.yaml` package publishes per-zone data every 30s and computes a local board derived temperature.
-
-#### Enable the Asgard Bridge (coordinator board)
-
-Add the bridge package to the coordinator board's deployment:
-
-```yaml
-packages:
-  ecodan_bridge: !include ../optional/ecodan_asgard_bridge.yaml
-```
-
-#### Set the Coordinator (runtime)
-
-In the web dashboard or Home Assistant, toggle **Ecodan Coordinator** ON for exactly one board. Only the coordinator pushes to Asgard.
-
-#### Configure Asgard Host
-
-Set the **Asgard Host** text entity to your Asgard's hostname or IP (e.g., `ecodan-heatpump.local` or `192.168.1.100`).
-
-#### Set Reference Setpoint
-
-Set **Asgard Reference Setpoint** to match the Asgard virtual thermostat's target temperature (default: 21°C). This value must match on both sides.
-
-### 3. Zone Climate IDs
-
-The `mqtt_ecodan.yaml` package requires zone climate entity ID substitutions. These are defined in `heatvalve-6.yaml`:
-
-```yaml
-substitutions:
-  zone_1_climate_id: "wc_thermostat"
-  zone_2_climate_id: "storage_thermostat"
-  # ... etc, matching your zone 'id' parameter + _thermostat
-```
-
-## MQTT Topic Reference
-
-### Per-Board Publishing (every 30s)
-
-| Topic | Payload | Description |
-|---|---|---|
-| `floor_heating/controller_{id}/zone/{N}/temperature` | float | Zone current temp (°C) |
-| `floor_heating/controller_{id}/zone/{N}/setpoint` | float | Zone target temp (°C) |
-| `floor_heating/controller_{id}/zone/{N}/state` | int | 0=overheated, 1=satisfied, 2=demand |
-| `floor_heating/controller_{id}/zone/{N}/valve_position` | float | Valve opening (0-100%) |
-| `floor_heating/controller_{id}/zone/{N}/area` | float | Zone area (m²) |
-| `floor_heating/controller_{id}/derived_temp` | float | Board's local derived temp (°C) |
-| `floor_heating/controller_{id}/total_area` | float | Sum of active zone areas (m²) |
-
-### Coordinator Publishing (every 60s)
-
-| Topic | Payload | Description |
-|---|---|---|
-| `floor_heating/system/derived_temp` | float | System-wide derived temp (°C) |
-
-### Existing Topics (unchanged)
-
-| Topic | Description |
+| Field | Purpose |
 |---|---|
-| `floor_heating/controller_{id}/online` | Board availability (LWT) |
-| `floor_heating/controller_{id}/heating_demand` | Any zone in demand (true/false) |
-| `floor_heating/controller_{id}/avg_valve_position` | Average valve position (%) |
+| `enabled` | Master on/off switch for the bridge |
+| `coordinator` | This board pushes to Asgard (exactly one board) |
+| `host` / `port` | Asgard address |
+| `entity_name` | Asgard z1 number entity to write |
+| `push_interval_s` | Push cadence (30–60 s) |
+| `peer_host` | The other HeatValve-6 board (master only) |
 
-## Multi-Board Setup
+Dashboard settings card shows coordinator role, peer status, last push and failure
+counter.
 
-1. **All boards**: Include `mqtt_ecodan.yaml` and `ecodan_asgard_bridge.yaml` in packages. Set unique `controller_id` substitution ("1", "2", etc.)
-2. **One board**: Toggle "Ecodan Coordinator" ON in the dashboard
-3. The coordinator subscribes to `floor_heating/controller_+/derived_temp` and `total_area` via MQTT wildcards
-4. Remote board data older than 5 minutes is considered stale and excluded
+## Preheat Absorption
 
-## Home Assistant Fallback
+When the Odin optimizer pre-buffers the slab, hot water arrives at the manifold while no
+zone demands heat. Without countermeasures the zones would classify OVERHEATED and close
+their valves, blocking the buffer and fighting the optimizer.
 
-The coordinator also publishes `floor_heating/system/derived_temp` via MQTT. You can create a Home Assistant automation to bridge this to Asgard as an alternative to direct HTTP REST:
+`hv6_zone_controller` therefore detects external pre-buffering each control cycle:
+manifold flow temperature exceeds the house-average room temperature by
+`preheat_detect_delta_c` (default 8 °C) **and** no zone is in DEMAND, sustained for two
+cycles (2 °C release hysteresis). While active, the overheat cutoff is raised by
+`preheat_absorb_band_c` (default 1.0 °C), scaled per zone by floor thermal mass
+(tile 1.0× — concrete slabs absorb the most; parquet/oak 0.6×; carpet 0.4×), so
+satisfied zones keep their maintenance opening and the slab absorbs the buffer.
 
-```yaml
-automation:
-  - alias: "Sync derived temp to Asgard"
-    trigger:
-      - platform: mqtt
-        topic: "floor_heating/system/derived_temp"
-    action:
-      - service: rest_command.set_asgard_vt
-        data:
-          temperature: "{{ trigger.payload }}"
-
-rest_command:
-  set_asgard_vt:
-    url: "http://ecodan-heatpump.local/number/Virtual%20Thermostat%20Input%20z1/set?value={{ temperature }}"
-    method: POST
-```
+The state releases immediately when any zone drops into DEMAND (the buffer is then routed
+to the cold zone by normal control) or when the flow temperature decays. Configured from
+the dashboard Control card (`ControlConfig` in NVS: `preheat_absorb_enabled`,
+`preheat_absorb_band_c`, `preheat_detect_delta_c`); live state is shown as an
+"active/idle" badge and reported to Helios in the snapshot's `system.preheat_absorbing`.
 
 ## Troubleshooting
 
-- **Verify MQTT**: `mosquitto_sub -h broker.local -t 'floor_heating/#' -v`
-- **Check derived temp**: Watch `floor_heating/controller_1/derived_temp` — should track near `reference_setpoint` when zones are satisfied
-- **Test demand**: Lower a zone setpoint below current room temp (creates "overheated" state → derived temp rises). Raise it above (creates "demand" → derived temp drops)
-- **Verify Asgard push**: `curl -s "http://ecodan-heatpump.local/number/Virtual%20Thermostat%20Input%20z1"` to read current value
-- **Push failures**: Monitor "Asgard Push Failures" sensor in the dashboard — resets to 0 on success
-
-## Files
-
-| File | Purpose |
-|---|---|
-| `core/settings.yaml` | Ecodan Coordinator switch, Asgard Reference Setpoint, Asgard Host |
-| `optional/mqtt_ecodan.yaml` | Per-zone MQTT publishing + local derived temp calculation |
-| `optional/ecodan_asgard_bridge.yaml` | Multi-board aggregation + HTTP REST push to Asgard |
-| `deploy/local-mqtt.yaml` | Deployment entrypoint with bridge included |
+- **Verify Asgard push**: `curl -s "http://<asgard>/number/virtual_thermostat_input_z1"`
+  to read the current value.
+- **Peer status**: check the dashboard Asgard card — "degraded" means the slave snapshot
+  is stale/unreachable and only local zones are being weighted.

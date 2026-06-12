@@ -1,16 +1,12 @@
 # =============================================================================
 # HeatValve-6 — Shared Base Configuration
 # =============================================================================
-# This file is the shared base for every firmware variant. Variant entrypoints
-# live in configurations/ and `!include` this file plus their radio-specific
-# packages.
+# This file is the shared base configuration. The device entrypoint lives in
+# configurations/heatvalve-6-ble.yaml and `!include`s this file plus the
+# BLE-specific packages.
 #
-#   configurations/heatvalve-6-mqtt.yaml   MQTT/Z2M, BT compiled out (default)
-#   configurations/heatvalve-6-ble.yaml    BLE BTHome, no MQTT
-#
-# Build/deploy via the Makefile (`make build VARIANT=mqtt|ble`). Do NOT add
-# `mqtt:` or `esp32_ble_tracker:` blocks here — they belong in the variant
-# entrypoint so each binary links only the radio stacks it actually uses.
+# Build/deploy via the Makefile (`make build`). Do NOT add
+# `esp32_ble_tracker:` blocks here — they belong in the device entrypoint.
 # =============================================================================
 
 # =============================================================================
@@ -33,7 +29,7 @@ substitutions:
   # Network — fallback AP name when WiFi is unreachable
   fallback_ap_ssid: "HeatValve-6 Setup"
 
-  # Control parameters — defaults (adjustable at runtime via HA or MQTT)
+  # Control parameters — defaults (adjustable at runtime via HA)
   default_comfort_band: "0.5"        # °C dead-band around setpoint
   default_min_valve_opening: "25.0"  # % minimum total valve opening (heat-pump protection)
   default_maintenance_base: "15.0"   # % valve position when zone is satisfied (idle/minimal flow)
@@ -91,6 +87,7 @@ packages:
   api:          !include packages/network/api.yaml
   ota:          !include packages/network/ota.yaml
   helios:       !include packages/network/helios.yaml
+  asgard:       !include packages/network/asgard.yaml
   # Hardware
   i2c:          !include packages/hardware/i2c.yaml
   onewire:      !include packages/hardware/onewire.yaml
@@ -117,6 +114,7 @@ external_components:
       - hv6_config_store
       - hv6_dashboard
       - hv6_helios_client
+      - hv6_asgard_bridge
 
 # =============================================================================
 # Logger
@@ -132,8 +130,7 @@ logger:
     dallas.temp.sensor: INFO
     gpio.one_wire: INFO
     hv6_onewire: INFO
-    text_sensor: WARN   # suppress motor trace stream state-change noise
-    json: NONE          # suppress JSON payload size warnings from trace batches (native API path)
+    text_sensor: WARN   # suppress text-sensor state-change noise (IP/SSID/zone state)
 
 # =============================================================================
 # Control Parameters — Tune these for your heating system
@@ -172,10 +169,11 @@ globals:
     type: uint64_t
     restore_value: true
     initial_value: '0'
-  - id: probe_map_fail_cycles
-    type: int
+  # Per-probe consecutive-miss counters (watchdog). Not persisted.
+  - id: probe_fail_cycles
+    type: int[8]
     restore_value: no
-    initial_value: '0'
+    initial_value: '{0, 0, 0, 0, 0, 0, 0, 0}'
 
   - id: global_comfort_band
     type: float
@@ -195,108 +193,99 @@ globals:
     initial_value: "${default_demand_boost}"
 
 interval:
+  # Resource diagnostics: per-task stack headroom (min free since boot).
+  # Complements the debug component's heap/loop-time sensors below.
+  - interval: 300s
+    then:
+      - lambda: |-
+          static const char *const task_names[] = {
+            "hv6_valve", "hv6_ripple", "hv6_zone", "hv6_helios", "hv6_asgard", "hv6_nvs", "loopTask"
+          };
+          for (const char *name : task_names) {
+            TaskHandle_t handle = xTaskGetHandle(name);
+            if (handle == nullptr) continue;
+            ESP_LOGD("hv6_diag", "Task %-10s stack headroom: %5u bytes",
+                     name, (unsigned) uxTaskGetStackHighWaterMark(handle));
+          }
+
   - interval: 30s
     then:
       - lambda: |-
-          const int mapped =
-              (id(probe_addr_1) != 0 ? 1 : 0) +
-              (id(probe_addr_2) != 0 ? 1 : 0) +
-              (id(probe_addr_3) != 0 ? 1 : 0) +
-              (id(probe_addr_4) != 0 ? 1 : 0) +
-              (id(probe_addr_5) != 0 ? 1 : 0) +
-              (id(probe_addr_6) != 0 ? 1 : 0) +
-              (id(probe_addr_7) != 0 ? 1 : 0) +
-              (id(probe_addr_8) != 0 ? 1 : 0);
+          uint64_t *slots[8] = {
+            &id(probe_addr_1), &id(probe_addr_2), &id(probe_addr_3), &id(probe_addr_4),
+            &id(probe_addr_5), &id(probe_addr_6), &id(probe_addr_7), &id(probe_addr_8)
+          };
+          decltype(id(probe_temp_1)) probes[8] = {
+            id(probe_temp_1), id(probe_temp_2), id(probe_temp_3), id(probe_temp_4),
+            id(probe_temp_5), id(probe_temp_6), id(probe_temp_7), id(probe_temp_8)
+          };
 
-          // Watchdog only the probes that are already mapped.
-          if (mapped > 0) {
-            int missing_mapped = 0;
-            if (id(probe_addr_1) != 0 && !id(probe_temp_1)->has_state()) missing_mapped++;
-            if (id(probe_addr_2) != 0 && !id(probe_temp_2)->has_state()) missing_mapped++;
-            if (id(probe_addr_3) != 0 && !id(probe_temp_3)->has_state()) missing_mapped++;
-            if (id(probe_addr_4) != 0 && !id(probe_temp_4)->has_state()) missing_mapped++;
-            if (id(probe_addr_5) != 0 && !id(probe_temp_5)->has_state()) missing_mapped++;
-            if (id(probe_addr_6) != 0 && !id(probe_temp_6)->has_state()) missing_mapped++;
-            if (id(probe_addr_7) != 0 && !id(probe_temp_7)->has_state()) missing_mapped++;
-            if (id(probe_addr_8) != 0 && !id(probe_temp_8)->has_state()) missing_mapped++;
+          // --- Watchdog: per-probe consecutive-miss counters --------------------
+          // A slot counts as missing when its sensor never published or reads NAN.
+          int mapped = 0, missing = 0;
+          for (int i = 0; i < 8; i++) {
+            if (*slots[i] == 0) { id(probe_fail_cycles)[i] = 0; continue; }
+            mapped++;
+            const bool ok = probes[i]->has_state() && !std::isnan(probes[i]->state);
+            if (ok) { id(probe_fail_cycles)[i] = 0; } else { missing++; id(probe_fail_cycles)[i]++; }
+          }
 
-            if (mapped >= 4 && missing_mapped >= 2) {
-              id(probe_map_fail_cycles) += 1;
-            } else {
-              id(probe_map_fail_cycles) = 0;
+          if (mapped >= 2 && missing == mapped) {
+            // Every mapped probe is unavailable at once → almost certainly a
+            // 1-Wire bus fault, not a stale ROM map. Resetting would wipe a
+            // valid map, so keep it and wait for the bus to recover.
+            ESP_LOGE("hv6_onewire", "All %d mapped probes missing — suspected 1-Wire bus fault; keeping ROM map", mapped);
+          } else if (mapped >= 4 && missing >= 2) {
+            // Map reset must stay atomic: a partially cleared map would make
+            // index-based fallback assign a ROM another slot already owns.
+            int persistent = 0;
+            for (int i = 0; i < 8; i++) {
+              if (id(probe_fail_cycles)[i] >= 4) {
+                persistent++;
+                ESP_LOGW("hv6_onewire", "Probe %d ROM 0x%016llx missing for %d cycles",
+                         i + 1, (unsigned long long) *slots[i], id(probe_fail_cycles)[i]);
+              }
             }
-
-            // If a persisted map repeatedly leaves mapped probes unavailable, reset and reboot to relearn.
-            if (id(probe_map_fail_cycles) >= 4) {
-              ESP_LOGW("hv6_onewire", "Probe map unhealthy (%d/%d mapped probes missing), resetting map and rebooting", missing_mapped, mapped);
-              id(probe_addr_1) = 0;
-              id(probe_addr_2) = 0;
-              id(probe_addr_3) = 0;
-              id(probe_addr_4) = 0;
-              id(probe_addr_5) = 0;
-              id(probe_addr_6) = 0;
-              id(probe_addr_7) = 0;
-              id(probe_addr_8) = 0;
-              id(probe_map_fail_cycles) = 0;
+            if (persistent >= 2) {
+              ESP_LOGW("hv6_onewire",
+                       "Probe map stale (%d/%d mapped probes persistently missing) — resetting map and rebooting. "
+                       "Re-verify zone probe assignments after relearn.", persistent, mapped);
+              for (int i = 0; i < 8; i++) { *slots[i] = 0; id(probe_fail_cycles)[i] = 0; }
               App.safe_reboot();
               return;
             }
           }
 
-          // Auto-learn any currently unmapped probe slots and persist discovered ROMs.
-          uint64_t addr[8] = {0};
+          // --- Auto-learn any unmapped probe slots, persist discovered ROMs -----
           auto parse_addr = [](const std::string &s) -> uint64_t {
             if (s.empty()) return 0;
             return strtoull(s.c_str(), nullptr, 16);
           };
-
-          addr[0] = parse_addr(id(probe_temp_1)->get_address_name());
-          addr[1] = parse_addr(id(probe_temp_2)->get_address_name());
-          addr[2] = parse_addr(id(probe_temp_3)->get_address_name());
-          addr[3] = parse_addr(id(probe_temp_4)->get_address_name());
-          addr[4] = parse_addr(id(probe_temp_5)->get_address_name());
-          addr[5] = parse_addr(id(probe_temp_6)->get_address_name());
-          addr[6] = parse_addr(id(probe_temp_7)->get_address_name());
-          addr[7] = parse_addr(id(probe_temp_8)->get_address_name());
-
           auto addr_exists = [&](uint64_t v) -> bool {
             if (v == 0) return false;
-            return
-              id(probe_addr_1) == v || id(probe_addr_2) == v || id(probe_addr_3) == v || id(probe_addr_4) == v ||
-              id(probe_addr_5) == v || id(probe_addr_6) == v || id(probe_addr_7) == v || id(probe_addr_8) == v;
+            for (int i = 0; i < 8; i++)
+              if (*slots[i] == v) return true;
+            return false;
           };
 
           int learned = 0;
-          auto learn_slot = [&](uint64_t found, uint64_t &slot, const char *name) {
-            if (slot != 0 || found == 0) return;
+          for (int i = 0; i < 8; i++) {
+            if (*slots[i] != 0) continue;
+            const uint64_t found = parse_addr(probes[i]->get_address_name());
+            if (found == 0) continue;
             if (addr_exists(found)) {
-              ESP_LOGW("hv6_onewire", "Skip %s learn: duplicate ROM 0x%016llx", name, (unsigned long long) found);
-              return;
+              ESP_LOGW("hv6_onewire", "Skip Probe %d learn: duplicate ROM 0x%016llx", i + 1, (unsigned long long) found);
+              continue;
             }
-            slot = found;
+            *slots[i] = found;
             learned++;
-            ESP_LOGI("hv6_onewire", "Learned %s ROM 0x%016llx", name, (unsigned long long) found);
-          };
-
-          learn_slot(addr[0], id(probe_addr_1), "Probe 1");
-          learn_slot(addr[1], id(probe_addr_2), "Probe 2");
-          learn_slot(addr[2], id(probe_addr_3), "Probe 3");
-          learn_slot(addr[3], id(probe_addr_4), "Probe 4");
-          learn_slot(addr[4], id(probe_addr_5), "Probe 5");
-          learn_slot(addr[5], id(probe_addr_6), "Probe 6");
-          learn_slot(addr[6], id(probe_addr_7), "Probe 7");
-          learn_slot(addr[7], id(probe_addr_8), "Probe 8");
+            ESP_LOGI("hv6_onewire", "Learned Probe %d ROM 0x%016llx", i + 1, (unsigned long long) found);
+          }
 
           if (learned > 0) {
-            const int now_mapped =
-                (id(probe_addr_1) != 0 ? 1 : 0) +
-                (id(probe_addr_2) != 0 ? 1 : 0) +
-                (id(probe_addr_3) != 0 ? 1 : 0) +
-                (id(probe_addr_4) != 0 ? 1 : 0) +
-                (id(probe_addr_5) != 0 ? 1 : 0) +
-                (id(probe_addr_6) != 0 ? 1 : 0) +
-                (id(probe_addr_7) != 0 ? 1 : 0) +
-                (id(probe_addr_8) != 0 ? 1 : 0);
+            int now_mapped = 0;
+            for (int i = 0; i < 8; i++)
+              if (*slots[i] != 0) now_mapped++;
             ESP_LOGI("hv6_onewire", "Persistent probe map updated: %d/8 mapped", now_mapped);
           }
 
@@ -340,11 +329,9 @@ debug:
 # -----------------------------------------------------------------------------
 # Runtime diagnostics
 #
-# Exposed so we can observe the same pressure pattern (loop time spikes,
-# capability-heap exhaustion, fragmentation) that initially destabilised MQTT
-# on this board. Visible in HA, the custom dashboard, and (for the MQTT
-# variant) on the broker. Keep update intervals slow \u2014 these are watch-dogs,
-# not trend graphs.
+# Exposed so we can observe resource pressure (loop time spikes, heap
+# exhaustion, fragmentation). Visible in HA and the custom dashboard.
+# Keep update intervals slow \u2014 these are watch-dogs, not trend graphs.
 # -----------------------------------------------------------------------------
 sensor:
   - platform: debug

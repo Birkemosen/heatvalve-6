@@ -51,12 +51,15 @@ struct DashboardSnapshot {
   // --- full config copies (POD structs, safe to memcpy) ---
   hv6::ZoneConfig   zones[hv6::NUM_ZONES];
   hv6::TempSource   zone_temp_source[hv6::NUM_ZONES];
-  char              zone_mqtt_dev[hv6::NUM_ZONES][hv6::MQTT_DEVICE_NAME_LEN];
   char              zone_ble_mac[hv6::NUM_ZONES][hv6::BLE_MAC_LEN];
   hv6::ProbeConfig  probes;
   hv6::MotorConfig  motor;
   hv6::ManifoldType manifold_type;
   bool              simple_preheat_enabled;
+  bool              preheat_absorb_enabled;
+  float             preheat_absorb_band_c;
+  float             preheat_detect_delta_c;
+  bool              preheat_absorbing;
   hv6::HeliosConfig helios;             // current helios config
   char              helios_status[16];  // "active"|"degraded"|"offline"
   char              helios_device_id[33]; // system.controller_id fallback
@@ -67,6 +70,17 @@ struct DashboardSnapshot {
   uint32_t          helios_fail_streak{0};
   uint32_t          helios_next_retry_s{0};
   uint32_t          helios_last_success_age_s{0};
+
+  // --- Asgard bridge (Ecodan) ---
+  hv6::AsgardConfig asgard;               // current asgard config
+  char              asgard_role[8];       // "master" | "slave"
+  char              asgard_peer_status[16];
+  char              asgard_last_error[SNAPSHOT_TEXT_LEN];
+  float             asgard_last_push_c{0.0f};
+  uint32_t          asgard_last_push_age_s{0};
+  uint32_t          asgard_push_fail_streak{0};
+  uint8_t           asgard_local_zones{0};
+  uint8_t           asgard_peer_zones{0};
 };
 
 struct DashboardAction {
@@ -106,6 +120,7 @@ class HV6Dashboard : public Component, public AsyncWebHandler {
   void set_valve_controller(hv6::Hv6ValveController *ctrl) { this->valve_controller_ = ctrl; }
   void set_config_store(hv6::Hv6ConfigStore *store) { this->config_store_ = store; }
   void set_helios_client(esphome::Component *client) { this->helios_client_ = client; }
+  void set_asgard_bridge(esphome::Component *bridge) { this->asgard_bridge_ = bridge; }
   void set_wifi_signal_sensor(sensor::Sensor *sensor) { this->wifi_signal_sensor_ = sensor; }
   void set_manifold_flow_sensor(sensor::Sensor *s) { this->manifold_flow_sensor_ = s; }
   void set_manifold_return_sensor(sensor::Sensor *s) { this->manifold_return_sensor_ = s; }
@@ -153,7 +168,12 @@ class HV6Dashboard : public Component, public AsyncWebHandler {
   void handle_js_(AsyncWebServerRequest *request);
   void handle_state_(AsyncWebServerRequest *request);
   void handle_history_(AsyncWebServerRequest *request);
-  void handle_set_(AsyncWebServerRequest *request);
+  void handle_v1_(AsyncWebServerRequest *request, const char *path);
+  void handle_ble_scan_(AsyncWebServerRequest *request);
+  void handle_peer_(AsyncWebServerRequest *request);
+  void send_v1_(AsyncWebServerRequest *request, int code, const char *err_code = nullptr,
+                const char *err_message = nullptr);
+  bool enqueue_action_(const DashboardAction &act);
   void dispatch_set_(const DashboardAction &act);
   void sample_history_();
 
@@ -162,6 +182,7 @@ class HV6Dashboard : public Component, public AsyncWebHandler {
   hv6::Hv6ValveController *valve_controller_{nullptr};
   hv6::Hv6ConfigStore *config_store_{nullptr};
   esphome::Component *helios_client_{nullptr};
+  esphome::Component *asgard_bridge_{nullptr};
   sensor::Sensor *wifi_signal_sensor_{nullptr};
   sensor::Sensor *manifold_flow_sensor_{nullptr};
   sensor::Sensor *manifold_return_sensor_{nullptr};
@@ -185,6 +206,8 @@ class HV6Dashboard : public Component, public AsyncWebHandler {
 
   SemaphoreHandle_t snapshot_lock_{nullptr};
   DashboardSnapshot snapshot_{};
+  DashboardSnapshot state_snap_buf_;
+  char json_buf_[2048];
   uint32_t snapshot_last_ms_{0};
   bool snapshot_ready_{false};
   static constexpr uint32_t SNAPSHOT_INTERVAL_MS = 1000;

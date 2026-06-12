@@ -1,7 +1,7 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
 import { es, ev, isEntityOn, setEntity } from '../../core/store.js';
-import { setGlobalSelect, setGlobalNumber, postSet } from '../../core/api.js';
+import { setGlobalSelect, setGlobalNumber, setGlobalText } from '../../core/api.js';
 import { gkey } from '../../utils/keys.js';
 
 // ========================================
@@ -272,29 +272,46 @@ export default component({
     }
 
     toggleBtn.addEventListener('click', () => {
-      const next = !isEntityOn(gkey.heliosEnabled);
-      setEntity(gkey.heliosEnabled, { state: next ? 'on' : 'off' });
-      setGlobalSelect('helios_enabled', next ? 'on' : 'off');
+      const currentState = isEntityOn(gkey.heliosEnabled);
+      const next = !currentState;
+      const nextState = next ? 'on' : 'off';
+      
+      // Log the toggle action for debugging
+      console.log(`[Helios] Toggle clicked: ${currentState ? 'on' : 'off'} -> ${nextState}`);
+      
+      // Update local state first (optimistic update)
+      setEntity(gkey.heliosEnabled, { state: nextState });
+      
+      // Send to backend with error logging
+      setGlobalSelect('helios_enabled', nextState)
+        .catch(err => {
+          console.error('[Helios] Failed to send toggle state to backend:', err);
+          // Revert optimistic update on error
+          setEntity(gkey.heliosEnabled, { state: currentState ? 'on' : 'off' });
+        });
     });
 
     // --- config inputs: send immediately on blur/change ---
     hostEl.addEventListener('blur', () => {
       const v = hostEl.value.trim();
       setEntity(gkey.heliosHost, { state: v });
-      postSet({ key: 'helios_host', value: v });
+      setGlobalText('helios_host', v)
+        .catch(err => console.error('[Helios] Failed to update host:', err));
     });
 
     cidEl.addEventListener('blur', () => {
       const v = cidEl.value.trim();
       setEntity(gkey.heliosControllerId, { state: v });
-      postSet({ key: 'helios_controller_id', value: v });
+      setGlobalText('helios_controller_id', v)
+        .catch(err => console.error('[Helios] Failed to update controller_id:', err));
     });
 
     portEl.addEventListener('blur', () => {
       const v = parseInt(portEl.value, 10);
       if (v >= 1 && v <= 65535) {
         setEntity(gkey.heliosPort, { value: v });
-        setGlobalNumber('helios_port', v);
+        setGlobalNumber('helios_port', v)
+          .catch(err => console.error('[Helios] Failed to update port:', err));
       }
     });
 
@@ -302,7 +319,8 @@ export default component({
       const v = parseInt(pollEl.value, 10);
       if (v >= 5 && v <= 3600) {
         setEntity(gkey.heliosPollIntervalS, { value: v });
-        setGlobalNumber('helios_poll_interval_s', v);
+        setGlobalNumber('helios_poll_interval_s', v)
+          .catch(err => console.error('[Helios] Failed to update poll_interval_s:', err));
       }
     });
 
@@ -310,7 +328,8 @@ export default component({
       const v = parseInt(staleEl.value, 10);
       if (v >= 10 && v <= 86400) {
         setEntity(gkey.heliosStaleAfterS, { value: v });
-        setGlobalNumber('helios_stale_after_s', v);
+        setGlobalNumber('helios_stale_after_s', v)
+          .catch(err => console.error('[Helios] Failed to update stale_after_s:', err));
       }
     });
 

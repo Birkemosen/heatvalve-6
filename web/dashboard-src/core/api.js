@@ -4,35 +4,41 @@ import { beginPendingWrite, endPendingWrite, setEntity, setI2cResult, setLive, a
 import { handleMockPost } from './mock.js';
 import { key, gkey } from '../utils/keys.js';
 
-const BASE = '/dashboard';
+export const BASE = '/api/hv6/v1';
 
 function isMock() {
   return !!(window.HV6_DASHBOARD_CONFIG && window.HV6_DASHBOARD_CONFIG.mock);
 }
 
-// Unified POST to /dashboard/set with JSON body {key, value, zone?}
-export function postSet(body) {
+// POST to a /api/hv6/v1 write endpoint (query params per docs/hv6_api_v1.md).
+// mockBody carries the legacy {key, value, zone?} action shape consumed by core/mock.js.
+function postV1(path, params, mockBody) {
   beginPendingWrite();
 
   if (isMock()) {
     try {
-      handleMockPost(body);
+      handleMockPost(mockBody);
       return Promise.resolve({ ok: true });
     } finally {
       endPendingWrite();
     }
   }
 
-  return fetch(BASE + '/set', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: (() => {
-      const params = new URLSearchParams();
-      for (const [k, v] of Object.entries(body)) {
-        if (v !== undefined && v !== null) params.append(k, v);
-      }
-      return params.toString();
-    })()
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params || {})) {
+    if (v !== undefined && v !== null) qs.append(k, v);
+  }
+  const query = qs.toString();
+  const url = BASE + path + (query ? '?' + query : '');
+
+  return fetch(url, { method: 'POST' }).then(resp => {
+    if (!resp.ok) {
+      console.warn(`API call failed: POST ${path} status=${resp.status}`);
+    }
+    return resp;
+  }).catch(err => {
+    console.error(`API call error: POST ${path}:`, err);
+    throw err;
   }).finally(() => {
     endPendingWrite();
   });
@@ -40,21 +46,21 @@ export function postSet(body) {
 
 export function setSetpoint(zone, value) {
   setEntity(key.setpoint(zone), { value });
-  return postSet({ key: 'zone_setpoint', value, zone });
+  return postV1(`/zones/${zone}/setpoint`, { setpoint_c: value }, { key: 'zone_setpoint', value, zone });
 }
 
 export function setEnabled(zone, enabled) {
   setEntity(key.enabled(zone), { state: enabled ? 'on' : 'off', value: enabled });
-  return postSet({ key: 'zone_enabled', value: enabled ? 1 : 0, zone });
+  return postV1(`/zones/${zone}/enabled`, { enabled: !!enabled }, { key: 'zone_enabled', value: enabled ? 1 : 0, zone });
 }
 
 export function setDriversEnabled(enabled) {
   setEntity(gkey.drivers, { state: enabled ? 'on' : 'off', value: enabled });
-  return postSet({ key: 'drivers_enabled', value: enabled ? 1 : 0 });
+  return postV1('/drivers/enabled', { enabled: !!enabled }, { key: 'drivers_enabled', value: enabled ? 1 : 0 });
 }
 
 export function command(name, zone) {
-  return postSet({ key: 'command', value: name, zone: zone || undefined });
+  return postV1('/commands', { command: name, zone: zone || undefined }, { key: 'command', value: name, zone: zone || undefined });
 }
 
 export function runI2cScan() {
@@ -71,7 +77,6 @@ const zoneSelectMap = {
 };
 
 const zoneTextMap = {
-  zone_zigbee_device: (zone) => key.zigbee(zone),
   zone_ble_mac: (zone) => key.ble(zone),
   zone_exterior_walls: (zone) => key.exteriorWalls(zone)
 };
@@ -112,33 +117,37 @@ const globalNumberMap = {
 export function setZoneSelect(zone, settingKey, value) {
   const idBuilder = zoneSelectMap[settingKey];
   if (idBuilder) setEntity(idBuilder(zone), { state: value });
-  return postSet({ key: settingKey, value, zone });
+  return postV1('/settings/select', { key: settingKey, value, zone }, { key: settingKey, value, zone });
 }
 
 export function setZoneText(zone, settingKey, value) {
   const idBuilder = zoneTextMap[settingKey];
   if (idBuilder) setEntity(idBuilder(zone), { state: value });
-  return postSet({ key: settingKey, value, zone });
+  return postV1('/settings/text', { key: settingKey, value, zone }, { key: settingKey, value, zone });
 }
 
 export function setZoneNumber(zone, settingKey, value) {
   const numeric = Number(value);
   const idBuilder = zoneNumberMap[settingKey];
   if (idBuilder && !Number.isNaN(numeric)) setEntity(idBuilder(zone), { value: numeric });
-  return postSet({ key: settingKey, value: numeric, zone });
+  return postV1('/settings/number', { key: settingKey, value: numeric, zone }, { key: settingKey, value: numeric, zone });
 }
 
 export function setGlobalSelect(settingKey, value) {
   const id = globalSelectMap[settingKey];
   if (id) setEntity(id, { state: value });
-  return postSet({ key: settingKey, value });
+  return postV1('/settings/select', { key: settingKey, value }, { key: settingKey, value });
 }
 
 export function setGlobalNumber(settingKey, value) {
   const numeric = Number(value);
   const id = globalNumberMap[settingKey];
   if (id && !Number.isNaN(numeric)) setEntity(id, { value: numeric });
-  return postSet({ key: settingKey, value: numeric });
+  return postV1('/settings/number', { key: settingKey, value: numeric }, { key: settingKey, value: numeric });
+}
+
+export function setGlobalText(settingKey, value) {
+  return postV1('/settings/text', { key: settingKey, value }, { key: settingKey, value });
 }
 
 export function applyZoneName(zone, value) {
@@ -155,44 +164,44 @@ export function setMotorTarget(zone, targetPct) {
   const clamped = Number.isNaN(numeric) ? 0 : Math.max(0, Math.min(100, Math.round(numeric)));
   setEntity(key.motorTarget(zone), { value: clamped });
   addActivity('Motor ' + zone + ' target set to ' + clamped + '%', zone);
-  return postSet({ key: 'motor_target', value: clamped, zone });
+  return postV1(`/motors/${zone}/target`, { value: clamped }, { key: 'motor_target', value: clamped, zone });
 }
 
 export function openMotorTimed(zone, durationMs = 10000) {
   addActivity('Motor ' + zone + ' open for ' + durationMs + 'ms', zone);
-  return postSet({ key: 'command', value: 'open_motor_timed', zone });
+  return postV1(`/motors/${zone}/open_timed`, {}, { key: 'command', value: 'open_motor_timed', zone });
 }
 
 export function closeMotorTimed(zone, durationMs = 10000) {
   addActivity('Motor ' + zone + ' close for ' + durationMs + 'ms', zone);
-  return postSet({ key: 'command', value: 'close_motor_timed', zone });
+  return postV1(`/motors/${zone}/close_timed`, {}, { key: 'command', value: 'close_motor_timed', zone });
 }
 
 export function stopMotor(zone) {
   addActivity('Motor ' + zone + ' stopped', zone);
-  return postSet({ key: 'command', value: 'stop_motor', zone });
+  return postV1(`/motors/${zone}/stop`, {}, { key: 'command', value: 'stop_motor', zone });
 }
 
 export function setManualMode(enabled) {
   setDashboardValue('manualMode', !!enabled);
   addActivity(enabled ? 'Manual mode enabled — automatic management paused' : 'Manual mode disabled — automatic management resumed');
-  return postSet({ key: 'manual_mode', value: enabled ? 1 : 0 });
+  return postV1('/manual_mode', { enabled: !!enabled }, { key: 'manual_mode', value: enabled ? 1 : 0 });
 }
 
 // Recovery/reset helpers
 export function resetMotorFault(zone) {
   addActivity('Motor ' + zone + ' fault reset', zone);
-  return postSet({ key: 'command', value: 'motor_reset_fault', zone });
+  return command('motor_reset_fault', zone);
 }
 
 export function resetMotorLearnedFactors(zone) {
   addActivity('Motor ' + zone + ' learned factors reset', zone);
-  return postSet({ key: 'command', value: 'motor_reset_learned_factors', zone });
+  return command('motor_reset_learned_factors', zone);
 }
 
 export function resetMotorAndRelearn(zone) {
   addActivity('Motor ' + zone + ' reset and relearn started', zone);
-  return postSet({ key: 'command', value: 'motor_reset_and_relearn', zone });
+  return command('motor_reset_and_relearn', zone);
 }
 
 export function fetchHistory() {

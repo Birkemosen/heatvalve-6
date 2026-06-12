@@ -364,7 +364,8 @@ button:
           id(probe_addr_6) = 0;
           id(probe_addr_7) = 0;
           id(probe_addr_8) = 0;
-          id(probe_map_fail_cycles) = 0;
+          for (int i = 0; i < 8; i++)
+            id(probe_fail_cycles)[i] = 0;
           ESP_LOGW("hv6_ui", "1-Wire probe map reset requested; rebooting for fresh probe discovery");
           App.safe_reboot();
 
@@ -1152,19 +1153,17 @@ select:
     id: zone_temp_source
     entity_category: config
     optimistic: false
-    options: ["Local Probe", "Zigbee MQTT", "BLE Sensor"]
+    options: ["Local Probe", "BLE Sensor"]
     lambda: |-
       uint8_t zi = id(ui_selected_zone_index);
       auto src = id(hv6_zones).get_zone_temp_source(zi);
-      if (src == hv6::TempSource::MQTT_EXTERNAL) return std::string("Zigbee MQTT");
       if (src == hv6::TempSource::BLE_SENSOR) return std::string("BLE Sensor");
       return std::string("Local Probe");
     set_action:
       - lambda: |-
           uint8_t zi = id(ui_selected_zone_index);
           hv6::TempSource src = hv6::TempSource::LOCAL_PROBE;
-          if (x == "Zigbee MQTT") src = hv6::TempSource::MQTT_EXTERNAL;
-          else if (x == "BLE Sensor") src = hv6::TempSource::BLE_SENSOR;
+          if (x == "BLE Sensor") src = hv6::TempSource::BLE_SENSOR;
           id(hv6_zones).set_zone_temp_source(zi, src);
 
   - platform: template
@@ -1188,22 +1187,6 @@ select:
           id(hv6_zones).set_zone_sync(zi, z);
 
 text:
-  - platform: template
-    name: "Zone Zigbee Device"
-    id: zone_zigbee_device
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 47
-    optimistic: false
-    lambda: |-
-      uint8_t zi = id(ui_selected_zone_index);
-      return id(hv6_zones).get_zone_mqtt_device(zi);
-    set_action:
-      - lambda: |-
-          uint8_t zi = id(ui_selected_zone_index);
-          id(hv6_zones).set_zone_mqtt_device(zi, x);
-
   - platform: template
     name: "Zone BLE MAC"
     id: zone_ble_mac
@@ -1248,61 +1231,3 @@ text:
             if (c == 'W' || c == 'w') w |= hv6::ExteriorWall::WEST;
           }
           id(hv6_zones).set_zone_exterior_walls(zi, w);
-
-  # ---------------------------------------------------------------------------
-  # MQTT Broker Configuration (NVS-persisted overrides)
-  # ---------------------------------------------------------------------------
-  - platform: template
-    name: "MQTT Broker"
-    id: mqtt_broker_host
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 63
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_mqtt_broker();
-    set_action:
-      - lambda: id(hv6_zones).set_mqtt_broker(x);
-
-  - platform: template
-    name: "MQTT Port"
-    id: mqtt_broker_port
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 5
-    optimistic: false
-    lambda: |-
-      uint16_t p = id(hv6_zones).get_mqtt_port();
-      return p > 0 ? std::to_string(p) : std::string("");
-    set_action:
-      - lambda: |-
-          uint16_t p = x.empty() ? 0 : static_cast<uint16_t>(std::stoi(x));
-          id(hv6_zones).set_mqtt_port(p);
-
-  - platform: template
-    name: "MQTT Username"
-    id: mqtt_broker_username
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 47
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_mqtt_username();
-    set_action:
-      - lambda: id(hv6_zones).set_mqtt_username(x);
-
-  - platform: template
-    name: "MQTT Password"
-    id: mqtt_broker_password
-    entity_category: config
-    mode: text
-    min_length: 0
-    max_length: 47
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).get_mqtt_password();
-    set_action:
-      - lambda: id(hv6_zones).set_mqtt_password(x);

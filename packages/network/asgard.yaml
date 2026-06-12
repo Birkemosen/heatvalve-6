@@ -1,0 +1,17 @@
+# =============================================================================
+# Asgard Bridge — Ecodan heat-pump virtual thermostat integration
+# =============================================================================
+# Pushes the house-weighted room temperature to Asgard's virtual thermostat z1.
+# Two HV6 boards run identical firmware; exactly one is toggled as coordinator
+# (runtime NVS setting via the dashboard Asgard card). The coordinator polls
+# the peer board's /api/hv6/v1/peer snapshot and weights all 12 zones by area.
+#
+# All HTTP I/O runs in a FreeRTOS task on Core 1 (same pattern as the Helios
+# client) — quiesces entirely unless enabled + coordinator + host configured.
+# Contract: docs/ecodan_integration.md
+# =============================================================================
+
+hv6_asgard_bridge:
+  id: hv6_asgard
+  zone_controller_id: hv6_zones
+  config_store_id: hv6_config

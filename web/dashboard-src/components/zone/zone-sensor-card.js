@@ -1,7 +1,7 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
 import { es, getDashboardValue, subscribeDashboard } from '../../core/store.js';
-import { key, gkey } from '../../utils/keys.js';
+import { key } from '../../utils/keys.js';
 import { setZoneSelect, setZoneText } from '../../core/api.js';
 
 // ========================================
@@ -69,6 +69,81 @@ const css = `
   outline-offset: 1px;
   border-color: rgba(83,168,255,.55);
 }
+
+.zone-sensor-card .ble-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.zone-sensor-card .ble-row .txt {
+  flex: 1;
+}
+.zone-sensor-card .btn-scan {
+  flex-shrink: 0;
+  padding: 9px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  color: var(--accent);
+  font-size: .82rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.zone-sensor-card .btn-scan:disabled {
+  opacity: .5;
+  cursor: default;
+}
+.zone-sensor-card .ble-scan-list {
+  margin-top: 6px;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.zone-sensor-card .ble-scan-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  font-size: .82rem;
+  gap: 8px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.zone-sensor-card .ble-scan-item:last-child { border-bottom: none; }
+.zone-sensor-card .ble-scan-item .ble-mac {
+  font-family: monospace;
+  color: var(--text);
+  font-size: .8rem;
+}
+.zone-sensor-card .ble-scan-item .ble-meta {
+  color: var(--text-secondary);
+  font-size: .75rem;
+}
+.zone-sensor-card .ble-scan-item .ble-badge {
+  color: var(--text-faint);
+  font-size: .72rem;
+  font-style: italic;
+}
+.zone-sensor-card .btn-assign {
+  padding: 5px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: .78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.zone-sensor-card .btn-assign:hover {
+  background: rgba(83,168,255,.12);
+}
+.zone-sensor-card .scan-msg {
+  padding: 8px 10px;
+  font-size: .8rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
 `;
 
 injectStyle('zone-sensor-card', css);
@@ -91,13 +166,14 @@ const template = () => {
         <span class="lbl">Temperature Source</span>
         <select class="sel zs-source"></select>
       </div>
-      <div class="cfg-row zs-row-zigbee">
-        <span class="lbl">MQTT Device</span>
-        <input class="txt zs-zigbee" maxlength="47" placeholder="zone_x_sensor">
-      </div>
       <div class="cfg-row zs-row-ble">
-        <span class="lbl">BLE MAC</span>
-        <input class="txt zs-ble" maxlength="17" placeholder="AA:BB:CC:DD:EE:FF">
+        <span class="lbl">BLE Sensor</span>
+        <span class="lbl-help">Pair a nearby BTHome sensor (Shelly BLU H&T) or enter MAC manually.</span>
+        <div class="ble-row">
+          <input class="txt zs-ble" maxlength="17" placeholder="AA:BB:CC:DD:EE:FF">
+          <button class="btn-scan zs-scan">Scan</button>
+        </div>
+        <div class="ble-scan-list zs-scan-list" style="display:none"></div>
       </div>
       <div class="cfg-row">
         <span class="lbl">Sync To Zone</span>
@@ -119,38 +195,18 @@ function buildSyncOptions(selectEl, zone) {
   selectEl.value = current || 'None';
 }
 
-function getVariant() {
-  const raw = String(es(gkey.deviceVariant) || '').toLowerCase();
-  if (raw === 'mqtt') return 'mqtt';
-  if (raw === 'ble') return 'ble';
-  return 'local';
-}
-
-function getVariantSourceLabel(variant) {
-  if (variant === 'mqtt') return 'MQTT';
-  if (variant === 'ble') return 'BLE';
+function sourceToUiValue(source) {
+  if (source === 'BLE' || source === 'BLE Sensor') return 'BLE Sensor';
   return 'Local Probe';
 }
 
-function sourceToUiValue(source, variant) {
-  if (source === 'Local Probe') return 'Local Probe';
-  if ((source === 'MQTT' || source === 'Zigbee MQTT' || source === 'MQTT Sensor' || source === 'MQTT Variant') && variant === 'mqtt') return 'MQTT';
-  if ((source === 'BLE' || source === 'BLE Sensor' || source === 'BLE Variant') && variant === 'ble') return 'BLE';
+function uiValueToApiValue(value) {
+  if (value === 'BLE Sensor') return 'BLE';
   return 'Local Probe';
 }
 
-function uiValueToApiValue(value, variant) {
-  if (value === 'Local Probe') return 'Local Probe';
-  if (variant === 'mqtt') return 'MQTT';
-  if (variant === 'ble') return 'BLE';
-  return 'Local Probe';
-}
-
-function setSourceOptions(selectEl, variant, value) {
-  const variantLabel = getVariantSourceLabel(variant);
-  const html = variant === 'local'
-    ? '<option>Local Probe</option>'
-    : '<option>Local Probe</option><option>' + variantLabel + '</option>';
+function setSourceOptions(selectEl, value) {
+  const html = '<option>Local Probe</option><option>BLE Sensor</option>';
   if (selectEl.innerHTML !== html) {
     selectEl.innerHTML = html;
   }
@@ -166,12 +222,11 @@ export default component({
   onMount(ctx, el) {
     const probeEl = el.querySelector('.zs-probe');
     const sourceEl = el.querySelector('.zs-source');
-    const zigbeeEl = el.querySelector('.zs-zigbee');
     const bleEl = el.querySelector('.zs-ble');
     const syncEl = el.querySelector('.zs-sync');
-    const rowZigbee = el.querySelector('.zs-row-zigbee');
     const rowBle = el.querySelector('.zs-row-ble');
-    const autoDefaultApplied = new Set();
+    const scanBtn = el.querySelector('.zs-scan');
+    const scanList = el.querySelector('.zs-scan-list');
     let syncZone = 0;
 
     function selectedZone() {
@@ -183,29 +238,20 @@ export default component({
       if (syncZone !== zone) {
         buildSyncOptions(syncEl, zone);
         syncZone = zone;
+        scanList.style.display = 'none';
       }
 
       const probe = es(key.probe(zone));
-      const variant = getVariant();
       const sourceRaw = String(es(key.tempSource(zone)) || '');
-      const sourceUi = sourceToUiValue(sourceRaw, variant);
+      const sourceUi = sourceToUiValue(sourceRaw);
       const syncTo = es(key.syncTo(zone)) || 'None';
-      const zigbee = es(key.zigbee(zone)) || '';
       const ble = es(key.ble(zone)) || '';
 
       if (probe) probeEl.value = probe;
-      setSourceOptions(sourceEl, variant, sourceUi);
+      setSourceOptions(sourceEl, sourceUi);
       syncEl.value = syncTo;
-      if (document.activeElement !== zigbeeEl) zigbeeEl.value = zigbee;
       if (document.activeElement !== bleEl) bleEl.value = ble;
-      rowZigbee.style.display = variant === 'mqtt' && sourceUi === 'MQTT' ? '' : 'none';
-      rowBle.style.display = variant === 'ble' && sourceUi === 'BLE' ? '' : 'none';
-
-      // One-time auto-default: if a zone still uses Local Probe, switch to the active firmware variant source.
-      if (!autoDefaultApplied.has(zone) && variant !== 'local' && sourceRaw === 'Local Probe') {
-        autoDefaultApplied.add(zone);
-        setZoneSelect(zone, 'zone_temp_source', uiValueToApiValue(getVariantSourceLabel(variant), variant));
-      }
+      rowBle.style.display = sourceUi === 'BLE Sensor' ? '' : 'none';
     }
 
     function updateIfSelectedZone(id) {
@@ -214,26 +260,75 @@ export default component({
         id === key.probe(zone) ||
         id === key.tempSource(zone) ||
         id === key.syncTo(zone) ||
-        id === key.zigbee(zone) ||
-        id === key.ble(zone) ||
-        id === gkey.deviceVariant
+        id === key.ble(zone)
       ) {
         update();
       }
     }
 
+    // BLE scan logic
+    scanBtn.addEventListener('click', () => {
+      if (scanBtn.disabled) return;
+      scanBtn.disabled = true;
+      scanBtn.textContent = '…';
+      scanList.style.display = '';
+      scanList.innerHTML = '<div class="scan-msg">Scanning…</div>';
+
+      fetch('/api/hv6/v1/ble-scan')
+        .then(r => r.json())
+        .then(data => {
+          scanBtn.disabled = false;
+          scanBtn.textContent = 'Scan';
+          if (!data.ok || !data.sensors || data.sensors.length === 0) {
+            scanList.innerHTML = '<div class="scan-msg">No BTHome sensors found nearby. Make sure sensors have fresh batteries and are within range.</div>';
+            return;
+          }
+          const zone = selectedZone();
+          const currentMac = (es(key.ble(zone)) || '').toUpperCase();
+          let html = '';
+          for (const s of data.sensors) {
+            const mac = s.mac.toUpperCase();
+            const temp = s.temp_c != null ? s.temp_c.toFixed(1) + '°C' : '—';
+            const rssi = s.rssi != null ? s.rssi + ' dBm' : '';
+            const age = s.age_s < 60 ? s.age_s + 's ago' : Math.round(s.age_s / 60) + 'm ago';
+            let badge = '';
+            if (mac === currentMac) badge = '<span class="ble-badge">assigned to this zone</span>';
+            else if (s.zone > 0) badge = '<span class="ble-badge">zone ' + s.zone + '</span>';
+            html += `<div class="ble-scan-item">
+              <div>
+                <div class="ble-mac">${mac}</div>
+                <div class="ble-meta">${temp} &nbsp;${rssi} &nbsp;${age}</div>
+                ${badge}
+              </div>
+              <button class="btn-assign" data-mac="${mac}">Assign</button>
+            </div>`;
+          }
+          scanList.innerHTML = html;
+
+          scanList.querySelectorAll('.btn-assign').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const mac = btn.dataset.mac;
+              bleEl.value = mac;
+              setZoneText(zone, 'zone_ble_mac', mac);
+              scanList.style.display = 'none';
+            });
+          });
+        })
+        .catch(() => {
+          scanBtn.disabled = false;
+          scanBtn.textContent = 'Scan';
+          scanList.innerHTML = '<div class="scan-msg">Scan failed. Check device connectivity.</div>';
+        });
+    });
+
     probeEl.addEventListener('change', () => {
       setZoneSelect(selectedZone(), 'zone_probe', probeEl.value);
     });
     sourceEl.addEventListener('change', () => {
-      const variant = getVariant();
-      setZoneSelect(selectedZone(), 'zone_temp_source', uiValueToApiValue(sourceEl.value, variant));
+      setZoneSelect(selectedZone(), 'zone_temp_source', uiValueToApiValue(sourceEl.value));
     });
     syncEl.addEventListener('change', () => {
       setZoneSelect(selectedZone(), 'zone_sync_to', syncEl.value);
-    });
-    zigbeeEl.addEventListener('change', () => {
-      setZoneText(selectedZone(), 'zone_zigbee_device', zigbeeEl.value);
     });
     bleEl.addEventListener('change', () => {
       setZoneText(selectedZone(), 'zone_ble_mac', bleEl.value);
@@ -244,10 +339,8 @@ export default component({
       subscribe(key.probe(zone), updateIfSelectedZone);
       subscribe(key.tempSource(zone), updateIfSelectedZone);
       subscribe(key.syncTo(zone), updateIfSelectedZone);
-      subscribe(key.zigbee(zone), updateIfSelectedZone);
       subscribe(key.ble(zone), updateIfSelectedZone);
     }
-    subscribe(gkey.deviceVariant, update);
     update();
   }
 });

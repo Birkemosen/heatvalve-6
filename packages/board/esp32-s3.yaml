@@ -24,10 +24,9 @@ esp32:
       CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP: "y"
       CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: "y"
       CONFIG_BT_ALLOCATION_FROM_SPIRAM_FIRST: "y"
-      # ESPHome's http_request component is synchronous and blocks loopTask
-      # during DNS resolution + HTTP exchange. The default 5s WDT is too tight
-      # when an endpoint is unreachable (mDNS timeouts can take 10–30s).
-      CONFIG_ESP_TASK_WDT_TIMEOUT_S: "30"
+      # mDNS is disabled; Helios HTTP uses a 3s socket timeout so 15s is
+      # sufficient headroom for DNS + connect + transfer on weak WiFi.
+      CONFIG_ESP_TASK_WDT_TIMEOUT_S: "15"
       CONFIG_LWIP_MAX_LISTENING_TCP: "5"
       CONFIG_HTTPD_MAX_URI_LEN: "128"
 

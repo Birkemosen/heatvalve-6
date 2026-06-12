@@ -2,164 +2,125 @@
 
 ## System Overview
 
-HeatValve-6 is a modular underfloor heating (UFH) valve controller built on ESP32-S3 with ESPHome firmware. The architecture separates hardware control from heating algorithms, enabling two independent control systems:
-
-1. **Basic Control** (open-source, this repo) — Simple, reliable valve control with PID/linear/tanh profiles
-2. **Helios-6 Advanced Control** (closed-source, separate repo) — Physics-aware, self-learning thermal management
+HeatValve-6 is a 6-zone underfloor heating (UFH) valve controller built on ESP32-S3 with
+ESPHome firmware. Custom C++ components run as FreeRTOS tasks alongside the ESPHome main
+loop and separate hardware control (motor FSM, endstop detection) from heating logic
+(zone state machine, control algorithms, hydraulic balance).
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    User Configuration                       │
-│  config.yaml / config_dev.yaml / config_dev_Helios-6.yaml     │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-          ┌───────────┴───────────┐
-          ▼                       ▼
-┌─────────────────┐   ┌────────────────────────┐
-│  Basic Control  │   │  Helios-6 Advanced     │
-│  (this repo)    │   │  (external component)  │
-│                 │   │                        │
-│  • PID          │   │  • Hydraulic balancing │
-│  • Linear       │   │  • Weather-aware       │
-│  • Tanh         │   │  • Self-learning       │
-│  • Remote       │   │  • Predictive          │
-│                 │   │  • License required    │
-└────────┬────────┘   └───────────┬────────────┘
-         │                        │
-         └───────────┬────────────┘
-                     ▼
-         ┌───────────────────────┐
-         │   Hardware Layer      │
-         │                       │
-         │  • DRV8215 I2C motors │
-         │  • 1-Wire sensors     │
-         │  • Status LED         │
-         │  • MQTT / API         │
-         │  • Dashboard          │
-         └───────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                     Config Composition                       │
+│  configurations/heatvalve-6-ble.yaml → heatvalve-6.yaml      │
+│  (substitutions + packages: board / hardware / network /     │
+│   zones)                                                     │
+└────────────────────────────┬─────────────────────────────────┘
+                             ▼
+┌──────────────────────────────────────────────────────────────┐
+│                    Custom C++ Components                     │
+│                                                              │
+│  hv6_config_store ← hv6_valve_controller ← hv6_zone_controller
+│                                                  ↑           │
+│                                          hv6_helios_client   │
+│                                          hv6_dashboard       │
+└────────────────────────────┬─────────────────────────────────┘
+                             ▼
+┌──────────────────────────────────────────────────────────────┐
+│                       Hardware Layer                         │
+│  • 6× DRV8215 I2C H-bridge motor drivers                     │
+│  • Shared IPROPI current-sense ADC (GPIO7)                   │
+│  • 1-Wire DS18B20 probes (8 slots)                           │
+│  • BLE (BTHome / Shelly BLU H&T)                             │
+│  • Status LED, display                                       │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ## Repository Structure
 
 ```
-heatvalve-6/                    (public, open-source)
-├── boards/                     Board definitions (ESP32-S3)
-├── core/                       Hardware abstraction & shared infrastructure
-│   ├── motor_driver.yaml       DRV8215 I2C motor control
-│   ├── settings.yaml           Global parameters (comfort band, min opening, etc)
-│   ├── onewire.yaml            1-Wire temperature sensors
-│   ├── logger.yaml             Logging configuration
-│   ├── time.yaml               NTP, reboot scheduling
-│   ├── wifi.yaml               WiFi configuration
-│   ├── sensor_others.yaml      System sensors (WiFi signal, uptime)
-│   └── switch_others.yaml      System switches
-├── control/                    Control algorithms (basic)
-│   ├── tanh.yaml               Non-linear tanh curve (recommended)
-│   ├── linear.yaml             Linear proportional
-│   ├── pid.yaml                PID with auto-tune
-│   └── remote.yaml             External/Home Assistant control
-├── zones/                      Zone templates (base + control profile)
-│   ├── base.yaml               Zone infrastructure (motor scripts, endstop, params)
-│   ├── tanh.yaml               Zone = base + tanh control
-│   ├── linear.yaml             Zone = base + linear control
-│   ├── pid.yaml                Zone = base + PID control
-│   └── remote.yaml             Zone = base + remote control
-├── modes/                      Operating modes (legacy)
-│   └── hydraulic.yaml          Basic hydraulic balancing (replaced by Helios-6)
-├── optional/                   Optional integrations
-│   ├── pump_control.yaml       ESP-NOW pump relay control
-│   └── mqtt_ecodan.yaml        Multi-controller MQTT bridge
-├── sensors/                    Sensor templates
-│   └── return_temp.yaml        Per-zone Dallas template
-├── components/                 Custom ESPHome components
-│   └── heatvalve_dashboard/    Standalone web dashboard
-├── docs/                       Documentation
-├── Helios-6.yaml                 Helios-6 integration config
-├── config.yaml                 Production config
-├── config_dev.yaml             Development config (basic)
-├── config_dev_Helios-6.yaml      Development config (Helios-6 enabled)
-└── Makefile                    Build targets
+heatvalve-6/
+├── heatvalve-6.yaml          Shared base config (substitutions + packages)
+├── configurations/
+│   └── heatvalve-6-ble.yaml  Active build entrypoint (adds BLE package)
+├── packages/
+│   ├── board/                ESP32-S3 board definition
+│   ├── hardware/             BLE, display, I2C, motors, LED, 1-Wire, sensors
+│   ├── network/              WiFi, API, OTA, Helios client
+│   └── zones/                Climate entities, zone sensors, UI, dashboard wiring
+├── components/               Custom ESPHome external components (C++)
+│   ├── hv6_config_store/     NVS persistence (DeviceConfig struct)
+│   ├── hv6_valve_controller/ Motor FSM, endstop detection, ripple counting
+│   ├── hv6_zone_controller/  Zone state machine, algorithms, hydraulic balance
+│   ├── hv6_helios_client/    HTTP client for external Helios optimizer
+│   └── hv6_dashboard/        HTTP API (/api/hv6/v1), dashboard asset serving
+├── web/
+│   ├── dashboard-src/        Dashboard source (modular JS, esbuild)
+│   └── dashboard.js          Bundled artifact (committed, embedded in firmware)
+├── test/ripple_counter/      Host-side unit tests (clang++, no ESP-IDF)
+├── docs/                     Architecture, API contract, integration specs
+└── Makefile                  Build/deploy/test targets
 ```
+
+## FreeRTOS Task Layout
+
+| Task | Core | Priority | Period |
+|------|------|----------|--------|
+| `hv6_valve` (motor FSM) | 1 | 7 | 10 ms tick |
+| `hv6_ripple` (DMA ADC) | 1 | 7 | continuous |
+| `hv6_zone` (control cycle) | 0 | 6 | 10 s (configurable) |
+| `hv6_helios` (HTTP) | 1 | 1 | 60 s poll |
+| `hv6_nvs` (flash commit) | 1 | 1 | event-driven |
+| ESPHome loopTask | 1 | 1 | — |
+
+Cross-task state is exchanged via FreeRTOS queues and mutexes. Dashboard snapshots are
+assembled in `hv6_dashboard::loop()` (main loop) under a dedicated `snapshot_mutex_`.
 
 ## Data Flow
 
-### Basic Control Mode
+### Local Control
 
 ```
-Temperature Sensor → Climate Thermostat → Control Algorithm → Valve Position
-                          ↑                    (tanh/linear/PID)     ↓
-                     Setpoint                                   Cover (motor)
-                     Presets                                        ↓
-                                                              DRV8215 I2C
+Temp source (DS18B20 / BLE) → Zone state machine → Control algorithm → Hydraulic balance
+                                   ↑                (tanh/linear/PID)        ↓
+                              Setpoint + offsets                       Valve position
+                                                                            ↓
+                                                                   Motor FSM (one at a time)
+                                                                            ↓
+                                                                       DRV8215 I2C
 ```
 
-### Helios-6 Advanced Mode
+### External Optimizer (Helios)
 
-```
-Temperature Sensors ──┐
-Weather Data ─────────┤
-Energy Prices ────────┼──→ Helios-6 Engine ──→ Hydraulic Balancer ──→ Valve Positions
-Solar Influx ─────────┤         ↓                                       ↓
-Thermal History ──────┘   Thermal Model                            Cover (motor)
-                          (self-learning)                              ↓
-                               ↓                                 DRV8215 I2C
-                         Predictive Control
-                         (preheating, comfort)
-```
+`hv6_helios_client` POSTs a system snapshot to an external Helios HTTP service and polls
+for per-zone setpoint-offset / preheat commands. Offsets are clamped in firmware by
+per-zone safety limits; if the service goes stale, all offsets are cleared and local
+control continues unchanged. The wire contract is defined in
+[integration_spec.md](integration_spec.md); the external service consumes weather and
+energy-price data (Open-Meteo, ENTSO-E) on its side.
 
-## Integration Between Systems
-
-Helios-6 integrates with HeatValve-6 through ESPHome's `external_components` system:
-
-```yaml
-# In config_dev_Helios-6.yaml
-external_components:
-  - source:
-      type: local
-      path: ../Helios-6/components
-    components:
-      - Helios-6
-```
-
-Helios-6 reads zone state through ESPHome entity references (climates, covers, sensors, numbers) rather than modifying core files. This ensures:
-
-- **No vendor lock-in**: Removing Helios-6 reverts to basic control automatically
-- **Clean separation**: Basic control never depends on Helios-6 code
-- **Graceful fallback**: License expiry → basic control continues working
-- **Independent development**: Both systems can be developed and tested separately
-
-## License System
-
-Helios-6 uses RSA-2048 signed license keys validated on the ESP32 using mbedtls:
-
-| License Type | Duration | Grace Period | Fallback |
-|-------------|----------|-------------|----------|
-| One-Time | Perpetual | N/A | N/A |
-| Subscription | Monthly/Annual | 30 days | Basic control |
-| Trial | 30 days | None | Basic control |
-
-License validation is performed at boot and periodically (every 24h). NVS storage enables offline validation.
+Removing the optimizer reverts transparently to local control — no vendor lock-in, no
+firmware dependency on the external service.
 
 ## Hardware Layer
 
-All hardware control is in `core/` and `boards/`:
+- **Motor Control**: 6× DRV8215 I2C H-bridges with shared IPROPI ADC current sensing
+- **Constraint**: One motor at a time (all IPROPI outputs wire-ORed to GPIO7; the valve
+  FSM enforces sequential execution)
+- **Endstop Detection**: Four-path software detection (threshold, slope, hard cap, ripple
+  limit) with per-direction parameters — see [endstop_detection.md](endstop_detection.md)
+- **Sensors**: 1-Wire DS18B20 (8 slots, NVS-persisted ROM mapping), BLE BTHome
+- **Communication**: WiFi, ESPHome native API (Home Assistant), HTTP/JSON (dashboard +
+  Helios). No message broker — MQTT was removed in favor of plain HTTP over LAN.
 
-- **Motor Control**: 6x DRV8215 I2C H-bridges with shared IPROPI ADC current sensing
-- **Constraint**: One motor at a time (shared IPROPI, firmware mutex)
-- **Endstop Detection**: Four-path software detection (threshold, slope, hard cap, ripple limit) with per-direction parameters — see [endstop_detection.md](endstop_detection.md)
-- **Sensors**: 1-Wire bus (DS18B20), HomeAssistant, BLE, DHT, I2C
-- **Communication**: WiFi, MQTT, ESPHome API, ESP-NOW (pump control)
+## Dashboard API
 
-## Dashboard API Direction (2026 Restructure)
+Dashboard transport uses the dedicated `/api/hv6/v1` JSON namespace served by
+`hv6_dashboard` on the device web server (port 80):
 
-The project is migrating dashboard transport away from ESPHome entity-name REST calls toward a dedicated JSON API namespace.
+- The dashboard app is served at `/dashboard` (+ `/dashboard.js`)
+- All dashboard reads/writes go through `/api/hv6/v1` — the dashboard must not call
+  ESPHome entity REST routes (`/climate`, `/switch`, `/number`, …)
+- Home Assistant integration continues through the ESPHome native API
+- Contract: [hv6_api_v1.md](hv6_api_v1.md)
 
-- Base HTTP stack remains ESPHome `web_server`
-- Dedicated API namespace is `/api/hv6/v1`
-- Dashboard transport is HTTP JSON + SSE
-- Home Assistant integration continues through ESPHome API/entities/services
-- Mock dashboard mode has been removed to keep one production transport path
-
-The API contract and rollout order are defined in [hv6_api_v1.md](hv6_api_v1.md).
-
-Dashboard frontend code is now organized as modular source files under `web/dashboard-src/` and bundled into the single artifact `web/dashboard.js` for ESPHome `web_server` embedding.
+Frontend source lives under `web/dashboard-src/` and is bundled by esbuild into
+`web/dashboard.js`, which is committed and embedded into the firmware at build time.

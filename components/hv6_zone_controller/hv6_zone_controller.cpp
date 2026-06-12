@@ -4,7 +4,7 @@
 // Ported from lib/zone_controller/src/zone_controller.cpp
 // Key changes:
 //   - Reads temperatures from ESPHome sensor entities (not SensorManager)
-//   - No WiFi/MQTT connectivity tracking (ESPHome handles that)
+//   - No WiFi connectivity tracking (ESPHome handles that)
 //   - Control algorithms and hydraulic balancing preserved 1:1
 // =============================================================================
 
@@ -16,19 +16,12 @@
 #include <numeric>
 #include <inttypes.h>
 
-#ifdef USE_MQTT
-#include "esphome/components/mqtt/mqtt_client.h"
-#include "esphome/components/json/json_util.h"
-#endif
-
 namespace hv6 {
 
 static const char *const TAG = "hv6_zone_ctrl";
 static constexpr float ALPHA_TOP = 10.8f;  // W/(m²·K) convective+radiative at floor
-static constexpr uint32_t MQTT_STARTUP_QUERY_DELAY_MS = 10000;
-static constexpr uint32_t MQTT_STARTUP_QUERY_TICK_MS = 1000;
-static constexpr uint32_t MQTT_STARTUP_QUERY_BACKOFF_BASE_MS = 30000;
-static constexpr uint8_t MQTT_STARTUP_QUERY_MAX_RETRIES = 5;
+
+static float floor_absorb_factor(FloorType type);
 
 // =============================================================================
 // ESPHome Lifecycle
@@ -56,18 +49,26 @@ void Hv6ZoneController::setup() {
     return;
   }
 
+  ble_seen_mutex_ = xSemaphoreCreateMutex();
+  if (ble_seen_mutex_ == nullptr) {
+    ESP_LOGE(TAG, "Failed to create BLE seen mutex");
+    this->mark_failed();
+    return;
+  }
+  memset(ble_seen_.data(), 0, sizeof(ble_seen_));
+
   setpoint_offsets_.fill(0.0f);
   helios_cmds_.fill({});
   balance_factors_.fill(1.0f);
   last_valid_temp_ms_.fill(0);
-  mqtt_temp_last_ms_.fill(0);
+  external_temp_last_ms_.fill(0);
   preheat_advance_c_.fill(0.0f);
   preheat_episode_active_.fill(false);
   preheat_episode_min_temp_c_.fill(NAN);
   preheat_episode_max_temp_c_.fill(NAN);
   preheat_episode_setpoint_c_.fill(0.0f);
   for (uint8_t i = 0; i < NUM_ZONES; i++) {
-    mqtt_temperatures_[i] = NAN;
+    external_temperatures_[i] = NAN;
     if (requested_setpoints_[i] < 5.0f || requested_setpoints_[i] > 35.0f)
       requested_setpoints_[i] = FALLBACK_SETPOINT_C;
   }
@@ -93,8 +94,6 @@ void Hv6ZoneController::setup() {
     this->mark_failed();
     return;
   }
-
-  setup_mqtt_subscription_();
 
   ESP_LOGI(TAG, "Zone controller initialized (%" PRIu32 "ms cycle)", cycle_interval_ms_);
 }
@@ -164,6 +163,7 @@ bool Hv6ZoneController::try_get_system_snapshot(SystemSnapshot *out, uint32_t ti
 
   sys.manifold_flow_temp_c = read_manifold_flow_();
   sys.manifold_return_temp_c = read_manifold_return_();
+  sys.preheat_absorbing = preheat_absorb_active_.load();
   sys.uptime_s = static_cast<uint32_t>(esp_timer_get_time() / 1000000);
   sys.free_heap = esp_get_free_heap_size();
   sys.cycle_count = cycle_count_;
@@ -184,6 +184,7 @@ SystemSnapshot Hv6ZoneController::get_system_snapshot() const {
   ESP_LOGW(TAG, "System snapshot skipped: snapshot mutex busy");
   sys.manifold_flow_temp_c = read_manifold_flow_();
   sys.manifold_return_temp_c = read_manifold_return_();
+  sys.preheat_absorbing = preheat_absorb_active_.load();
   sys.uptime_s = static_cast<uint32_t>(esp_timer_get_time() / 1000000);
   sys.free_heap = esp_get_free_heap_size();
   sys.cycle_count = cycle_count_;
@@ -249,7 +250,6 @@ bool Hv6ZoneController::apply_setpoint_adjustment(uint8_t zone, float offset_c) 
     return false;
   if (adj_queue_ == nullptr)
     return false;
-  last_mqtt_adjustment_ms_ = static_cast<uint32_t>(esp_timer_get_time() / 1000);
   SetpointAdjustment adj = {zone, offset_c};
   return xQueueSend(adj_queue_, &adj, pdMS_TO_TICKS(50)) == pdTRUE;
 }
@@ -438,81 +438,60 @@ int8_t Hv6ZoneController::get_manifold_return_probe() const {
 }
 
 // =============================================================================
-// MQTT External Temperature
+// External Temperature
 // =============================================================================
 
-void Hv6ZoneController::set_zone_mqtt_temperature(uint8_t zone, float temp_c) {
+void Hv6ZoneController::set_zone_external_temperature(uint8_t zone, float temp_c) {
   if (zone >= NUM_ZONES)
     return;
-  mqtt_temperatures_[zone] = temp_c;
-  mqtt_temp_last_ms_[zone] = static_cast<uint32_t>(esp_timer_get_time() / 1000);
-  ESP_LOGD(TAG, "Zone %d MQTT temp: %.1f°C", zone + 1, temp_c);
+  external_temperatures_[zone] = temp_c;
+  external_temp_last_ms_[zone] = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+  ESP_LOGD(TAG, "Zone %d external temp: %.1f°C", zone + 1, temp_c);
 }
 
-float Hv6ZoneController::get_zone_mqtt_temperature(uint8_t zone) const {
+float Hv6ZoneController::get_zone_external_temperature(uint8_t zone) const {
   if (zone >= NUM_ZONES)
     return NAN;
-  // Stale check: 60 minutes
   uint32_t now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
-  if (mqtt_temp_last_ms_[zone] > 0 && (now_ms - mqtt_temp_last_ms_[zone]) > MQTT_STALE_MS)
+  if (external_temp_last_ms_[zone] > 0 && (now_ms - external_temp_last_ms_[zone]) > EXTERNAL_TEMP_STALE_MS)
     return NAN;
-  return mqtt_temperatures_[zone];
+  return external_temperatures_[zone];
 }
 
 void Hv6ZoneController::set_zone_temp_source(uint8_t zone, TempSource source) {
   if (zone >= NUM_ZONES || !config_store_)
     return;
   auto cfg = config_store_->get_config();
-  if (cfg.mqtt_temp.zone_temp_source[zone] == source)
+  if (cfg.sensor_config.zone_temp_source[zone] == source)
     return;
-  cfg.mqtt_temp.zone_temp_source[zone] = source;
-  config_store_->update_mqtt_temp(cfg.mqtt_temp);
+  cfg.sensor_config.zone_temp_source[zone] = source;
+  config_store_->update_sensor_config(cfg.sensor_config);
   ESP_LOGI(TAG, "Zone %d temp source: %s", zone + 1,
-           source == TempSource::MQTT_EXTERNAL ? "MQTT" :
            source == TempSource::BLE_SENSOR ? "BLE" : "Local Probe");
 }
 
 TempSource Hv6ZoneController::get_zone_temp_source(uint8_t zone) const {
   if (zone >= NUM_ZONES || !config_store_)
     return TempSource::LOCAL_PROBE;
-  return config_store_->get_config().mqtt_temp.zone_temp_source[zone];
-}
-
-void Hv6ZoneController::set_zone_mqtt_device(uint8_t zone, const std::string &name) {
-  if (zone >= NUM_ZONES || !config_store_)
-    return;
-  auto cfg = config_store_->get_config();
-  strncpy(cfg.mqtt_temp.zone_mqtt_device[zone], name.c_str(), MQTT_DEVICE_NAME_LEN - 1);
-  cfg.mqtt_temp.zone_mqtt_device[zone][MQTT_DEVICE_NAME_LEN - 1] = '\0';
-  config_store_->update_mqtt_temp(cfg.mqtt_temp);
-  ESP_LOGI(TAG, "Zone %d MQTT device: '%s'", zone + 1, cfg.mqtt_temp.zone_mqtt_device[zone]);
-
-  // Request current temperature from the newly configured device
-  if (!name.empty()) {
-    request_zigbee_temperature_(name);
-  }
-}
-
-std::string Hv6ZoneController::get_zone_mqtt_device(uint8_t zone) const {
-  if (zone >= NUM_ZONES || !config_store_)
-    return "";
-  return std::string(config_store_->get_config().mqtt_temp.zone_mqtt_device[zone]);
+  return config_store_->get_config().sensor_config.zone_temp_source[zone];
 }
 
 void Hv6ZoneController::set_zone_ble_mac(uint8_t zone, const std::string &mac) {
   if (zone >= NUM_ZONES || !config_store_)
     return;
   auto cfg = config_store_->get_config();
-  strncpy(cfg.mqtt_temp.zone_ble_mac[zone], mac.c_str(), BLE_MAC_LEN - 1);
-  cfg.mqtt_temp.zone_ble_mac[zone][BLE_MAC_LEN - 1] = '\0';
-  config_store_->update_mqtt_temp(cfg.mqtt_temp);
-  ESP_LOGI(TAG, "Zone %d BLE MAC: '%s'", zone + 1, cfg.mqtt_temp.zone_ble_mac[zone]);
+  strncpy(cfg.sensor_config.zone_ble_mac[zone], mac.c_str(), BLE_MAC_LEN - 1);
+  cfg.sensor_config.zone_ble_mac[zone][BLE_MAC_LEN - 1] = '\0';
+  for (char *p = cfg.sensor_config.zone_ble_mac[zone]; *p; ++p)
+    *p = toupper(static_cast<unsigned char>(*p));
+  config_store_->update_sensor_config(cfg.sensor_config);
+  ESP_LOGI(TAG, "Zone %d BLE MAC: '%s'", zone + 1, cfg.sensor_config.zone_ble_mac[zone]);
 }
 
 std::string Hv6ZoneController::get_zone_ble_mac(uint8_t zone) const {
   if (zone >= NUM_ZONES || !config_store_)
     return "";
-  return std::string(config_store_->get_config().mqtt_temp.zone_ble_mac[zone]);
+  return std::string(config_store_->get_config().sensor_config.zone_ble_mac[zone]);
 }
 
 void Hv6ZoneController::set_zone_area_m2(uint8_t zone, float area_m2) {
@@ -749,73 +728,6 @@ float Hv6ZoneController::get_target_delta_t() const {
   return config_store_->get_config().balancing.target_delta_t_c;
 }
 
-// -----------------------------------------------------------------------------
-// MQTT Broker Configuration (NVS-persisted overrides)
-// -----------------------------------------------------------------------------
-
-void Hv6ZoneController::set_mqtt_broker(const std::string &broker) {
-  if (!config_store_)
-    return;
-  auto cfg = config_store_->get_config();
-  strncpy(cfg.mqtt_broker.broker, broker.c_str(), MQTT_BROKER_LEN - 1);
-  cfg.mqtt_broker.broker[MQTT_BROKER_LEN - 1] = '\0';
-  config_store_->update_mqtt_broker(cfg.mqtt_broker);
-  ESP_LOGI(TAG, "MQTT broker set: '%s' (reboot to apply)", cfg.mqtt_broker.broker);
-}
-
-std::string Hv6ZoneController::get_mqtt_broker() const {
-  if (!config_store_)
-    return "";
-  return std::string(config_store_->get_config().mqtt_broker.broker);
-}
-
-void Hv6ZoneController::set_mqtt_port(uint16_t port) {
-  if (!config_store_)
-    return;
-  auto cfg = config_store_->get_config();
-  cfg.mqtt_broker.port = port;
-  config_store_->update_mqtt_broker(cfg.mqtt_broker);
-  ESP_LOGI(TAG, "MQTT port set: %u (reboot to apply)", port);
-}
-
-uint16_t Hv6ZoneController::get_mqtt_port() const {
-  if (!config_store_)
-    return 0;
-  return config_store_->get_config().mqtt_broker.port;
-}
-
-void Hv6ZoneController::set_mqtt_username(const std::string &username) {
-  if (!config_store_)
-    return;
-  auto cfg = config_store_->get_config();
-  strncpy(cfg.mqtt_broker.username, username.c_str(), MQTT_CRED_LEN - 1);
-  cfg.mqtt_broker.username[MQTT_CRED_LEN - 1] = '\0';
-  config_store_->update_mqtt_broker(cfg.mqtt_broker);
-  ESP_LOGI(TAG, "MQTT username set (reboot to apply)");
-}
-
-std::string Hv6ZoneController::get_mqtt_username() const {
-  if (!config_store_)
-    return "";
-  return std::string(config_store_->get_config().mqtt_broker.username);
-}
-
-void Hv6ZoneController::set_mqtt_password(const std::string &password) {
-  if (!config_store_)
-    return;
-  auto cfg = config_store_->get_config();
-  strncpy(cfg.mqtt_broker.password, password.c_str(), MQTT_CRED_LEN - 1);
-  cfg.mqtt_broker.password[MQTT_CRED_LEN - 1] = '\0';
-  config_store_->update_mqtt_broker(cfg.mqtt_broker);
-  ESP_LOGI(TAG, "MQTT password set (reboot to apply)");
-}
-
-std::string Hv6ZoneController::get_mqtt_password() const {
-  if (!config_store_)
-    return "";
-  return std::string(config_store_->get_config().mqtt_broker.password);
-}
-
 // =============================================================================
 // FreeRTOS Task
 // =============================================================================
@@ -926,6 +838,10 @@ void Hv6ZoneController::run_cycle_() {
     }
   }
 
+  // Detect external pre-buffering before classifying zones — when active, the
+  // overheat cutoff is raised (per zone, weighted by floor thermal mass).
+  update_preheat_absorb_(cfg, zone_temps, zone_setpoints);
+
   for (uint8_t i = 0; i < NUM_ZONES; i++) {
     if (!cfg.zones[i].enabled) {
       target_positions[i] = 0.0f;
@@ -942,7 +858,10 @@ void Hv6ZoneController::run_cycle_() {
     algorithms_[i].set_algorithm(cfg.zones[i].algorithm);
 
     float preheat_advance = cfg.control.simple_preheat_enabled ? preheat_advance_c_[i] : 0.0f;
-    ZoneState state = classify_zone_(temp, setpoint, cfg.control.comfort_band_c, preheat_advance);
+    float absorb_band = preheat_absorb_active_.load()
+        ? cfg.control.preheat_absorb_band_c * floor_absorb_factor(cfg.zones[i].floor_type)
+        : 0.0f;
+    ZoneState state = classify_zone_(temp, setpoint, cfg.control.comfort_band_c, preheat_advance, absorb_band);
 
     float position = 0.0f;
     bool was_overheated = false;
@@ -1024,22 +943,6 @@ void Hv6ZoneController::check_failsafes_() {
 
   uint32_t now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
 
-  // MQTT failsafe
-  if (last_mqtt_adjustment_ms_ > 0) {
-    uint32_t elapsed = now_ms - last_mqtt_adjustment_ms_;
-    if (elapsed > MQTT_FALLBACK_MS) {
-      bool any_reset = false;
-      for (uint8_t i = 0; i < NUM_ZONES; i++) {
-        if (setpoint_offsets_[i] != 0.0f) {
-          setpoint_offsets_[i] = 0.0f;
-          any_reset = true;
-        }
-      }
-      if (any_reset)
-        ESP_LOGW(TAG, "MQTT failsafe: clearing offsets (no data 30min)");
-    }
-  }
-
   // Temperature sensor failsafe
   const auto cfg = config_store_->get_config();
   for (uint8_t i = 0; i < NUM_ZONES; i++) {
@@ -1069,14 +972,12 @@ float Hv6ZoneController::read_zone_temperature_(uint8_t zone) const {
 
   auto cfg = config_store_->get_config();
 
-  // Check if zone uses MQTT external temperature source
-  if (cfg.mqtt_temp.zone_temp_source[zone] == TempSource::MQTT_EXTERNAL ||
-      cfg.mqtt_temp.zone_temp_source[zone] == TempSource::BLE_SENSOR) {
-    return get_zone_mqtt_temperature(zone);
+  if (cfg.sensor_config.zone_temp_source[zone] == TempSource::BLE_SENSOR) {
+    return get_zone_external_temperature(zone);
   }
 
   // Default: local probe (only if role is ROOM_TEMPERATURE; if RETURN_WATER, room temp
-  // must come from MQTT/BLE — return NAN to trigger failsafe/maintenance positioning)
+  // must come from BLE — return NAN to trigger failsafe/maintenance positioning)
   if (cfg.zones[zone].probe_role == ProbeRole::RETURN_WATER) {
     // Probe is measuring return water, not room temp — no local room temperature available
     return NAN;
@@ -1131,14 +1032,87 @@ float Hv6ZoneController::read_manifold_return_() const {
 // Zone Classification + Control
 // =============================================================================
 
-ZoneState Hv6ZoneController::classify_zone_(float temp, float setpoint, float comfort_band, float preheat_advance_c) const {
+// High-thermal-mass floors absorb the most pre-buffered heat; insulating
+// surfaces (carpet, wood) take a smaller band so room air doesn't overshoot.
+static float floor_absorb_factor(FloorType type) {
+  switch (type) {
+    case FloorType::TILE:    return 1.0f;
+    case FloorType::PARQUET: return 0.6f;
+    case FloorType::OAK:     return 0.6f;
+    case FloorType::CARPET:  return 0.4f;
+  }
+  return 0.6f;
+}
+
+// Detect external pre-buffering (Odin via Asgard): hot water arrives at the
+// manifold while no zone demands heat. While active, the overheat cutoff is
+// raised so satisfied zones keep their maintenance opening and the slab can
+// absorb the buffer instead of the valves closing and fighting the optimizer.
+void Hv6ZoneController::update_preheat_absorb_(const DeviceConfig &cfg,
+                                               const std::array<float, NUM_ZONES> &temps,
+                                               const std::array<float, NUM_ZONES> &setpoints) {
+  if (!cfg.control.preheat_absorb_enabled) {
+    preheat_absorb_active_ = false;
+    preheat_absorb_detect_cycles_ = 0;
+    return;
+  }
+
+  float flow = read_manifold_flow_();
+  float temp_sum = 0.0f;
+  uint8_t temp_count = 0;
+  bool any_demand = false;
+  for (uint8_t i = 0; i < NUM_ZONES; i++) {
+    if (!cfg.zones[i].enabled || std::isnan(temps[i]))
+      continue;
+    temp_sum += temps[i];
+    temp_count++;
+    float preheat_advance = cfg.control.simple_preheat_enabled
+        ? std::clamp(preheat_advance_c_[i], 0.0f, SIMPLE_PREHEAT_MAX_ADVANCE_C)
+        : 0.0f;
+    if (temps[i] < setpoints[i] - cfg.control.comfort_band_c + preheat_advance)
+      any_demand = true;
+  }
+
+  if (temp_count == 0 || std::isnan(flow)) {
+    preheat_absorb_active_ = false;
+    preheat_absorb_detect_cycles_ = 0;
+    return;
+  }
+
+  const float house_avg = temp_sum / static_cast<float>(temp_count);
+  // 2 °C release hysteresis so the state doesn't flap on probe noise.
+  const float threshold = house_avg + cfg.control.preheat_detect_delta_c -
+                          (preheat_absorb_active_.load() ? 2.0f : 0.0f);
+  const bool condition = !any_demand && flow > threshold;
+
+  if (condition) {
+    if (preheat_absorb_detect_cycles_ < 255)
+      preheat_absorb_detect_cycles_++;
+  } else {
+    preheat_absorb_detect_cycles_ = 0;
+  }
+
+  // Require 2 consecutive cycles before activating; release immediately so a
+  // zone that drops into demand gets the full buffer routed to it.
+  const bool next = condition && (preheat_absorb_active_.load() || preheat_absorb_detect_cycles_ >= 2);
+  if (next != preheat_absorb_active_.load()) {
+    preheat_absorb_active_ = next;
+    ESP_LOGI(TAG, "Preheat absorption %s (flow=%.1f°C house_avg=%.1f°C)",
+             next ? "ACTIVE — satisfied zones stay open" : "ended", flow, house_avg);
+  }
+}
+
+ZoneState Hv6ZoneController::classify_zone_(float temp, float setpoint, float comfort_band, float preheat_advance_c,
+                                            float absorb_band_c) const {
   if (std::isnan(temp))
     return ZoneState::UNKNOWN;
 
   preheat_advance_c = std::clamp(preheat_advance_c, 0.0f, SIMPLE_PREHEAT_MAX_ADVANCE_C);
   float demand_threshold_c = setpoint - comfort_band + preheat_advance_c;
 
-  if (temp > setpoint + comfort_band)
+  // absorb_band_c > 0 while external pre-buffering is being absorbed: the zone
+  // stays SATISFIED (maintenance opening) up to the raised cutoff.
+  if (temp > setpoint + comfort_band + absorb_band_c)
     return ZoneState::OVERHEATED;
   if (temp >= demand_threshold_c)
     return ZoneState::SATISFIED;
@@ -1474,177 +1448,6 @@ float Hv6ZoneController::floor_correction_factor_(FloorType type, float cover_th
 }
 
 // =============================================================================
-// MQTT Zigbee2MQTT Subscription
-// =============================================================================
-
-void Hv6ZoneController::setup_mqtt_subscription_() {
-#ifdef USE_MQTT
-  if (esphome::mqtt::global_mqtt_client == nullptr) {
-    ESP_LOGW(TAG, "MQTT client not available, zigbee temp disabled");
-    return;
-  }
-  esphome::mqtt::global_mqtt_client->subscribe(
-      "zigbee2mqtt/+",
-      [this](const std::string &topic, const std::string &payload) {
-        this->handle_zigbee_mqtt_(topic, payload);
-      },
-      0);
-  ESP_LOGI(TAG, "Subscribed to zigbee2mqtt/+ for external temperatures");
-
-  // Request current temperature from configured Zigbee devices with startup delay
-  // and exponential backoff. Stop after max retries and wait for natural reports.
-  mqtt_startup_query_retry_count_ = 0;
-  mqtt_startup_query_next_retry_ms_ = MQTT_STARTUP_QUERY_DELAY_MS;
-  mqtt_startup_query_next_zone_ = 0;
-  mqtt_startup_query_round_active_ = false;
-  mqtt_startup_query_round_remaining_ = 0;
-  this->set_interval("mqtt_startup_query", MQTT_STARTUP_QUERY_TICK_MS, [this]() {
-    if (!esphome::mqtt::global_mqtt_client->is_connected())
-      return;
-
-    uint32_t uptime_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
-    if (uptime_ms < mqtt_startup_query_next_retry_ms_)
-      return;
-
-    if (!config_store_)
-      return;
-
-    auto cfg = config_store_->get_config();
-
-    uint8_t pending_count = 0;
-    for (uint8_t z = 0; z < NUM_ZONES; z++) {
-      if (cfg.mqtt_temp.zone_temp_source[z] == TempSource::MQTT_EXTERNAL &&
-          cfg.mqtt_temp.zone_mqtt_device[z][0] != '\0' &&
-          mqtt_temp_last_ms_[z] == 0) {
-        pending_count++;
-      }
-    }
-
-    if (pending_count == 0) {
-      ESP_LOGI(TAG, "Startup MQTT temperature query completed (all configured zones updated)");
-      this->cancel_interval("mqtt_startup_query");
-      return;
-    }
-
-    // Start a new round only after the retry delay has elapsed.
-    if (!mqtt_startup_query_round_active_) {
-      if (mqtt_startup_query_retry_count_ >= MQTT_STARTUP_QUERY_MAX_RETRIES) {
-        ESP_LOGW(TAG, "Startup MQTT temperature query reached max retries (%u); waiting for natural updates",
-                 MQTT_STARTUP_QUERY_MAX_RETRIES);
-        this->cancel_interval("mqtt_startup_query");
-        return;
-      }
-      mqtt_startup_query_round_active_ = true;
-      mqtt_startup_query_round_remaining_ = pending_count;
-    }
-
-    // One-at-a-time query to avoid burst traffic on startup.
-    bool requested = false;
-    for (uint8_t i = 0; i < NUM_ZONES; i++) {
-      uint8_t z = static_cast<uint8_t>((mqtt_startup_query_next_zone_ + i) % NUM_ZONES);
-      if (cfg.mqtt_temp.zone_temp_source[z] == TempSource::MQTT_EXTERNAL &&
-          cfg.mqtt_temp.zone_mqtt_device[z][0] != '\0' &&
-          mqtt_temp_last_ms_[z] == 0) {
-        request_zigbee_temperature_(std::string(cfg.mqtt_temp.zone_mqtt_device[z]));
-        mqtt_startup_query_next_zone_ = static_cast<uint8_t>((z + 1) % NUM_ZONES);
-        requested = true;
-        break;
-      }
-    }
-
-    if (!requested) {
-      mqtt_startup_query_round_active_ = false;
-      mqtt_startup_query_round_remaining_ = 0;
-      return;
-    }
-
-    if (mqtt_startup_query_round_remaining_ > 0)
-      mqtt_startup_query_round_remaining_--;
-
-    if (mqtt_startup_query_round_remaining_ > 0)
-      return;
-
-    // Round completed: schedule the next round with exponential backoff.
-    mqtt_startup_query_round_active_ = false;
-    mqtt_startup_query_retry_count_++;
-
-    if (mqtt_startup_query_retry_count_ >= MQTT_STARTUP_QUERY_MAX_RETRIES) {
-      ESP_LOGW(TAG, "Startup MQTT temperature query reached max retries (%u); waiting for natural updates",
-               MQTT_STARTUP_QUERY_MAX_RETRIES);
-      this->cancel_interval("mqtt_startup_query");
-      return;
-    }
-
-    uint8_t exp = mqtt_startup_query_retry_count_ - 1;
-    uint32_t backoff_ms = MQTT_STARTUP_QUERY_BACKOFF_BASE_MS;
-    if (exp > 0)
-      backoff_ms <<= exp;
-    mqtt_startup_query_next_retry_ms_ = uptime_ms + backoff_ms;
-    ESP_LOGI(TAG, "Startup MQTT temperature query retry %u/%u in %" PRIu32 "ms",
-             mqtt_startup_query_retry_count_, MQTT_STARTUP_QUERY_MAX_RETRIES, backoff_ms);
-  });
-#else
-  ESP_LOGD(TAG, "MQTT not enabled, zigbee temp subscription skipped");
-#endif
-}
-
-void Hv6ZoneController::handle_zigbee_mqtt_(const std::string &topic, const std::string &payload) {
-  // Extract device name from topic: "zigbee2mqtt/<device_name>"
-  size_t last_slash = topic.rfind('/');
-  if (last_slash == std::string::npos)
-    return;
-  std::string device_name = topic.substr(last_slash + 1);
-  if (device_name.empty() || device_name == "bridge")
-    return;
-
-  // Parse JSON payload for "temperature" field
-  float temperature = NAN;
-#ifdef USE_MQTT
-  esphome::json::parse_json(payload, [&temperature](JsonObject root) -> bool {
-    if (root["temperature"].is<float>()) {
-      temperature = root["temperature"].as<float>();
-      return true;
-    }
-    return false;
-  });
-#endif
-
-  if (std::isnan(temperature)) {
-    return;
-  }
-
-  ESP_LOGD(TAG, "MQTT temp from '%s': %.2f°C", device_name.c_str(), temperature);
-
-  // Match device name against configured zones
-  if (!config_store_)
-    return;
-  auto cfg = config_store_->get_config();
-  bool matched = false;
-  for (uint8_t z = 0; z < NUM_ZONES; z++) {
-    if (cfg.mqtt_temp.zone_mqtt_device[z][0] == '\0')
-      continue;
-    if (device_name == cfg.mqtt_temp.zone_mqtt_device[z]) {
-      set_zone_mqtt_temperature(z, temperature);
-      matched = true;
-    }
-  }
-  if (!matched) {
-    ESP_LOGD(TAG, "MQTT device '%s' not assigned to any zone", device_name.c_str());
-  }
-}
-
-void Hv6ZoneController::request_zigbee_temperature_(const std::string &device_name) {
-#ifdef USE_MQTT
-  if (esphome::mqtt::global_mqtt_client == nullptr || device_name.empty())
-    return;
-  std::string topic = "zigbee2mqtt/" + device_name + "/get";
-  std::string payload = "{\"temperature\":\"\"}";
-  esphome::mqtt::global_mqtt_client->publish(topic, payload, 0, false);
-  ESP_LOGI(TAG, "Requested temperature from '%s'", device_name.c_str());
-#endif
-}
-
-// =============================================================================
 // State Machine Updates
 // =============================================================================
 
@@ -1814,6 +1617,75 @@ void Hv6ZoneController::update_zone_display_states_() {
     }
   }
   xSemaphoreGive(snapshot_mutex_);
+}
+
+// =============================================================================
+// BLE Sensor Discovery
+// =============================================================================
+
+void Hv6ZoneController::report_ble_sensor_seen(const char *mac, float temp_c, int8_t rssi) {
+  if (ble_seen_mutex_ == nullptr || mac == nullptr)
+    return;
+  if (xSemaphoreTake(ble_seen_mutex_, pdMS_TO_TICKS(5)) != pdTRUE)
+    return;
+
+  uint32_t now = esphome::millis();
+  int oldest_slot = 0;
+  uint32_t oldest_ms = UINT32_MAX;
+
+  for (uint8_t i = 0; i < BLE_SEEN_SLOTS; i++) {
+    if (ble_seen_[i].mac[0] == '\0') {
+      // Empty slot — claim it
+      strncpy(ble_seen_[i].mac, mac, sizeof(ble_seen_[i].mac) - 1);
+      ble_seen_[i].mac[sizeof(ble_seen_[i].mac) - 1] = '\0';
+      ble_seen_[i].temp_c = temp_c;
+      ble_seen_[i].rssi = rssi;
+      ble_seen_[i].last_ms = now;
+      if (ble_seen_count_ < BLE_SEEN_SLOTS)
+        ble_seen_count_++;
+      xSemaphoreGive(ble_seen_mutex_);
+      return;
+    }
+    if (memcmp(ble_seen_[i].mac, mac, 17) == 0) {
+      // Already tracked — update
+      ble_seen_[i].temp_c = temp_c;
+      ble_seen_[i].rssi = rssi;
+      ble_seen_[i].last_ms = now;
+      xSemaphoreGive(ble_seen_mutex_);
+      return;
+    }
+    if (ble_seen_[i].last_ms < oldest_ms) {
+      oldest_ms = ble_seen_[i].last_ms;
+      oldest_slot = i;
+    }
+  }
+
+  // All slots occupied — evict oldest
+  strncpy(ble_seen_[oldest_slot].mac, mac, sizeof(ble_seen_[0].mac) - 1);
+  ble_seen_[oldest_slot].mac[sizeof(ble_seen_[0].mac) - 1] = '\0';
+  ble_seen_[oldest_slot].temp_c = temp_c;
+  ble_seen_[oldest_slot].rssi = rssi;
+  ble_seen_[oldest_slot].last_ms = now;
+  xSemaphoreGive(ble_seen_mutex_);
+}
+
+uint8_t Hv6ZoneController::get_ble_discovered(BleSensorSeen *out, uint8_t max) const {
+  if (ble_seen_mutex_ == nullptr || out == nullptr || max == 0)
+    return 0;
+  if (xSemaphoreTake(ble_seen_mutex_, pdMS_TO_TICKS(20)) != pdTRUE)
+    return 0;
+
+  uint32_t now = esphome::millis();
+  uint8_t count = 0;
+  for (uint8_t i = 0; i < BLE_SEEN_SLOTS && count < max; i++) {
+    if (ble_seen_[i].mac[0] == '\0')
+      continue;
+    if ((now - ble_seen_[i].last_ms) > BLE_SEEN_STALE_MS)
+      continue;
+    out[count++] = ble_seen_[i];
+  }
+  xSemaphoreGive(ble_seen_mutex_);
+  return count;
 }
 
 }  // namespace hv6

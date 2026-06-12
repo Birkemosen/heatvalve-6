@@ -11,7 +11,6 @@
 #include "esphome/core/component.h"
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/components/sensor/sensor.h"
-#include "esphome/components/text_sensor/text_sensor.h"
 #include "../hv6_config_store/hv6_config_store.h"
 #include "../hv6_config_store/hv6_types.h"
 #include "drv8215.h"
@@ -58,7 +57,6 @@ class Hv6ValveController : public esphome::Component {
   void set_nfault_pin(int pin) { nfault_pin_ = static_cast<gpio_num_t>(pin); }
   void set_ipropi_pin(int pin) { ipropi_pin_ = static_cast<gpio_num_t>(pin); }
   void set_current_sensor(esphome::sensor::Sensor *sensor) { current_sensor_ = sensor; }
-  void set_trace_text_sensor(esphome::text_sensor::TextSensor *sensor) { trace_text_sensor_ = sensor; }
   void set_motor_address(uint8_t index, uint8_t address) {
     if (index < NUM_ZONES)
       motor_addresses_[index] = address;
@@ -115,10 +113,9 @@ class Hv6ValveController : public esphome::Component {
   static constexpr uint32_t RELEARN_CHECK_INTERVAL_MS = 10000;  ///< Check relearn triggers every 10s
   static constexpr uint32_t CALIBRATION_REQUEST_GUARD_MS = 15000;  ///< Ignore calibration requests briefly after boot
   static constexpr uint32_t AUTO_START_DELAY_MS = 10000;  ///< Delay after boot before auto-enable + full calibration
-  static constexpr bool DEVELOPMENT_KEEP_NSLEEP_AWAKE = true;   ///< Avoid nSLEEP toggling while debugging brownout/resets
+  static constexpr bool DEVELOPMENT_KEEP_NSLEEP_AWAKE = false;  ///< Set true only when debugging brownout/resets
   static constexpr uint16_t TRACE_MAX_SAMPLES = 2000;
   static constexpr uint32_t TRACE_SAMPLE_PERIOD_US = 2000;
-  static constexpr uint32_t TRACE_MQTT_PUBLISH_INTERVAL_MS = 500;  // Publish every 500ms
 
   // Ripple detection constants (DMA continuous mode @ 15 kHz)
   static constexpr uint32_t RIPPLE_SAMPLE_RATE_HZ      = 15000;
@@ -192,13 +189,11 @@ class Hv6ValveController : public esphome::Component {
   float flow_to_physical_pct_(uint8_t zone, float flow_pct);
   void trace_reset_();
   void trace_sample_(int raw_adc, float current_ma);
-  void trace_publish_to_mqtt_();
 
   // Component references
   Hv6ConfigStore *config_store_ = nullptr;
   esphome::i2c::I2CBus *i2c_bus_ = nullptr;
   esphome::sensor::Sensor *current_sensor_ = nullptr;
-  esphome::text_sensor::TextSensor *trace_text_sensor_ = nullptr;
 
   // Pin configuration
   gpio_num_t nsleep_pin_ = GPIO_NUM_6;
@@ -293,18 +288,16 @@ class Hv6ValveController : public esphome::Component {
   uint8_t fsm_tick_count_ = 0;
   float latest_current_ma_ = 0.0f;
   uint32_t last_publish_ms_ = 0;
-  uint32_t boot_time_ms_ = 0;  // Set after setup() completes; guards MQTT retained replay
+  uint32_t boot_time_ms_ = 0;  // Set after setup() completes; guards replayed startup commands
   bool auto_start_done_ = false;  // Set once auto-enable + calibration runs on boot
 
-  // High-rate motor trace buffer (streamed to HA via MQTT)
+  // High-rate motor trace buffer — PSRAM-allocated in setup() to save ~31 KB of internal heap
   mutable SemaphoreHandle_t trace_mutex_ = nullptr;
-  std::array<MotorTraceSample, TRACE_MAX_SAMPLES> trace_samples_{};
+  MotorTraceSample *trace_samples_{nullptr};
   uint16_t trace_write_index_ = 0;
   bool trace_wrapped_ = false;
   uint32_t trace_start_us_ = 0;
   uint32_t trace_last_sample_us_ = 0;
-  uint16_t trace_last_mqtt_index_ = 0;  // Track published samples
-  uint32_t trace_last_mqtt_publish_ms_ = 0;
 };
 
 }  // namespace hv6

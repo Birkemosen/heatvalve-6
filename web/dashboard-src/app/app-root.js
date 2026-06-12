@@ -234,6 +234,7 @@ const template = (ctx) => `
           <div class="settings-control-slot"></div>
           <div class="settings-motor-cal-slot"></div>
           <div class="settings-helios-slot"></div>
+          <div class="settings-asgard-slot"></div>
         </div>
       </section>
       <div class="ftr">HEATVALVE-6 · UFH CONTROLLER</div>
@@ -265,6 +266,7 @@ component({
     el.querySelector('.settings-control-slot').appendChild(mountComponent('settings-control-card'));
     el.querySelector('.settings-motor-cal-slot').appendChild(mountComponent('settings-motor-calibration-card'));
     el.querySelector('.settings-helios-slot').appendChild(mountComponent('settings-helios-card'));
+    el.querySelector('.settings-asgard-slot').appendChild(mountComponent('settings-asgard-card'));
 
     el.querySelector('.diag-manual-badge-slot').appendChild(mountComponent('diag-manual-badge'));
 

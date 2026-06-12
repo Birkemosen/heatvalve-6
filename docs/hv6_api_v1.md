@@ -12,37 +12,43 @@ This document defines the dedicated dashboard API contract for HeatValve-6.
 
 ## Current Implementation Status
 
-- Implemented now:
-  - `GET /api/hv6/v1/overview`
-  - `GET /api/hv6/v1/zones`
+All endpoints are served by the `hv6_dashboard` component as an `AsyncWebHandler` on the
+device web server (port 80). The legacy `/dashboard/set`, `/dashboard/state`,
+`/dashboard/history` and `/dashboard/ble-scan` routes have been removed; the dashboard app
+itself is still served at `/dashboard` + `/dashboard.js`.
+
+- Read endpoints (raw JSON, no envelope yet — see "Planned"):
+  - `GET /api/hv6/v1/state` — full dashboard snapshot (entity-id → value map consumed by the frontend store)
+  - `GET /api/hv6/v1/history` — 24 h zone-state ring buffer
+  - `GET /api/hv6/v1/ble-scan` — discovered BTHome sensors
+  - `GET /api/hv6/v1/peer` — compact board-to-board zone snapshot
+    (`{"ok":true,"zones":[{"t":21.4,"area":18.5,"en":true},…]}`) consumed by the peer
+    board's Asgard bridge; see [ecodan_integration.md](ecodan_integration.md)
+- Write endpoints (query parameters; return the v1 response envelope):
   - `POST /api/hv6/v1/zones/{zone}/setpoint?setpoint_c=<float>`
   - `POST /api/hv6/v1/zones/{zone}/enabled?enabled=true|false`
   - `POST /api/hv6/v1/commands?command=<name>[&zone=1..6]`
   - `POST /api/hv6/v1/drivers/enabled?enabled=true|false`
-  - `POST /api/hv6/v1/motor/auto_learn?enabled=true|false`
   - `POST /api/hv6/v1/motors/{zone}/target?value=<0..100>`
-  - `POST /api/hv6/v1/motors/{zone}/open`
-  - `POST /api/hv6/v1/motors/{zone}/open_timed?duration_ms=<1..60000>`
-  - `POST /api/hv6/v1/motors/{zone}/close`
-  - `POST /api/hv6/v1/motors/{zone}/close_timed?duration_ms=<1..60000>`
+  - `POST /api/hv6/v1/motors/{zone}/open_timed`
+  - `POST /api/hv6/v1/motors/{zone}/close_timed`
   - `POST /api/hv6/v1/motors/{zone}/stop`
-  - `POST /api/hv6/v1/settings/select?key=<name>&value=<value>&zone=<1..6>`
-  - `POST /api/hv6/v1/settings/number?key=<name>&value=<value>&zone=<1..6>`
-  - `POST /api/hv6/v1/settings/text?key=<name>&value=<value>&zone=<1..6>`
+  - `POST /api/hv6/v1/settings/select?key=<name>&value=<value>[&zone=1..6]`
+  - `POST /api/hv6/v1/settings/number?key=<name>&value=<value>[&zone=1..6]`
+  - `POST /api/hv6/v1/settings/text?key=<name>&value=<value>[&zone=1..6]`
   - `POST /api/hv6/v1/manual_mode?enabled=true|false`
-- Current server port: `8081` (configured in `hv6_web_api.port`)
-- Next endpoint implementation target:
+- Planned (not yet implemented):
+  - `GET /api/hv6/v1/overview`, `GET /api/hv6/v1/zones` (enveloped, resource-shaped reads replacing `/state`)
   - `GET /api/hv6/v1/events` (SSE)
-
-Note: write endpoints currently accept query parameters to avoid browser preflight friction during cross-port migration. JSON body support can be added once same-port serving is finalized.
+  - JSON body support on write endpoints
 
 Implemented command names:
 
-- `calibrate_all_motors`
 - `i2c_scan`
 - `motor_reset_fault` (requires `zone`)
 - `motor_reset_and_relearn` (requires `zone`)
 - `motor_reset_learned_factors` (requires `zone`)
+- `open_motor_timed` / `close_motor_timed` / `stop_motor` (requires `zone`; also exposed as motor routes)
 
 ## Response Envelope
 

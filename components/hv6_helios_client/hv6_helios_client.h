@@ -46,10 +46,11 @@ class Hv6HeliosClient : public esphome::Component {
   uint32_t get_last_success_age_s() const;
 
  protected:
-  static constexpr uint32_t STACK_SIZE = 8192;
-  static constexpr UBaseType_t PRIORITY = 3;
-  static constexpr BaseType_t CORE = 0;
-  static constexpr uint32_t HTTP_TIMEOUT_MS = 10000;
+  static constexpr uint32_t STACK_SIZE = 12288;  ///< 12 KB — sufficient for esp_http_client + JSON parsing
+  static constexpr UBaseType_t PRIORITY = 1;     ///< Same as loopTask — cooperatively yields during socket I/O
+  static constexpr BaseType_t CORE = 1;          ///< Core 1 (loopTask's core); keeps WiFi/lwIP/httpd on Core 0 untouched
+  /// HTTP timeout: 3s — fail fast when Helios endpoint is unreachable
+  static constexpr uint32_t HTTP_TIMEOUT_MS = 3000;
 
   void run_();
   static void task_func_(void *arg);

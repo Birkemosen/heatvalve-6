@@ -33,7 +33,7 @@ class Hv6ConfigStore : public esphome::Component {
   ManifoldType get_manifold_type() const;
   ProbeConfig get_probe_config() const;
   TempSource get_zone_temp_source(uint8_t zone) const;
-  void get_zone_mqtt_strings(uint8_t zone, char *device, size_t dev_len, char *ble, size_t ble_len) const;
+  void get_zone_ble_mac_str(uint8_t zone, char *ble, size_t ble_len) const;
   void set_config(const DeviceConfig &config);
   void mark_dirty();
 
@@ -43,11 +43,12 @@ class Hv6ConfigStore : public esphome::Component {
   void update_probes(const ProbeConfig &probes);
   void update_pid(const PIDParams &pid);
   void update_motor(const MotorConfig &motor);
-  void update_mqtt_temp(const MqttTempConfig &mqtt_temp);
+  void update_sensor_config(const SensorConfig &sensor_config);
   void update_balancing(const BalancingConfig &balancing);
-  void update_mqtt_broker(const MqttBrokerConfig &mqtt_broker);
   void update_helios(const HeliosConfig &helios);
   HeliosConfig get_helios_config() const;
+  void update_asgard(const AsgardConfig &asgard);
+  AsgardConfig get_asgard_config() const;
 
   // Motor telemetry persistence (calibration data)
   void save_motor_telemetry(uint8_t motor, const MotorTelemetry &telemetry);

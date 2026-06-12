@@ -1,7 +1,7 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { command, setDriversEnabled, setGlobalSelect } from '../../core/api.js';
-import { es, isEntityOn } from '../../core/store.js';
+import { command, setDriversEnabled, setGlobalSelect, setGlobalNumber } from '../../core/api.js';
+import { es, ev, isEntityOn, setEntity } from '../../core/store.js';
 import { gkey } from '../../utils/keys.js';
 
 // ========================================
@@ -96,6 +96,52 @@ const css = `
   gap: 10px;
 }
 
+.settings-card .absorb-badge {
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: rgba(70,70,70,.28);
+  color: #ADADAD;
+  border: 1px solid rgba(150,150,150,.25);
+}
+
+.settings-card .absorb-badge.active {
+  background: rgba(45,110,45,.36);
+  color: #CBFFD0;
+  border-color: rgba(100,255,100,.35);
+}
+
+.settings-card .num-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.settings-card .num-row .lbl {
+  display: block;
+  color: var(--text-secondary);
+  font-size: .74rem;
+  font-weight: 700;
+  letter-spacing: .45px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.settings-card .num-row .inp {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: .88rem;
+}
+
 .settings-card .btn {
   width: 100%;
   min-width: 0;
@@ -154,6 +200,20 @@ const template = () => `
       <div class="toggle-row">
         <span class="toggle-label">Simple Preheat</span>
         <div class="ui-toggle preheat-toggle" role="switch" aria-label="Toggle simple preheat"></div>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Preheat Absorption <span class="absorb-badge">idle</span></span>
+        <div class="ui-toggle absorb-toggle" role="switch" aria-label="Toggle preheat absorption"></div>
+      </div>
+      <div class="num-row">
+        <div>
+          <span class="lbl">Absorb band (°C)</span>
+          <input class="inp absorb-band" type="number" min="0" max="5" step="0.1" placeholder="1.0" />
+        </div>
+        <div>
+          <span class="lbl">Detect delta (°C)</span>
+          <input class="inp absorb-delta" type="number" min="2" max="25" step="0.5" placeholder="8.0" />
+        </div>
       </div>
     </div>
 
@@ -215,6 +275,60 @@ export default component({
     });
     subscribe(gkey.simplePreheatEnabled, updatePreheatToggle);
     updatePreheatToggle();
+
+    // --- preheat absorption (external pre-buffering, e.g. Odin via Asgard) ---
+    const absorbToggle = el.querySelector('.absorb-toggle');
+    const absorbRow = absorbToggle.closest('.toggle-row');
+    const absorbBadge = el.querySelector('.absorb-badge');
+    const absorbBandEl = el.querySelector('.absorb-band');
+    const absorbDeltaEl = el.querySelector('.absorb-delta');
+
+    function updateAbsorbToggle() {
+      const enabled = isEntityOn(gkey.preheatAbsorbEnabled);
+      absorbToggle.classList.toggle('on', enabled);
+      absorbRow.classList.toggle('is-on', enabled);
+      absorbToggle.setAttribute('aria-checked', enabled ? 'true' : 'false');
+
+      const absorbing = String(es(gkey.preheatAbsorbing) || '').toLowerCase() === 'active';
+      absorbBadge.textContent = absorbing ? 'active' : 'idle';
+      absorbBadge.classList.toggle('active', absorbing);
+    }
+
+    absorbToggle.addEventListener('click', () => {
+      const next = isEntityOn(gkey.preheatAbsorbEnabled) ? 'off' : 'on';
+      setEntity(gkey.preheatAbsorbEnabled, { state: next });
+      setGlobalSelect('preheat_absorb_enabled', next);
+    });
+
+    function populateAbsorbInputs() {
+      const band = ev(gkey.preheatAbsorbBandC);
+      const delta = ev(gkey.preheatDetectDeltaC);
+      if (document.activeElement !== absorbBandEl && band != null) absorbBandEl.value = band;
+      if (document.activeElement !== absorbDeltaEl && delta != null) absorbDeltaEl.value = delta;
+    }
+
+    absorbBandEl.addEventListener('blur', () => {
+      const v = parseFloat(absorbBandEl.value);
+      if (v >= 0 && v <= 5) {
+        setEntity(gkey.preheatAbsorbBandC, { value: v });
+        setGlobalNumber('preheat_absorb_band_c', v);
+      }
+    });
+
+    absorbDeltaEl.addEventListener('blur', () => {
+      const v = parseFloat(absorbDeltaEl.value);
+      if (v >= 2 && v <= 25) {
+        setEntity(gkey.preheatDetectDeltaC, { value: v });
+        setGlobalNumber('preheat_detect_delta_c', v);
+      }
+    });
+
+    subscribe(gkey.preheatAbsorbEnabled, updateAbsorbToggle);
+    subscribe(gkey.preheatAbsorbing,     updateAbsorbToggle);
+    subscribe(gkey.preheatAbsorbBandC,   populateAbsorbInputs);
+    subscribe(gkey.preheatDetectDeltaC,  populateAbsorbInputs);
+    updateAbsorbToggle();
+    populateAbsorbInputs();
 
     el.querySelector('.sc-reset-probe-map').addEventListener('click', () => {
       command('reset_1wire_probe_map_reboot');

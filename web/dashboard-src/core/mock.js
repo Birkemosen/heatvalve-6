@@ -40,7 +40,6 @@ function seed() {
     setEntity(key.pipeType(zone), { state: 'PEX 16mm' });
     setEntity(key.area(zone), { value: 8 + zone * 3.5 });
     setEntity(key.spacing(zone), { value: [150, 200, 150, 100, 200, 150][index] });
-    setEntity(key.zigbee(zone), { state: 'zone_' + zone + '_mock_sensor' });
     setEntity(key.ble(zone), { state: 'AA:BB:CC:DD:EE:0' + zone });
     setEntity(key.exteriorWalls(zone), { state: ['N', 'E', 'S', 'W', 'N,E', 'S,W'][index] });
     setEntity(key.preheatAdvance(zone), { value: 0.08 + (index * 0.03) });
@@ -277,7 +276,6 @@ export function handleMockPost(body) {
   if (k === 'simple_preheat_enabled') { setEntity(gkey.simplePreheatEnabled, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
 
   // Text settings
-  if (k === 'zone_zigbee_device' && zone >= 1) { setEntity(key.zigbee(zone), { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
   if (k === 'zone_ble_mac' && zone >= 1) { setEntity(key.ble(zone), { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
   if (k === 'zone_exterior_walls' && zone >= 1) { setEntity(key.exteriorWalls(zone), { state: String(v) || 'None' }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
 

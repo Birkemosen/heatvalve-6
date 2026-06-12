@@ -2,14 +2,18 @@
 // HV6 Helios Client — ESPHome Component Implementation
 // =============================================================================
 // Pushes state snapshots to Helios-3 and applies optimizer commands.
-// HTTP calls run in a dedicated FreeRTOS task (STACK_SIZE = 8 KB, CORE 0).
-// Uses ESP-IDF esp_http_client directly for full control over timeouts.
+// HTTP calls run in a dedicated FreeRTOS task on Core 1 (loopTask's core),
+// priority 1, 12 KB stack. Uses ESP-IDF esp_http_client directly. Stability
+// gates inside run_() prevent any HTTP work until WiFi is up and the user
+// has explicitly configured `enabled = true` AND a non-empty `host`.
 // =============================================================================
 
 #include "hv6_helios_client.h"
 #include "esphome/core/log.h"
+#include "esphome/components/network/util.h"
 #include "esp_http_client.h"
 #include "esp_timer.h"
+#include "esp_random.h"
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -34,17 +38,28 @@ void Hv6HeliosClient::setup() {
 
   cached_cfg_ = config_store_->get_helios_config();
 
+  // Always spawn the task — it self-quiesces (sleeps in 5 s ticks, no HTTP)
+  // when `enabled` is false or `host` is empty. This lets the user toggle
+  // Helios on/off at runtime without rebooting.
   xTaskCreatePinnedToCore(
       task_func_, "hv6_helios", STACK_SIZE,
       this, PRIORITY, &task_handle_, CORE);
 
-  ESP_LOGI(TAG, "Helios client started (host=%s port=%u interval=%us)",
+  ESP_LOGI(TAG, "Helios client task spawned (core=%d prio=%u stack=%u)",
+           (int) CORE, (unsigned) PRIORITY, (unsigned) STACK_SIZE);
+  ESP_LOGI(TAG, "  config: enabled=%s host='%s' port=%u interval=%us",
+           cached_cfg_.enabled ? "yes" : "no",
            cached_cfg_.host, cached_cfg_.port, cached_cfg_.poll_interval_s);
 }
 
 void Hv6HeliosClient::loop() {
-  // Refresh cached config periodically so changes are picked up.
-  // The task itself always reads fresh config before each HTTP call.
+  // Throttle config refresh to ~once per second instead of every loop tick
+  // (loopTask runs at ~1 kHz). The task itself reads fresh config each cycle.
+  static uint32_t last_refresh_ms = 0;
+  uint32_t now_ms = millis();
+  if ((now_ms - last_refresh_ms) < 1000) return;
+  last_refresh_ms = now_ms;
+
   cached_cfg_ = config_store_->get_helios_config();
 
   if (!cached_cfg_.enabled)
@@ -96,8 +111,9 @@ uint32_t Hv6HeliosClient::get_last_success_age_s() const {
 }
 
 void Hv6HeliosClient::run_() {
-  // Initial startup delay — let WiFi and config store settle.
-  vTaskDelay(pdMS_TO_TICKS(5000));
+  // Boot warmup — let WiFi associate and NTP sync before doing HTTP work,
+  // and avoid contending for the lwIP TCPIP thread during startup.
+  vTaskDelay(pdMS_TO_TICKS(30000));
 
   while (true) {
     hv6::HeliosConfig cfg = config_store_->get_helios_config();
@@ -106,19 +122,51 @@ void Hv6HeliosClient::run_() {
     strncpy(active_endpoint_, cfg.host, sizeof(active_endpoint_) - 1);
     active_endpoint_[sizeof(active_endpoint_) - 1] = '\0';
 
-    if (cfg.enabled && strlen(cfg.host) > 0) {
-      bool ok_post = post_snapshot_(cfg);
-      bool ok_get  = get_commands_(cfg);
-      if (ok_post && ok_get) {
+    // ---- Stability gates --------------------------------------------------
+    // Quiesce conditions (no HTTP work): user disabled, no host configured,
+    // or network not up. Sleep in 5 s ticks so we react quickly when the
+    // user enables Helios at runtime, without spinning.
+    bool config_ok = cfg.enabled && strlen(cfg.host) > 0;
+    bool network_ok = esphome::network::is_connected();
+
+    if (!config_ok || !network_ok) {
+      if (!config_ok) {
+        // Reset failure state while disabled so we start fresh on enable.
         consecutive_failures_ = 0;
-        last_success_s_ = mono_s_();
-        last_error_[0] = '\0';
+        next_retry_at_s_ = 0;
       } else {
-        if (consecutive_failures_ < 0xFFFFFFFFu) consecutive_failures_++;
+        ESP_LOGD(TAG, "Helios: waiting for network");
       }
+      vTaskDelay(pdMS_TO_TICKS(5000));
+      continue;
     }
 
-    uint32_t sleep_s = (cfg.poll_interval_s > 0) ? cfg.poll_interval_s : 30;
+    // ---- HTTP cycle -------------------------------------------------------
+    bool ok_post = post_snapshot_(cfg);
+    // Only fetch commands if the snapshot POST succeeded — if the host is
+    // unreachable, the POST already timed out (HTTP_TIMEOUT_MS) and a second
+    // GET attempt would just block lwIP for another full timeout period.
+    bool ok_get = ok_post && get_commands_(cfg);
+    if (ok_post && ok_get) {
+      consecutive_failures_ = 0;
+      last_success_s_ = mono_s_();
+      last_error_[0] = '\0';
+    } else {
+      if (consecutive_failures_ < 0xFFFFFFFFu) consecutive_failures_++;
+    }
+
+    // ---- Sleep with exponential backoff + jitter --------------------------
+    uint32_t base_s = (cfg.poll_interval_s > 0) ? cfg.poll_interval_s : 60;
+    uint32_t sleep_s = base_s;
+    if (consecutive_failures_ > 0) {
+      uint32_t shift = std::min<uint32_t>(consecutive_failures_, 8);  // max 2^8 = 256×
+      sleep_s = std::min<uint32_t>(base_s * (1u << shift), 300);      // cap at 5 minutes
+      // Jitter ±10% to avoid thundering herd on shared Helios endpoint.
+      uint32_t jitter = (esp_random() % (sleep_s / 5 + 1));
+      sleep_s = sleep_s - (sleep_s / 10) + jitter;
+      ESP_LOGD(TAG, "Helios backoff: %u failures, sleeping %u s",
+               consecutive_failures_, sleep_s);
+    }
     next_retry_at_s_ = mono_s_() + sleep_s;
     vTaskDelay(pdMS_TO_TICKS(sleep_s * 1000));
   }
@@ -331,14 +379,16 @@ std::string Hv6HeliosClient::build_snapshot_json_(const hv6::HeliosConfig &cfg,
   off += snprintf(buf + off, sizeof(buf) - off,
       "{\"controller_id\":\"%s\",\"ts\":%lu,"
       "\"system\":{\"input_temp\":%.2f,\"output_temp\":%.2f,"
-      "\"avg_valve\":%.3f,\"active_zones\":%u,\"zone_count\":%u},"
+      "\"avg_valve\":%.3f,\"active_zones\":%u,\"zone_count\":%u,"
+      "\"preheat_absorbing\":%s},"
       "\"zones\":{",
       cid, (unsigned long) ts,
       std::isnan(sys.manifold_flow_temp_c) ? 0.0f : sys.manifold_flow_temp_c,
       std::isnan(sys.manifold_return_temp_c) ? 0.0f : sys.manifold_return_temp_c,
       avg_valve,
       static_cast<unsigned>(sys.active_zones),
-      static_cast<unsigned>(hv6::NUM_ZONES));
+      static_cast<unsigned>(hv6::NUM_ZONES),
+      sys.preheat_absorbing ? "true" : "false");
 
   for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
     const hv6::ZoneSnapshot &z = sys.zones[i];

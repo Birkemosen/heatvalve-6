@@ -4,10 +4,15 @@
 #ifdef USE_HV6_HELIOS_CLIENT
 #include "../hv6_helios_client/hv6_helios_client.h"
 #endif
+#ifdef USE_HV6_ASGARD_BRIDGE
+#include "../hv6_asgard_bridge/hv6_asgard_bridge.h"
+#endif
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <cstdarg>
+#include <ctime>
 #include <esp_http_server.h>
 
 namespace esphome {
@@ -120,12 +125,7 @@ static bool parse_probe_option(const char *raw, int8_t *out) {
 
 static bool parse_temp_source(const char *raw, hv6::TempSource *out) {
   if (strcasecmp(raw, "Local Probe") == 0) { *out = hv6::TempSource::LOCAL_PROBE; return true; }
-  if (strcasecmp(raw, "MQTT") == 0 || strcasecmp(raw, "MQTT Sensor") == 0 || strcasecmp(raw, "Zigbee MQTT") == 0 ||
-      strcasecmp(raw, "MQTT Variant") == 0) {
-    *out = hv6::TempSource::MQTT_EXTERNAL;
-    return true;
-  }
-  if (strcasecmp(raw, "BLE") == 0 || strcasecmp(raw, "BLE Sensor") == 0 || strcasecmp(raw, "BLE Variant") == 0) {
+  if (strcasecmp(raw, "BLE") == 0 || strcasecmp(raw, "BLE Sensor") == 0) {
     *out = hv6::TempSource::BLE_SENSOR;
     return true;
   }
@@ -133,23 +133,15 @@ static bool parse_temp_source(const char *raw, hv6::TempSource *out) {
 }
 
 static const char *dashboard_variant_str() {
-#ifdef USE_MQTT
-  return "mqtt";
-#elif defined(USE_ESP32_BLE)
   return "ble";
-#else
-  return "local";
-#endif
 }
 
 static const char *temp_source_to_dashboard_str(hv6::TempSource src) {
   switch (src) {
     case hv6::TempSource::LOCAL_PROBE:
       return "Local Probe";
-    case hv6::TempSource::MQTT_EXTERNAL:
-  return "MQTT";
     case hv6::TempSource::BLE_SENSOR:
-  return "BLE";
+      return "BLE";
     default:
       return "Local Probe";
   }
@@ -295,21 +287,49 @@ void HV6Dashboard::update_snapshot_() {
 #endif
   s.helios_status[sizeof(s.helios_status) - 1] = '\0';
 
+  // Asgard bridge status
+#ifdef USE_HV6_ASGARD_BRIDGE
+  if (this->asgard_bridge_ != nullptr) {
+    auto *ab = static_cast<hv6_asgard_bridge::Hv6AsgardBridge *>(this->asgard_bridge_);
+    strncpy(s.asgard_role, ab->get_role_str(), sizeof(s.asgard_role) - 1);
+    strncpy(s.asgard_peer_status, ab->get_peer_status_str(), sizeof(s.asgard_peer_status) - 1);
+    strncpy(s.asgard_last_error, ab->get_last_error(), sizeof(s.asgard_last_error) - 1);
+    s.asgard_last_push_c      = ab->get_last_push_value();
+    s.asgard_last_push_age_s  = ab->get_last_push_age_s();
+    s.asgard_push_fail_streak = ab->get_push_fail_streak();
+    s.asgard_local_zones      = ab->get_local_zones_used();
+    s.asgard_peer_zones       = ab->get_peer_zones_used();
+  } else {
+    strncpy(s.asgard_role, "slave", sizeof(s.asgard_role) - 1);
+    strncpy(s.asgard_peer_status, "n/a", sizeof(s.asgard_peer_status) - 1);
+  }
+#else
+  strncpy(s.asgard_role, "slave", sizeof(s.asgard_role) - 1);
+  strncpy(s.asgard_peer_status, "n/a", sizeof(s.asgard_peer_status) - 1);
+#endif
+  s.asgard_role[sizeof(s.asgard_role) - 1] = '\0';
+  s.asgard_peer_status[sizeof(s.asgard_peer_status) - 1] = '\0';
+  s.asgard_last_error[sizeof(s.asgard_last_error) - 1] = '\0';
+
   if (this->config_store_) {
     s.probes                 = this->config_store_->get_probe_config();
     s.motor                  = this->config_store_->get_motor_config();
     s.manifold_type          = this->config_store_->get_manifold_type();
     s.simple_preheat_enabled = this->config_store_->get_simple_preheat_enabled();
+    const auto ctrl_cfg = this->config_store_->get_config().control;
+    s.preheat_absorb_enabled = ctrl_cfg.preheat_absorb_enabled;
+    s.preheat_absorb_band_c  = ctrl_cfg.preheat_absorb_band_c;
+    s.preheat_detect_delta_c = ctrl_cfg.preheat_detect_delta_c;
+    s.preheat_absorbing = this->zone_controller_ && this->zone_controller_->is_preheat_absorbing();
     s.helios                 = this->config_store_->get_helios_config();
+    s.asgard                 = this->config_store_->get_asgard_config();
     const auto dev_cfg = this->config_store_->get_config();
     strncpy(s.helios_device_id, dev_cfg.system.controller_id, sizeof(s.helios_device_id) - 1);
     s.helios_device_id[sizeof(s.helios_device_id) - 1] = '\0';
     for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
       s.zones[i]            = this->config_store_->get_zone_config(i);
       s.zone_temp_source[i] = this->config_store_->get_zone_temp_source(i);
-      this->config_store_->get_zone_mqtt_strings(
-          i, s.zone_mqtt_dev[i], sizeof(s.zone_mqtt_dev[i]),
-          s.zone_ble_mac[i],     sizeof(s.zone_ble_mac[i]));
+      this->config_store_->get_zone_ble_mac_str(i, s.zone_ble_mac[i], sizeof(s.zone_ble_mac[i]));
     }
   }
 
@@ -369,11 +389,15 @@ void HV6Dashboard::loop() {
   }
 }
 
+static constexpr const char V1_PREFIX[] = "/api/hv6/v1";
+static constexpr size_t V1_PREFIX_LEN = sizeof(V1_PREFIX) - 1;
+
 bool HV6Dashboard::canHandle(AsyncWebServerRequest *request) const {
   char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
   auto url = request->url_to(url_buf);
-  return url == "/dashboard" || url == "/dashboard/" || url == "/dashboard.js" || url == "/dashboard/state" ||
-         url == "/dashboard/set" || url == "/dashboard/history";
+  if (url == "/dashboard" || url == "/dashboard/" || url == "/dashboard.js")
+    return true;
+  return strncmp(url.c_str(), V1_PREFIX, V1_PREFIX_LEN) == 0 && url.c_str()[V1_PREFIX_LEN] == '/';
 }
 
 void HV6Dashboard::handleRequest(AsyncWebServerRequest *request) {
@@ -388,16 +412,8 @@ void HV6Dashboard::handleRequest(AsyncWebServerRequest *request) {
     this->handle_js_(request);
     return;
   }
-  if (url == "/dashboard/state") {
-    this->handle_state_(request);
-    return;
-  }
-  if (url == "/dashboard/history") {
-    this->handle_history_(request);
-    return;
-  }
-  if (url == "/dashboard/set") {
-    this->handle_set_(request);
+  if (strncmp(url.c_str(), V1_PREFIX, V1_PREFIX_LEN) == 0 && url.c_str()[V1_PREFIX_LEN] == '/') {
+    this->handle_v1_(request, url.c_str() + V1_PREFIX_LEN);
     return;
   }
 
@@ -419,26 +435,18 @@ void HV6Dashboard::handle_js_(AsyncWebServerRequest *request) {
 }
 
 void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
-  // Take a local snapshot copy under a brief lock — no ESPHome API calls from httpd task.
-  auto *snap = static_cast<DashboardSnapshot *>(malloc(sizeof(DashboardSnapshot)));
-  if (!snap) {
-    httpd_req_t *req_err = *request;
-    httpd_resp_set_status(req_err, "503 Service Unavailable");
-    httpd_resp_set_type(req_err, "text/plain");
-    httpd_resp_send(req_err, "Out of memory", HTTPD_RESP_USE_STRLEN);
-    return;
-  }
   if (snapshot_lock_ == nullptr || !snapshot_ready_ ||
       xSemaphoreTake(snapshot_lock_, pdMS_TO_TICKS(50)) != pdTRUE) {
-    free(snap);
     httpd_req_t *req_err = *request;
     httpd_resp_set_status(req_err, "503 Service Unavailable");
     httpd_resp_set_type(req_err, "text/plain");
     httpd_resp_send(req_err, "Snapshot not ready", HTTPD_RESP_USE_STRLEN);
     return;
   }
-  memcpy(snap, &this->snapshot_, sizeof(*snap));
+  memcpy(&this->state_snap_buf_, &this->snapshot_, sizeof(this->state_snap_buf_));
   xSemaphoreGive(snapshot_lock_);
+
+  DashboardSnapshot *snap = &this->state_snap_buf_;
 
   httpd_req_t *req = *request;
   httpd_resp_set_status(req, "200 OK");
@@ -446,16 +454,8 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
   httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
-  // Heap-allocate a 2 KB chunk buffer; flush to client progressively.
   constexpr size_t BUF_SIZE = 2048;
-  char *buf = static_cast<char *>(malloc(BUF_SIZE));
-  if (!buf) {
-    free(snap);
-    httpd_resp_set_status(req, "503 Service Unavailable");
-    httpd_resp_set_type(req, "text/plain");
-    httpd_resp_send(req, "Out of memory", HTTPD_RESP_USE_STRLEN);
-    return;
-  }
+  char *buf = this->json_buf_;
   size_t offset = 0;
 
   auto flush = [&]() -> bool {
@@ -516,7 +516,7 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
   }
 
   // flush: cumulative ~1330 bytes; motor ripples (~840) would overflow
-  if (!flush()) { free(buf); free(snap); return; }
+  if (!flush()) return;
 
   // --- motor learned ripples (0 decimals) ---
   static const char *const OPEN_RIPPLE_KEYS[6] = {
@@ -535,7 +535,7 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
   }
 
   // flush: motor factors (~900) would overflow
-  if (!flush()) { free(buf); free(snap); return; }
+  if (!flush()) return;
 
   // --- motor learned factors (2 decimals) ---
   static const char *const OPEN_FACTOR_KEYS[6] = {
@@ -554,7 +554,7 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
   }
 
   // flush: probe temps + text sensors would overflow combined
-  if (!flush()) { free(buf); free(snap); return; }
+  if (!flush()) return;
 
   // --- probe temperatures ---
   static const char *const PROBE_TEMP_KEYS[8] = {
@@ -568,7 +568,7 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
   }
 
   // flush: text sensors (~1200) would overflow combined with probe temps (~460)
-  if (!flush()) { free(buf); free(snap); return; }
+  if (!flush()) return;
 
   // --- text sensors (pre-sanitized in snapshot) ---
   static const char *const ZONE_STATE_KEYS[6] = {
@@ -597,7 +597,7 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
   appendf(buf, BUF_SIZE, offset, "\"helios_status\":{\"state\":\"%s\"},", snap->helios_status);
 
   // flush before config section; each zone config (~550 bytes) would overflow combined
-  if (!flush()) { free(buf); free(snap); return; }
+  if (!flush()) return;
 
   // ---- config (read entirely from snapshot — no config_store_ calls) ----
   static const char *const PIPE_TYPE_STR[] = {
@@ -652,8 +652,6 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
     appendf(buf, BUF_SIZE, offset, "\"select-zone_%u_pipe_type\":{\"state\":\"%s\"},", zn, pt_str);
 
     appendf(buf, BUF_SIZE, offset,
-        "\"text-zone_%u_zigbee_device\":{\"state\":\"%s\"},", zn, snap->zone_mqtt_dev[i]);
-    appendf(buf, BUF_SIZE, offset,
         "\"text-zone_%u_ble_mac\":{\"state\":\"%s\"},", zn, snap->zone_ble_mac[i]);
 
     const uint8_t walls = z.exterior_walls;
@@ -673,7 +671,7 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
     }
 
     // flush after each zone to stay within buffer
-    if (!flush()) { free(buf); free(snap); return; }
+    if (!flush()) return;
   }
 
   // --- global config ---
@@ -684,6 +682,17 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
   appendf(buf, BUF_SIZE, offset,
       "\"switch-simple_preheat_enabled\":{\"state\":\"%s\"},",
       snap->simple_preheat_enabled ? "on" : "off");
+
+  format_float_token(num_buf, sizeof(num_buf), snap->preheat_absorb_band_c, 1);
+  appendf(buf, BUF_SIZE, offset,
+      "\"switch-preheat_absorb_enabled\":{\"state\":\"%s\"},"
+      "\"text-preheat_absorbing\":{\"state\":\"%s\"},"
+      "\"number-preheat_absorb_band_c\":{\"value\":%s},",
+      snap->preheat_absorb_enabled ? "on" : "off",
+      snap->preheat_absorbing ? "active" : "idle",
+      num_buf);
+  format_float_token(num_buf, sizeof(num_buf), snap->preheat_detect_delta_c, 1);
+  appendf(buf, BUF_SIZE, offset, "\"number-preheat_detect_delta_c\":{\"value\":%s},", num_buf);
 
   appendf(buf, BUF_SIZE, offset,
       "\"select-manifold_type\":{\"state\":\"%s\"},"
@@ -768,70 +777,274 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
       static_cast<unsigned long>(snap->helios_next_retry_s),
       static_cast<unsigned long>(snap->helios_last_success_age_s));
 
+  // flush before asgard section
+  if (!flush()) return;
+
+  // --- asgard config + status ---
+  appendf(buf, BUF_SIZE, offset,
+      "\"switch-asgard_enabled\":{\"state\":\"%s\"},"
+      "\"switch-asgard_coordinator\":{\"state\":\"%s\"},"
+      "\"text-asgard_host\":{\"state\":\"%s\"},"
+      "\"text-asgard_entity_name\":{\"state\":\"%s\"},"
+      "\"text-asgard_peer_host\":{\"state\":\"%s\"},",
+      snap->asgard.enabled ? "on" : "off",
+      snap->asgard.coordinator ? "on" : "off",
+      snap->asgard.host,
+      snap->asgard.entity_name,
+      snap->asgard.peer_host);
+  appendf(buf, BUF_SIZE, offset,
+      "\"number-asgard_port\":{\"value\":%u},"
+      "\"number-asgard_peer_port\":{\"value\":%u},"
+      "\"number-asgard_push_interval_s\":{\"value\":%u},"
+      "\"number-asgard_peer_stale_after_s\":{\"value\":%u},",
+      static_cast<unsigned>(snap->asgard.port),
+      static_cast<unsigned>(snap->asgard.peer_port),
+      static_cast<unsigned>(snap->asgard.push_interval_s),
+      static_cast<unsigned>(snap->asgard.peer_stale_after_s));
+  format_float_token(num_buf, sizeof(num_buf), snap->asgard_last_push_c, 2);
+  appendf(buf, BUF_SIZE, offset,
+      "\"text-asgard_role\":{\"state\":\"%s\"},"
+      "\"text-asgard_peer_status\":{\"state\":\"%s\"},"
+      "\"text-asgard_last_error\":{\"state\":\"%s\"},"
+      "\"sensor-asgard_last_push_c\":{\"value\":%s},"
+      "\"sensor-asgard_last_push_age_s\":{\"state\":%lu},"
+      "\"sensor-asgard_push_fail_streak\":{\"state\":%lu},"
+      "\"sensor-asgard_local_zones\":{\"state\":%u},"
+      "\"sensor-asgard_peer_zones\":{\"state\":%u},",
+      snap->asgard_role,
+      snap->asgard_peer_status,
+      snap->asgard_last_error,
+      num_buf,
+      static_cast<unsigned long>(snap->asgard_last_push_age_s),
+      static_cast<unsigned long>(snap->asgard_push_fail_streak),
+      static_cast<unsigned>(snap->asgard_local_zones),
+      static_cast<unsigned>(snap->asgard_peer_zones));
+
   // Sentinel field closes the JSON object and absorbs any trailing comma.
   appendf(buf, BUF_SIZE, offset, "\"_\":{}}");
   flush();
   httpd_resp_send_chunk(req, nullptr, 0);
-  free(buf);
-  free(snap);
 }
 
-void HV6Dashboard::handle_set_(AsyncWebServerRequest *request) {
-  if (request->method() != HTTP_POST) {
-    request->send(405, "text/plain", "Method Not Allowed");
+// =============================================================================
+// /api/hv6/v1 — request routing (contract: docs/hv6_api_v1.md)
+// =============================================================================
+
+namespace {
+
+/// Matches "<prefix>/{zone}/<action>". Returns the zone (1..NUM_ZONES),
+/// 0 if the route shape matched but the zone is out of range, or -1 if the
+/// path does not match this route at all.
+int match_zone_route(const char *path, const char *prefix, const char *action) {
+  const size_t plen = strlen(prefix);
+  if (strncmp(path, prefix, plen) != 0 || path[plen] != '/')
+    return -1;
+  char *end = nullptr;
+  const long zone = strtol(path + plen + 1, &end, 10);
+  if (end == path + plen + 1 || *end != '/' || strcmp(end + 1, action) != 0)
+    return -1;
+  if (zone < 1 || zone > static_cast<long>(hv6::NUM_ZONES))
+    return 0;
+  return static_cast<int>(zone);
+}
+
+bool parse_num_arg(AsyncWebServerRequest *request, const char *name, float *out) {
+  const std::string val = request->arg(name);
+  if (val.empty())
+    return false;
+  char *end = nullptr;
+  const float parsed = strtof(val.c_str(), &end);
+  if (end == val.c_str() || *end != '\0')
+    return false;
+  *out = parsed;
+  return true;
+}
+
+bool parse_bool_arg(AsyncWebServerRequest *request, const char *name, bool *out) {
+  const std::string val = request->arg(name);
+  if (val.empty())
+    return false;
+  *out = strcasecmp(val.c_str(), "true") == 0 || val == "1" || strcasecmp(val.c_str(), "on") == 0;
+  return true;
+}
+
+void apply_zone(DashboardAction &act, int zone) {
+  act.zone = zone;
+  act.zone_valid = zone >= 1 && zone <= static_cast<int>(hv6::NUM_ZONES);
+  act.zi = act.zone_valid ? static_cast<uint8_t>(zone - 1) : 0;
+}
+
+}  // namespace
+
+void HV6Dashboard::send_v1_(AsyncWebServerRequest *request, int code, const char *err_code,
+                            const char *err_message) {
+  char buf[224];
+  const long long ts_ms = static_cast<long long>(::time(nullptr)) * 1000LL;
+  if (err_code == nullptr) {
+    snprintf(buf, sizeof(buf), "{\"ok\":true,\"version\":\"v1\",\"ts_ms\":%lld}", ts_ms);
+  } else {
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":false,\"version\":\"v1\",\"ts_ms\":%lld,\"error\":{\"code\":\"%s\",\"message\":\"%s\"}}",
+             ts_ms, err_code, err_message != nullptr ? err_message : "");
+  }
+  request->send(code, "application/json", buf);
+}
+
+bool HV6Dashboard::enqueue_action_(const DashboardAction &act) {
+  if (action_lock_ == nullptr || xSemaphoreTake(action_lock_, pdMS_TO_TICKS(100)) != pdTRUE)
+    return false;
+  action_queue_.push_back(act);
+  xSemaphoreGive(action_lock_);
+  return true;
+}
+
+void HV6Dashboard::handle_v1_(AsyncWebServerRequest *request, const char *path) {
+  // ---- read endpoints ----
+  if (strcmp(path, "/state") == 0) {
+    this->handle_state_(request);
+    return;
+  }
+  if (strcmp(path, "/history") == 0) {
+    this->handle_history_(request);
+    return;
+  }
+  if (strcmp(path, "/ble-scan") == 0) {
+    this->handle_ble_scan_(request);
+    return;
+  }
+  if (strcmp(path, "/peer") == 0) {
+    this->handle_peer_(request);
     return;
   }
 
-  {
-    httpd_req_t *req = *request;
-    const size_t content_len = req->content_len;
-    if (content_len == 0 || content_len > 512) {
-      request->send(400, "text/plain", "Bad Request");
+  // ---- write endpoints ----
+  if (request->method() != HTTP_POST) {
+    this->send_v1_(request, 405, "method_not_allowed", "Use POST for write endpoints");
+    return;
+  }
+
+  DashboardAction act{};
+  float num = 0.0f;
+  bool flag = false;
+  int zone;
+
+  if ((zone = match_zone_route(path, "/zones", "setpoint")) != -1) {
+    if (zone == 0) {
+      this->send_v1_(request, 400, "invalid_zone", "Zone must be in range 1..6");
       return;
     }
-  }
+    if (!parse_num_arg(request, "setpoint_c", &num)) {
+      this->send_v1_(request, 400, "missing_param", "setpoint_c is required");
+      return;
+    }
+    act.key = "zone_setpoint";
+    act.num_val = num;
+    act.has_num = true;
+    apply_zone(act, zone);
 
-  const std::string key_str = request->arg("key");
-  if (key_str.empty()) {
-    request->send(400, "application/json", "{\"ok\":false,\"error\":\"missing_key\"}");
+  } else if ((zone = match_zone_route(path, "/zones", "enabled")) != -1) {
+    if (zone == 0) {
+      this->send_v1_(request, 400, "invalid_zone", "Zone must be in range 1..6");
+      return;
+    }
+    if (!parse_bool_arg(request, "enabled", &flag)) {
+      this->send_v1_(request, 400, "missing_param", "enabled is required");
+      return;
+    }
+    act.key = "zone_enabled";
+    act.num_val = flag ? 1.0f : 0.0f;
+    act.has_num = true;
+    apply_zone(act, zone);
+
+  } else if (strcmp(path, "/drivers/enabled") == 0 || strcmp(path, "/manual_mode") == 0) {
+    if (!parse_bool_arg(request, "enabled", &flag)) {
+      this->send_v1_(request, 400, "missing_param", "enabled is required");
+      return;
+    }
+    act.key = (path[1] == 'd') ? "drivers_enabled" : "manual_mode";
+    act.num_val = flag ? 1.0f : 0.0f;
+    act.has_num = true;
+
+  } else if ((zone = match_zone_route(path, "/motors", "target")) != -1) {
+    if (zone == 0) {
+      this->send_v1_(request, 400, "invalid_zone", "Zone must be in range 1..6");
+      return;
+    }
+    if (!parse_num_arg(request, "value", &num)) {
+      this->send_v1_(request, 400, "missing_param", "value is required");
+      return;
+    }
+    act.key = "motor_target";
+    act.num_val = num;
+    act.has_num = true;
+    apply_zone(act, zone);
+
+  } else if ((zone = match_zone_route(path, "/motors", "open_timed")) != -1 ||
+             (zone = match_zone_route(path, "/motors", "close_timed")) != -1 ||
+             (zone = match_zone_route(path, "/motors", "stop")) != -1) {
+    if (zone == 0) {
+      this->send_v1_(request, 400, "invalid_zone", "Zone must be in range 1..6");
+      return;
+    }
+    act.key = "command";
+    if (match_zone_route(path, "/motors", "open_timed") > 0)
+      act.value_str = "open_motor_timed";
+    else if (match_zone_route(path, "/motors", "close_timed") > 0)
+      act.value_str = "close_motor_timed";
+    else
+      act.value_str = "stop_motor";
+    act.has_str = true;
+    apply_zone(act, zone);
+
+  } else if (strcmp(path, "/commands") == 0) {
+    const std::string cmd = request->arg("command");
+    if (cmd.empty()) {
+      this->send_v1_(request, 400, "missing_param", "command is required");
+      return;
+    }
+    act.key = "command";
+    act.value_str = cmd;
+    act.has_str = true;
+    if (!parse_num_arg(request, "zone", &num))
+      num = 0.0f;
+    apply_zone(act, static_cast<int>(num));
+
+  } else if (strncmp(path, "/settings/", 10) == 0) {
+    const char *kind = path + 10;
+    const bool is_number = strcmp(kind, "number") == 0;
+    if (!is_number && strcmp(kind, "select") != 0 && strcmp(kind, "text") != 0) {
+      this->send_v1_(request, 404, "unknown_route", "Unknown settings type");
+      return;
+    }
+    act.key = request->arg("key");
+    if (act.key.empty()) {
+      this->send_v1_(request, 400, "missing_param", "key is required");
+      return;
+    }
+    act.value_str = request->arg("value");
+    act.has_str = !act.value_str.empty();
+    if (is_number) {
+      if (!parse_num_arg(request, "value", &num)) {
+        this->send_v1_(request, 400, "invalid_value", "value must be numeric");
+        return;
+      }
+      act.num_val = num;
+      act.has_num = true;
+    }
+    if (!parse_num_arg(request, "zone", &num))
+      num = 0.0f;
+    apply_zone(act, static_cast<int>(num));
+
+  } else {
+    this->send_v1_(request, 404, "unknown_route", "Unknown route");
     return;
   }
 
-  const std::string zone_str = request->arg("zone");
-  float zone_f = 0.0f;
-  const bool has_zone_field = !zone_str.empty();
-  if (has_zone_field) {
-    char *endptr = nullptr;
-    zone_f = strtof(zone_str.c_str(), &endptr);
+  if (!this->enqueue_action_(act)) {
+    this->send_v1_(request, 503, "busy", "System busy, try again");
+    return;
   }
-  const int zone = has_zone_field ? static_cast<int>(zone_f) : 0;
-
-  const std::string value_str = request->arg("value");
-  float num_val = 0.0f;
-  bool has_num = false;
-  if (!value_str.empty()) {
-    char *endptr = nullptr;
-    num_val = strtof(value_str.c_str(), &endptr);
-    has_num = (endptr != nullptr && endptr != value_str.c_str() && *endptr == '\0');
-  }
-
-  DashboardAction act;
-  act.key = key_str;
-  act.value_str = value_str;
-  act.num_val = num_val;
-  act.zone = zone;
-  act.has_num = has_num;
-  act.has_str = !value_str.empty();
-  act.zone_valid = zone >= 1 && zone <= 6;
-  act.zi = act.zone_valid ? static_cast<uint8_t>(zone - 1) : 0;
-
-  if (action_lock_ != nullptr && xSemaphoreTake(action_lock_, pdMS_TO_TICKS(100)) == pdTRUE) {
-    action_queue_.push_back(act);
-    xSemaphoreGive(action_lock_);
-    request->send(200, "application/json", "{\"ok\":true}");
-  } else {
-    request->send(503, "text/plain", "System busy, try again");
-  }
+  this->send_v1_(request, 200);
 }
 
 void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
@@ -918,10 +1131,6 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
     if (parse_pipe_type(str_val, &pt))
       this->zone_controller_->set_zone_pipe_type(zi, pt);
 
-  // ---- zone_zigbee_device ----
-  } else if (strcmp(key, "zone_zigbee_device") == 0 && has_str && zone_valid && this->zone_controller_) {
-    this->zone_controller_->set_zone_mqtt_device(zi, std::string(str_val));
-
   // ---- zone_ble_mac ----
   } else if (strcmp(key, "zone_ble_mac") == 0 && has_str && zone_valid && this->zone_controller_) {
     this->zone_controller_->set_zone_ble_mac(zi, std::string(str_val));
@@ -956,6 +1165,24 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
     if (strcasecmp(str_val, "NO (Normally Open)") == 0 || strcasecmp(str_val, "NO") == 0)
       mt = hv6::ManifoldType::NO;
     this->valve_controller_->set_manifold_type(mt);
+
+  // ---- preheat_absorb_enabled ----
+  } else if (strcmp(key, "preheat_absorb_enabled") == 0 && has_str && this->config_store_) {
+    auto ctrl = this->config_store_->get_config().control;
+    ctrl.preheat_absorb_enabled = (strcasecmp(str_val, "on") == 0 || strcmp(str_val, "1") == 0);
+    this->config_store_->update_control(ctrl);
+
+  // ---- preheat_absorb_band_c ----
+  } else if (strcmp(key, "preheat_absorb_band_c") == 0 && has_num && this->config_store_) {
+    auto ctrl = this->config_store_->get_config().control;
+    ctrl.preheat_absorb_band_c = std::max(0.0f, std::min(5.0f, num_val));
+    this->config_store_->update_control(ctrl);
+
+  // ---- preheat_detect_delta_c ----
+  } else if (strcmp(key, "preheat_detect_delta_c") == 0 && has_num && this->config_store_) {
+    auto ctrl = this->config_store_->get_config().control;
+    ctrl.preheat_detect_delta_c = std::max(2.0f, std::min(25.0f, num_val));
+    this->config_store_->update_control(ctrl);
 
   // ---- simple_preheat_enabled ----
   } else if (strcmp(key, "simple_preheat_enabled") == 0 && has_str && this->zone_controller_) {
@@ -1028,6 +1255,63 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
     auto helios_cfg = this->config_store_->get_helios_config();
     helios_cfg.mdns_resolve_interval_s = static_cast<uint16_t>(std::max(15.0f, std::min(3600.0f, num_val)));
     this->config_store_->update_helios(helios_cfg);
+
+  // ---- asgard_enabled ----
+  } else if (strcmp(key, "asgard_enabled") == 0 && has_str && this->config_store_) {
+    auto asgard_cfg = this->config_store_->get_asgard_config();
+    asgard_cfg.enabled = (strcasecmp(str_val, "on") == 0 || strcmp(str_val, "1") == 0);
+    this->config_store_->update_asgard(asgard_cfg);
+
+  // ---- asgard_coordinator ----
+  } else if (strcmp(key, "asgard_coordinator") == 0 && has_str && this->config_store_) {
+    auto asgard_cfg = this->config_store_->get_asgard_config();
+    asgard_cfg.coordinator = (strcasecmp(str_val, "on") == 0 || strcmp(str_val, "1") == 0);
+    this->config_store_->update_asgard(asgard_cfg);
+
+  // ---- asgard_host ----
+  } else if (strcmp(key, "asgard_host") == 0 && this->config_store_) {
+    auto asgard_cfg = this->config_store_->get_asgard_config();
+    strncpy(asgard_cfg.host, str_val, sizeof(asgard_cfg.host) - 1);
+    asgard_cfg.host[sizeof(asgard_cfg.host) - 1] = '\0';
+    this->config_store_->update_asgard(asgard_cfg);
+
+  // ---- asgard_entity_name ----
+  } else if (strcmp(key, "asgard_entity_name") == 0 && has_str && this->config_store_) {
+    auto asgard_cfg = this->config_store_->get_asgard_config();
+    strncpy(asgard_cfg.entity_name, str_val, sizeof(asgard_cfg.entity_name) - 1);
+    asgard_cfg.entity_name[sizeof(asgard_cfg.entity_name) - 1] = '\0';
+    this->config_store_->update_asgard(asgard_cfg);
+
+  // ---- asgard_peer_host ----
+  } else if (strcmp(key, "asgard_peer_host") == 0 && this->config_store_) {
+    auto asgard_cfg = this->config_store_->get_asgard_config();
+    strncpy(asgard_cfg.peer_host, str_val, sizeof(asgard_cfg.peer_host) - 1);
+    asgard_cfg.peer_host[sizeof(asgard_cfg.peer_host) - 1] = '\0';
+    this->config_store_->update_asgard(asgard_cfg);
+
+  // ---- asgard_port ----
+  } else if (strcmp(key, "asgard_port") == 0 && has_num && this->config_store_) {
+    auto asgard_cfg = this->config_store_->get_asgard_config();
+    asgard_cfg.port = static_cast<uint16_t>(std::max(1.0f, std::min(65535.0f, num_val)));
+    this->config_store_->update_asgard(asgard_cfg);
+
+  // ---- asgard_peer_port ----
+  } else if (strcmp(key, "asgard_peer_port") == 0 && has_num && this->config_store_) {
+    auto asgard_cfg = this->config_store_->get_asgard_config();
+    asgard_cfg.peer_port = static_cast<uint16_t>(std::max(1.0f, std::min(65535.0f, num_val)));
+    this->config_store_->update_asgard(asgard_cfg);
+
+  // ---- asgard_push_interval_s ----
+  } else if (strcmp(key, "asgard_push_interval_s") == 0 && has_num && this->config_store_) {
+    auto asgard_cfg = this->config_store_->get_asgard_config();
+    asgard_cfg.push_interval_s = static_cast<uint16_t>(std::max(5.0f, std::min(3600.0f, num_val)));
+    this->config_store_->update_asgard(asgard_cfg);
+
+  // ---- asgard_peer_stale_after_s ----
+  } else if (strcmp(key, "asgard_peer_stale_after_s") == 0 && has_num && this->config_store_) {
+    auto asgard_cfg = this->config_store_->get_asgard_config();
+    asgard_cfg.peer_stale_after_s = static_cast<uint16_t>(std::max(30.0f, std::min(3600.0f, num_val)));
+    this->config_store_->update_asgard(asgard_cfg);
 
   // ---- motor config numeric setters ----
   } else if (has_num && this->config_store_ && this->valve_controller_) {
@@ -1140,14 +1424,7 @@ void HV6Dashboard::handle_history_(AsyncWebServerRequest *request) {
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
   constexpr size_t BUF_SIZE = 2048;
-  char *buf = static_cast<char *>(malloc(BUF_SIZE));
-  if (!buf) {
-    free(ring_copy);
-    httpd_resp_set_status(req, "503 Service Unavailable");
-    httpd_resp_set_type(req, "text/plain");
-    httpd_resp_send(req, "Out of memory", HTTPD_RESP_USE_STRLEN);
-    return;
-  }
+  char *buf = this->json_buf_;
   size_t offset = 0;
 
   auto flush = [&]() -> bool {
@@ -1179,7 +1456,7 @@ void HV6Dashboard::handle_history_(AsyncWebServerRequest *request) {
     // Flush before entries that might overflow the 2 KB buffer.
     // Each entry is at most ~35 bytes: "[4294967295,7,7,7,7,7,7]," → 28 chars.
     if (offset + 40 >= BUF_SIZE) {
-      if (!flush()) { free(buf); free(ring_copy); return; }
+      if (!flush()) { free(ring_copy); return; }
     }
 
     if (!first_entry) {
@@ -1201,8 +1478,111 @@ void HV6Dashboard::handle_history_(AsyncWebServerRequest *request) {
   appendf(buf, BUF_SIZE, offset, "]}");
   flush();
   httpd_resp_send_chunk(req, nullptr, 0);
-  free(buf);
   free(ring_copy);
+}
+
+// Compact board-to-board snapshot consumed by the peer board's Asgard bridge
+// (coordinator). Payload stays small (~250 bytes) so the ESP32 peer can parse
+// it with a fixed-size JSON document. Contract: docs/ecodan_integration.md
+void HV6Dashboard::handle_peer_(AsyncWebServerRequest *request) {
+  if (snapshot_lock_ == nullptr || !snapshot_ready_ ||
+      xSemaphoreTake(snapshot_lock_, pdMS_TO_TICKS(50)) != pdTRUE) {
+    request->send(503, "application/json", "{\"ok\":false,\"error\":\"snapshot not ready\"}");
+    return;
+  }
+  float temps[hv6::NUM_ZONES];
+  float areas[hv6::NUM_ZONES];
+  bool enabled[hv6::NUM_ZONES];
+  for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
+    temps[i] = this->snapshot_.zone_temp_c[i];
+    areas[i] = this->snapshot_.zones[i].area_m2;
+    enabled[i] = this->snapshot_.zones[i].enabled;
+  }
+  xSemaphoreGive(snapshot_lock_);
+
+  char buf[512];
+  size_t off = 0;
+  off += static_cast<size_t>(snprintf(buf + off, sizeof(buf) - off, "{\"ok\":true,\"zones\":["));
+  for (uint8_t i = 0; i < hv6::NUM_ZONES && off < sizeof(buf) - 64; i++) {
+    char temp_buf[16];
+    if (std::isfinite(temps[i]))
+      snprintf(temp_buf, sizeof(temp_buf), "%.2f", temps[i]);
+    else
+      snprintf(temp_buf, sizeof(temp_buf), "null");
+    off += static_cast<size_t>(snprintf(buf + off, sizeof(buf) - off,
+        "%s{\"t\":%s,\"area\":%.1f,\"en\":%s}",
+        (i > 0) ? "," : "", temp_buf, areas[i], enabled[i] ? "true" : "false"));
+  }
+  if (off < sizeof(buf) - 3)
+    off += static_cast<size_t>(snprintf(buf + off, sizeof(buf) - off, "]}"));
+
+  httpd_req_t *req = *request;
+  httpd_resp_set_status(req, "200 OK");
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+  httpd_resp_send(req, buf, static_cast<ssize_t>(off));
+}
+
+void HV6Dashboard::handle_ble_scan_(AsyncWebServerRequest *request) {
+  if (zone_controller_ == nullptr) {
+    request->send(503, "application/json", "{\"ok\":false,\"error\":\"no zone controller\"}");
+    return;
+  }
+
+  hv6::Hv6ZoneController::BleSensorSeen sensors[hv6::Hv6ZoneController::BLE_SEEN_SLOTS];
+  uint8_t count = zone_controller_->get_ble_discovered(sensors, hv6::Hv6ZoneController::BLE_SEEN_SLOTS);
+
+  // Build a set of assigned MACs for O(1) lookup
+  char assigned_macs[hv6::NUM_ZONES][18] = {};
+  for (uint8_t z = 0; z < hv6::NUM_ZONES; z++) {
+    std::string mac = zone_controller_->get_zone_ble_mac(z);
+    if (!mac.empty())
+      strncpy(assigned_macs[z], mac.c_str(), 17);
+  }
+
+  httpd_req_t *req = *request;
+  httpd_resp_set_status(req, "200 OK");
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
+  char buf[1536];
+  size_t off = 0;
+
+  uint32_t now = millis();
+  off += static_cast<size_t>(snprintf(buf + off, sizeof(buf) - off,
+      "{\"ok\":true,\"count\":%u,\"sensors\":[", static_cast<unsigned>(count)));
+
+  for (uint8_t i = 0; i < count && off < sizeof(buf) - 128; i++) {
+    const auto &s = sensors[i];
+    uint32_t age_s = (now - s.last_ms) / 1000;
+
+    int8_t assigned_zone = -1;
+    for (uint8_t z = 0; z < hv6::NUM_ZONES; z++) {
+      if (assigned_macs[z][0] != '\0' && memcmp(assigned_macs[z], s.mac, 17) == 0) {
+        assigned_zone = static_cast<int8_t>(z + 1);
+        break;
+      }
+    }
+
+    char temp_buf[12];
+    if (std::isfinite(s.temp_c))
+      snprintf(temp_buf, sizeof(temp_buf), "%.1f", s.temp_c);
+    else
+      snprintf(temp_buf, sizeof(temp_buf), "null");
+
+    off += static_cast<size_t>(snprintf(buf + off, sizeof(buf) - off,
+        "%s{\"mac\":\"%s\",\"temp_c\":%s,\"rssi\":%d,\"age_s\":%lu,\"zone\":%d}",
+        (i > 0) ? "," : "",
+        s.mac, temp_buf, static_cast<int>(s.rssi),
+        static_cast<unsigned long>(age_s),
+        static_cast<int>(assigned_zone)));
+  }
+
+  if (off < sizeof(buf) - 2)
+    off += static_cast<size_t>(snprintf(buf + off, sizeof(buf) - off, "]}"));
+
+  httpd_resp_send(req, buf, static_cast<ssize_t>(off));
 }
 
 }  // namespace hv6_dashboard

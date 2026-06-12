@@ -15,7 +15,7 @@ async function fetchStateOnce() {
 
   pollAbortController = new AbortController();
 
-  const response = await fetch('/dashboard/state', {
+  const response = await fetch('/api/hv6/v1/state', {
     cache: 'no-store',
     signal: pollAbortController.signal,
   });
