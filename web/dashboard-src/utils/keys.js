@@ -22,7 +22,12 @@ export const key = {
   motorCloseFactor: (zone) => 'sensor-motor_' + zone + '_learned_close_factor',
   preheatAdvance: (zone) => 'sensor-zone_' + zone + '_preheat_advance_c',
   motorLastFault: (zone) => 'text_sensor-motor_' + zone + '_last_fault',
-  probeTemp: (probe) => 'sensor-probe_' + probe + '_temperature'
+  probeTemp: (probe) => 'sensor-probe_' + probe + '_temperature',
+  windExposure: (zone) => 'number-zone_' + zone + '_wind_exposure',
+  solarGain: (zone) => 'number-zone_' + zone + '_solar_gain',
+  thermalLeadH: (zone) => 'number-zone_' + zone + '_thermal_lead_h',
+  forecastOffset: (zone) => 'sensor-zone_' + zone + '_forecast_offset_c',
+  forecastPeakH: (zone) => 'sensor-zone_' + zone + '_forecast_peak_h'
 };
 
 export const gkey = {
@@ -81,4 +86,13 @@ export const gkey = {
   asgardLastPushAgeS: 'sensor-asgard_last_push_age_s',
   asgardLocalZones: 'sensor-asgard_local_zones',
   asgardPeerZones: 'sensor-asgard_peer_zones',
+  forecastEnabled: 'switch-forecast_enabled',
+  forecastStatus: 'text-forecast_status',
+  forecastLastError: 'text-forecast_last_error',
+  forecastAgeS: 'sensor-forecast_age_s',
+  forecastFailStreak: 'sensor-forecast_fail_streak',
+  forecastLatitude: 'number-forecast_latitude',
+  forecastLongitude: 'number-forecast_longitude',
+  forecastLoadThreshold: 'number-forecast_load_threshold',
+  forecastMaxOffsetC: 'number-forecast_max_offset_c',
 };

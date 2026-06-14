@@ -186,6 +186,11 @@ struct ZoneConfig {
   float max_offset_c = 2.0f;   ///< Maximum setpoint offset from Helios (firmware safety clamp)
   float abs_min_c = 5.0f;      ///< Absolute minimum effective setpoint (overrides all offsets)
   float abs_max_c = 30.0f;     ///< Absolute maximum effective setpoint (overrides all offsets)
+  // Forecast preload exposure model (wind direction is matched against the
+  // exterior_walls bitmask above; see components/hv6_forecast/forecast_model.h)
+  float wind_exposure = 0.5f;      ///< 0..1 — facade shelter factor for forecast preload
+  float solar_gain_factor = 0.3f;  ///< 0..1 — passive solar relief through glazing
+  uint8_t thermal_lead_h = 4;      ///< Hours before a forecast load peak charging must start
 };
 
 struct ControlConfig {
@@ -269,6 +274,21 @@ struct AsgardConfig {
   char peer_host[ASGARD_HOST_LEN] = "";       ///< The other HV6 board (coordinator only; empty = single board)
   uint16_t peer_port = 80;                    ///< Peer dashboard HTTP port
   uint16_t peer_stale_after_s = 300;          ///< Exclude peer zones when its snapshot is older than this
+};
+
+/// Weather-forecast preload (hv6_forecast component). Pulls a 48 h Open-Meteo
+/// forecast and issues per-zone setpoint preload offsets through the Helios
+/// command path. Auto-quiesces while an external Helios service is enabled.
+struct ForecastConfig {
+  bool enabled = false;
+  float latitude = 0.0f;
+  float longitude = 0.0f;
+  uint16_t fetch_interval_s = 3600;     ///< Open-Meteo refresh cadence
+  uint16_t recompute_interval_s = 300;  ///< Preload re-evaluation cadence
+  float load_threshold = 1.0f;          ///< Load units before preload kicks in
+  float gain_c_per_load = 0.5f;         ///< °C offset per load unit above threshold
+  float max_offset_c = 1.5f;            ///< Model cap (per-zone clamps still apply)
+  float indoor_ref_c = 21.0f;           ///< Reference indoor temp for the cold term
 };
 
 struct PIDParams {
@@ -394,7 +414,8 @@ struct SystemConfig {
 /// v9 adds motor profiles, runtime safety preset fields, and learned factor confidence controls.
 /// v15 adds AsgardConfig (Ecodan heat-pump bridge, weighted z1 temperature push).
 /// v16 adds preheat absorption fields to ControlConfig.
-static constexpr uint32_t CONFIG_VERSION = 16;
+/// v17 adds ForecastConfig and per-zone exposure fields (forecast preload).
+static constexpr uint32_t CONFIG_VERSION = 17;
 
 struct DeviceConfig {
   uint32_t config_version = CONFIG_VERSION;
@@ -409,6 +430,7 @@ struct DeviceConfig {
   BalancingConfig balancing;
   HeliosConfig helios;
   AsgardConfig asgard;
+  ForecastConfig forecast;
 };
 
 // =============================================================================

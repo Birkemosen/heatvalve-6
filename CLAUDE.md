@@ -32,6 +32,7 @@ make logs HOST=heatvalve-6-XXXXXX.local
 # Host unit tests (clang++, no ESP-IDF required)
 make test           # all tests
 make test-ripple    # ripple counter only
+make test-forecast  # forecast preload model only
 
 # Erase NVS (clears calibration + config from flash)
 make erase-nvs PORT=/dev/cu.usbmodemXXXX
@@ -52,18 +53,21 @@ configurations/
 packages/
   board/                  ← ESP32-S3 board definition
   hardware/               ← BLE, display, I2C, motors, LED, 1-Wire, sensors
-  network/                ← WiFi, API, OTA, Helios client
+  network/                ← WiFi, API, OTA, Helios client, Asgard bridge, forecast
   zones/                  ← Climate entities, zone sensors, UI, dashboard wiring
 components/               ← Custom ESPHome external components (C++)
   hv6_config_store/       ← NVS persistence (DeviceConfig struct)
   hv6_valve_controller/   ← Motor FSM, endstop detection, ripple counting
   hv6_zone_controller/    ← Zone state machine, control algorithms, hydraulic balance
   hv6_helios_client/      ← HTTP client for external Helios-3 optimizer
+  hv6_asgard_bridge/      ← Weighted house temp → Asgard/Ecodan virtual thermostat
+  hv6_forecast/           ← Open-Meteo wind-aware per-zone preload (forecast_model = host-testable)
   hv6_dashboard/          ← HTTP API + SSE server, dashboard asset serving
 web/dashboard-src/        ← Dashboard source (modular JS, bundled by esbuild)
 web/dashboard.js          ← Bundled dashboard artifact (committed, served by firmware)
 docs/                     ← Architecture, API contract, endstop detection, schematics
 test/ripple_counter/      ← Host-side unit test for RippleCounter
+test/forecast/            ← Host-side unit test for the forecast preload model
 ```
 
 ## Architecture
@@ -74,14 +78,15 @@ test/ripple_counter/      ← Host-side unit test for RippleCounter
 
 ### Custom Components
 
-Six ESPHome external components live under `components/`. Each has a Python `__init__.py` for ESPHome code-generation and C++ implementation files. The components depend on each other in this order:
+Seven ESPHome external components live under `components/`. Each has a Python `__init__.py` for ESPHome code-generation and C++ implementation files. The components depend on each other in this order:
 
 ```
 hv6_config_store  ← hv6_valve_controller  ← hv6_zone_controller
                                                      ↑
                                              hv6_helios_client
                                              hv6_asgard_bridge
-                                             hv6_dashboard (reads all five)
+                                             hv6_forecast
+                                             hv6_dashboard (reads all six)
 ```
 
 ### FreeRTOS Task Layout
@@ -93,6 +98,7 @@ hv6_config_store  ← hv6_valve_controller  ← hv6_zone_controller
 | `hv6_zone` (control cycle) | 0 | 6 | 10 s (configurable) |
 | `hv6_helios` (HTTP) | 1 | 1 | 60 s poll |
 | `hv6_asgard` (HTTP) | 1 | 1 | 30 s push (coordinator only) |
+| `hv6_forecast` (HTTPS) | 1 | 1 | 1 h fetch / 5 min recompute |
 | `hv6_nvs` (flash commit) | 1 | 1 | event-driven |
 | ESPHome loopTask | 1 | 1 | — |
 
@@ -121,6 +127,10 @@ The dashboard **must not** call ESPHome entity REST routes (`/climate`, `/switch
 ### Asgard / Ecodan Bridge
 
 `hv6_asgard_bridge` pushes the house-weighted room temperature (Σ temp×area / Σ area over all enabled zones with a valid reading) to Asgard's virtual thermostat z1 via REST. Two boards run identical firmware; the runtime NVS toggle `coordinator` selects which board aggregates — the master polls the peer board's compact `GET /api/hv6/v1/peer` snapshot and excludes peer data older than `peer_stale_after_s`. Configured via the dashboard Asgard card (`AsgardConfig` in NVS). See [docs/ecodan_integration.md](docs/ecodan_integration.md).
+
+### Forecast Preload (wind-aware)
+
+`hv6_forecast` fetches a 48 h Open-Meteo forecast (HTTPS, cached in its own `hv6f` NVS namespace) and issues per-zone setpoint preload offsets through the **existing Helios command path** (so all per-zone clamps apply). Per forecast hour each zone gets a dimensionless weather load = wind hitting its `exterior_walls` (direction-matched) × cold × exposure − solar relief; when the peak load inside the zone's `thermal_lead_h` window exceeds `load_threshold`, an offset is applied so the slab charges before the storm. The producer **auto-quiesces while an external Helios service is enabled**. The load/preload math lives in [components/hv6_forecast/forecast_model.cpp](components/hv6_forecast/forecast_model.cpp) (namespace `hv6fc`, no ESP deps) and is host-tested via `make test-forecast`. Configured via the dashboard Forecast card (`ForecastConfig` + per-zone `wind_exposure`/`solar_gain_factor`/`thermal_lead_h`). See [docs/forecast_preload.md](docs/forecast_preload.md).
 
 ### BLE Temperature Sources
 

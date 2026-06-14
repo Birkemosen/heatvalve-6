@@ -507,6 +507,43 @@ void Hv6ZoneController::set_zone_area_m2(uint8_t zone, float area_m2) {
   ESP_LOGI(TAG, "Zone %d area: %.1f m2", zone + 1, area_m2);
 }
 
+void Hv6ZoneController::set_zone_wind_exposure(uint8_t zone, float exposure) {
+  if (zone >= NUM_ZONES || !config_store_)
+    return;
+  exposure = std::clamp(exposure, 0.0f, 1.0f);
+  auto cfg = config_store_->get_config();
+  if (std::fabs(cfg.zones[zone].wind_exposure - exposure) < 0.001f)
+    return;
+  cfg.zones[zone].wind_exposure = exposure;
+  config_store_->update_zone(zone, cfg.zones[zone]);
+  ESP_LOGI(TAG, "Zone %d wind exposure: %.2f", zone + 1, exposure);
+}
+
+void Hv6ZoneController::set_zone_solar_gain(uint8_t zone, float gain) {
+  if (zone >= NUM_ZONES || !config_store_)
+    return;
+  gain = std::clamp(gain, 0.0f, 1.0f);
+  auto cfg = config_store_->get_config();
+  if (std::fabs(cfg.zones[zone].solar_gain_factor - gain) < 0.001f)
+    return;
+  cfg.zones[zone].solar_gain_factor = gain;
+  config_store_->update_zone(zone, cfg.zones[zone]);
+  ESP_LOGI(TAG, "Zone %d solar gain: %.2f", zone + 1, gain);
+}
+
+void Hv6ZoneController::set_zone_thermal_lead_h(uint8_t zone, uint8_t hours) {
+  if (zone >= NUM_ZONES || !config_store_)
+    return;
+  if (hours > 48)
+    hours = 48;
+  auto cfg = config_store_->get_config();
+  if (cfg.zones[zone].thermal_lead_h == hours)
+    return;
+  cfg.zones[zone].thermal_lead_h = hours;
+  config_store_->update_zone(zone, cfg.zones[zone]);
+  ESP_LOGI(TAG, "Zone %d thermal lead: %u h", zone + 1, hours);
+}
+
 float Hv6ZoneController::get_zone_area_m2(uint8_t zone) const {
   if (zone >= NUM_ZONES || !config_store_)
     return 0.0f;

@@ -49,6 +49,8 @@ class Hv6ConfigStore : public esphome::Component {
   HeliosConfig get_helios_config() const;
   void update_asgard(const AsgardConfig &asgard);
   AsgardConfig get_asgard_config() const;
+  void update_forecast(const ForecastConfig &forecast);
+  ForecastConfig get_forecast_config() const;
 
   // Motor telemetry persistence (calibration data)
   void save_motor_telemetry(uint8_t motor, const MotorTelemetry &telemetry);

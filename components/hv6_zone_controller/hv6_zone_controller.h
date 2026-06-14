@@ -124,6 +124,11 @@ class Hv6ZoneController : public esphome::Component {
   void set_zone_exterior_walls(uint8_t zone, uint8_t walls);
   uint8_t get_zone_exterior_walls(uint8_t zone) const;
 
+  // Forecast preload exposure model (per zone)
+  void set_zone_wind_exposure(uint8_t zone, float exposure);
+  void set_zone_solar_gain(uint8_t zone, float gain);
+  void set_zone_thermal_lead_h(uint8_t zone, uint8_t hours);
+
   // Probe role (room temperature vs return water)
   void set_zone_probe_role(uint8_t zone, ProbeRole role);
   ProbeRole get_zone_probe_role(uint8_t zone) const;

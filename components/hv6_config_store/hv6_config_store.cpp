@@ -365,6 +365,37 @@ void Hv6ConfigStore::update_asgard(const AsgardConfig &asgard) {
   mark_dirty();
 }
 
+ForecastConfig Hv6ConfigStore::get_forecast_config() const {
+  if (mutex_ == nullptr)
+    return config_.forecast;
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  ForecastConfig copy = config_.forecast;
+  xSemaphoreGive(mutex_);
+  return copy;
+}
+
+void Hv6ConfigStore::update_forecast(const ForecastConfig &forecast) {
+  ForecastConfig sanitized = forecast;
+  sanitized.latitude = std::max(-90.0f, std::min(90.0f, sanitized.latitude));
+  sanitized.longitude = std::max(-180.0f, std::min(180.0f, sanitized.longitude));
+  sanitized.fetch_interval_s = std::max<uint16_t>(900, sanitized.fetch_interval_s);
+  sanitized.recompute_interval_s = std::max<uint16_t>(60, sanitized.recompute_interval_s);
+  sanitized.load_threshold = std::max(0.1f, std::min(10.0f, sanitized.load_threshold));
+  sanitized.gain_c_per_load = std::max(0.0f, std::min(2.0f, sanitized.gain_c_per_load));
+  sanitized.max_offset_c = std::max(0.0f, std::min(3.0f, sanitized.max_offset_c));
+  sanitized.indoor_ref_c = std::max(10.0f, std::min(28.0f, sanitized.indoor_ref_c));
+
+  if (mutex_ == nullptr) {
+    config_.forecast = sanitized;
+    mark_dirty();
+    return;
+  }
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  config_.forecast = sanitized;
+  xSemaphoreGive(mutex_);
+  mark_dirty();
+}
+
 void Hv6ConfigStore::save_motor_telemetry(uint8_t motor, const MotorTelemetry &telemetry) {
   if (motor >= NUM_ZONES)
     return;

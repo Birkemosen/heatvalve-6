@@ -88,6 +88,7 @@ packages:
   ota:          !include packages/network/ota.yaml
   helios:       !include packages/network/helios.yaml
   asgard:       !include packages/network/asgard.yaml
+  forecast:     !include packages/network/forecast.yaml
   # Hardware
   i2c:          !include packages/hardware/i2c.yaml
   onewire:      !include packages/hardware/onewire.yaml
@@ -115,6 +116,7 @@ external_components:
       - hv6_dashboard
       - hv6_helios_client
       - hv6_asgard_bridge
+      - hv6_forecast
 
 # =============================================================================
 # Logger
@@ -199,7 +201,7 @@ interval:
     then:
       - lambda: |-
           static const char *const task_names[] = {
-            "hv6_valve", "hv6_ripple", "hv6_zone", "hv6_helios", "hv6_asgard", "hv6_nvs", "loopTask"
+            "hv6_valve", "hv6_ripple", "hv6_zone", "hv6_helios", "hv6_asgard", "hv6_forecast", "hv6_nvs", "loopTask"
           };
           for (const char *name : task_names) {
             TaskHandle_t handle = xTaskGetHandle(name);

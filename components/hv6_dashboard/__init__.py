@@ -32,6 +32,7 @@ CONF_ZONE_STATE_IDS = "zone_state_ids"
 CONF_MOTOR_FAULT_IDS = "motor_fault_ids"
 CONF_HELIOS_CLIENT_ID = "helios_client_id"
 CONF_ASGARD_BRIDGE_ID = "asgard_bridge_id"
+CONF_FORECAST_ID = "forecast_id"
 
 hv6_dashboard_ns = cg.esphome_ns.namespace("hv6_dashboard")
 hv6_ns = cg.esphome_ns.namespace("hv6")
@@ -41,6 +42,7 @@ Hv6ValveController = hv6_ns.class_("Hv6ValveController", cg.Component)
 Hv6ConfigStore = hv6_ns.class_("Hv6ConfigStore", cg.Component)
 Hv6HeliosClient = cg.esphome_ns.namespace("hv6_helios_client").class_("Hv6HeliosClient", cg.Component)
 Hv6AsgardBridge = cg.esphome_ns.namespace("hv6_asgard_bridge").class_("Hv6AsgardBridge", cg.Component)
+Hv6Forecast = cg.esphome_ns.namespace("hv6_forecast").class_("Hv6Forecast", cg.Component)
 
 CONFIG_SCHEMA = cv.Schema(
     {
@@ -89,6 +91,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_DASHBOARD_JS): cv.file_,
         cv.Optional(CONF_HELIOS_CLIENT_ID): cv.use_id(Hv6HeliosClient),
         cv.Optional(CONF_ASGARD_BRIDGE_ID): cv.use_id(Hv6AsgardBridge),
+        cv.Optional(CONF_FORECAST_ID): cv.use_id(Hv6Forecast),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -210,6 +213,11 @@ async def to_code(config):
         asgard = await cg.get_variable(config[CONF_ASGARD_BRIDGE_ID])
         cg.add(var.set_asgard_bridge(asgard))
         cg.add_define("USE_HV6_ASGARD_BRIDGE")
+
+    if CONF_FORECAST_ID in config:
+        forecast = await cg.get_variable(config[CONF_FORECAST_ID])
+        cg.add(var.set_forecast(forecast))
+        cg.add_define("USE_HV6_FORECAST")
 
     if CONF_DASHBOARD_JS in config:
         path = CORE.relative_config_path(config[CONF_DASHBOARD_JS])

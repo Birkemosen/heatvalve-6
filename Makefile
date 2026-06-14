@@ -37,6 +37,7 @@ help:
 	@echo "  make erase-nvs     Erase NVS partition only (clears calibration data)"
 	@echo "  make test          Run all host unit tests"
 	@echo "  make test-ripple   Run ripple-counter unit tests (5 rates × 5 cases)"
+	@echo "  make test-forecast Run forecast preload-model unit tests"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make build"
@@ -121,7 +122,15 @@ test-ripple:
 	$(RIPPLE_CXX) $(RIPPLE_CXXFLAGS) $(RIPPLE_SRCS) -o $(RIPPLE_OUT) -lm
 	$(RIPPLE_OUT)
 
-test: test-ripple
+FORECAST_SRCS = components/hv6_forecast/forecast_model.cpp \
+                test/forecast/test_forecast_model.cpp
+FORECAST_OUT  = /tmp/test_forecast_model
+
+test-forecast:
+	$(RIPPLE_CXX) -std=c++17 -O2 -Wall -Wextra -I components/hv6_forecast $(FORECAST_SRCS) -o $(FORECAST_OUT) -lm
+	$(FORECAST_OUT)
+
+test: test-ripple test-forecast
 
 ota: check
 	$(MAKE) build

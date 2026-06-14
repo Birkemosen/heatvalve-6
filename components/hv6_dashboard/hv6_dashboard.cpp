@@ -7,6 +7,9 @@
 #ifdef USE_HV6_ASGARD_BRIDGE
 #include "../hv6_asgard_bridge/hv6_asgard_bridge.h"
 #endif
+#ifdef USE_HV6_FORECAST
+#include "../hv6_forecast/hv6_forecast.h"
+#endif
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -311,6 +314,27 @@ void HV6Dashboard::update_snapshot_() {
   s.asgard_peer_status[sizeof(s.asgard_peer_status) - 1] = '\0';
   s.asgard_last_error[sizeof(s.asgard_last_error) - 1] = '\0';
 
+  // Forecast preload status
+#ifdef USE_HV6_FORECAST
+  if (this->forecast_ != nullptr) {
+    auto *fc = static_cast<hv6_forecast::Hv6Forecast *>(this->forecast_);
+    strncpy(s.forecast_status, fc->get_status_str(), sizeof(s.forecast_status) - 1);
+    strncpy(s.forecast_last_error, fc->get_last_error(), sizeof(s.forecast_last_error) - 1);
+    s.forecast_age_s = fc->get_forecast_age_s();
+    s.forecast_fail_streak = fc->get_fetch_fail_streak();
+    for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
+      s.forecast_zone_offset_c[i] = fc->get_zone_offset(i);
+      s.forecast_zone_peak_in_h[i] = fc->get_zone_peak_in_h(i);
+    }
+  } else {
+    strncpy(s.forecast_status, "disabled", sizeof(s.forecast_status) - 1);
+  }
+#else
+  strncpy(s.forecast_status, "disabled", sizeof(s.forecast_status) - 1);
+#endif
+  s.forecast_status[sizeof(s.forecast_status) - 1] = '\0';
+  s.forecast_last_error[sizeof(s.forecast_last_error) - 1] = '\0';
+
   if (this->config_store_) {
     s.probes                 = this->config_store_->get_probe_config();
     s.motor                  = this->config_store_->get_motor_config();
@@ -323,6 +347,7 @@ void HV6Dashboard::update_snapshot_() {
     s.preheat_absorbing = this->zone_controller_ && this->zone_controller_->is_preheat_absorbing();
     s.helios                 = this->config_store_->get_helios_config();
     s.asgard                 = this->config_store_->get_asgard_config();
+    s.forecast               = this->config_store_->get_forecast_config();
     const auto dev_cfg = this->config_store_->get_config();
     strncpy(s.helios_device_id, dev_cfg.system.controller_id, sizeof(s.helios_device_id) - 1);
     s.helios_device_id[sizeof(s.helios_device_id) - 1] = '\0';
@@ -820,6 +845,56 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
       static_cast<unsigned>(snap->asgard_local_zones),
       static_cast<unsigned>(snap->asgard_peer_zones));
 
+  // flush before forecast section
+  if (!flush()) return;
+
+  // --- forecast config + status ---
+  appendf(buf, BUF_SIZE, offset,
+      "\"switch-forecast_enabled\":{\"state\":\"%s\"},"
+      "\"text-forecast_status\":{\"state\":\"%s\"},"
+      "\"text-forecast_last_error\":{\"state\":\"%s\"},"
+      "\"sensor-forecast_age_s\":{\"state\":%lu},"
+      "\"sensor-forecast_fail_streak\":{\"state\":%lu},",
+      snap->forecast.enabled ? "on" : "off",
+      snap->forecast_status,
+      snap->forecast_last_error,
+      static_cast<unsigned long>(snap->forecast_age_s),
+      static_cast<unsigned long>(snap->forecast_fail_streak));
+  format_float_token(num_buf, sizeof(num_buf), snap->forecast.latitude, 4);
+  appendf(buf, BUF_SIZE, offset, "\"number-forecast_latitude\":{\"value\":%s},", num_buf);
+  format_float_token(num_buf, sizeof(num_buf), snap->forecast.longitude, 4);
+  appendf(buf, BUF_SIZE, offset, "\"number-forecast_longitude\":{\"value\":%s},", num_buf);
+  format_float_token(num_buf, sizeof(num_buf), snap->forecast.load_threshold, 2);
+  appendf(buf, BUF_SIZE, offset, "\"number-forecast_load_threshold\":{\"value\":%s},", num_buf);
+  format_float_token(num_buf, sizeof(num_buf), snap->forecast.max_offset_c, 2);
+  appendf(buf, BUF_SIZE, offset, "\"number-forecast_max_offset_c\":{\"value\":%s},", num_buf);
+
+  if (!flush()) return;
+
+  // Per-zone active preload offset + hours-to-peak (read-only status).
+  for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
+    const uint8_t zn = i + 1;
+    format_float_token(num_buf, sizeof(num_buf), snap->forecast_zone_offset_c[i], 2);
+    appendf(buf, BUF_SIZE, offset,
+        "\"sensor-zone_%u_forecast_offset_c\":{\"value\":%s},"
+        "\"sensor-zone_%u_forecast_peak_h\":{\"state\":%d},",
+        zn, num_buf, zn, static_cast<int>(snap->forecast_zone_peak_in_h[i]));
+  }
+  if (!flush()) return;
+
+  // Per-zone exposure config
+  for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
+    const uint8_t zn = i + 1;
+    const hv6::ZoneConfig &z = snap->zones[i];
+    format_float_token(num_buf, sizeof(num_buf), z.wind_exposure, 2);
+    appendf(buf, BUF_SIZE, offset, "\"number-zone_%u_wind_exposure\":{\"value\":%s},", zn, num_buf);
+    format_float_token(num_buf, sizeof(num_buf), z.solar_gain_factor, 2);
+    appendf(buf, BUF_SIZE, offset, "\"number-zone_%u_solar_gain\":{\"value\":%s},", zn, num_buf);
+    appendf(buf, BUF_SIZE, offset,
+        "\"number-zone_%u_thermal_lead_h\":{\"value\":%u},", zn, static_cast<unsigned>(z.thermal_lead_h));
+    if (!flush()) return;
+  }
+
   // Sentinel field closes the JSON object and absorbs any trailing comma.
   appendf(buf, BUF_SIZE, offset, "\"_\":{}}");
   flush();
@@ -1312,6 +1387,44 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
     auto asgard_cfg = this->config_store_->get_asgard_config();
     asgard_cfg.peer_stale_after_s = static_cast<uint16_t>(std::max(30.0f, std::min(3600.0f, num_val)));
     this->config_store_->update_asgard(asgard_cfg);
+
+  // ---- forecast_enabled ----
+  } else if (strcmp(key, "forecast_enabled") == 0 && has_str && this->config_store_) {
+    auto fc = this->config_store_->get_forecast_config();
+    fc.enabled = (strcasecmp(str_val, "on") == 0 || strcmp(str_val, "1") == 0);
+    this->config_store_->update_forecast(fc);
+
+  // ---- forecast_latitude ----
+  } else if (strcmp(key, "forecast_latitude") == 0 && has_num && this->config_store_) {
+    auto fc = this->config_store_->get_forecast_config();
+    fc.latitude = num_val;
+    this->config_store_->update_forecast(fc);
+
+  // ---- forecast_longitude ----
+  } else if (strcmp(key, "forecast_longitude") == 0 && has_num && this->config_store_) {
+    auto fc = this->config_store_->get_forecast_config();
+    fc.longitude = num_val;
+    this->config_store_->update_forecast(fc);
+
+  // ---- forecast_load_threshold ----
+  } else if (strcmp(key, "forecast_load_threshold") == 0 && has_num && this->config_store_) {
+    auto fc = this->config_store_->get_forecast_config();
+    fc.load_threshold = num_val;
+    this->config_store_->update_forecast(fc);
+
+  // ---- forecast_max_offset_c ----
+  } else if (strcmp(key, "forecast_max_offset_c") == 0 && has_num && this->config_store_) {
+    auto fc = this->config_store_->get_forecast_config();
+    fc.max_offset_c = num_val;
+    this->config_store_->update_forecast(fc);
+
+  // ---- per-zone exposure ----
+  } else if (strcmp(key, "zone_wind_exposure") == 0 && has_num && zone_valid && this->zone_controller_) {
+    this->zone_controller_->set_zone_wind_exposure(zi, num_val);
+  } else if (strcmp(key, "zone_solar_gain") == 0 && has_num && zone_valid && this->zone_controller_) {
+    this->zone_controller_->set_zone_solar_gain(zi, num_val);
+  } else if (strcmp(key, "zone_thermal_lead_h") == 0 && has_num && zone_valid && this->zone_controller_) {
+    this->zone_controller_->set_zone_thermal_lead_h(zi, static_cast<uint8_t>(std::max(0.0f, std::min(48.0f, num_val))));
 
   // ---- motor config numeric setters ----
   } else if (has_num && this->config_store_ && this->valve_controller_) {

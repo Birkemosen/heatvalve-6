@@ -6,6 +6,7 @@ hv6_dashboard:
   config_store_id: hv6_config
   helios_client_id: hv6_helios
   asgard_bridge_id: hv6_asgard
+  forecast_id: hv6_forecast_id
   wifi_signal_id: wifi_signal_dbm
   manifold_flow_id: temp_manifold_flow
   manifold_return_id: temp_manifold_return

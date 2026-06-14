@@ -1,0 +1,358 @@
+// =============================================================================
+// HV6 Forecast — ESPHome Component Implementation
+// =============================================================================
+// HTTP(S) fetch + JSON parse + preload evaluation run in a dedicated FreeRTOS
+// task on Core 1, priority 1 (same pattern as hv6_helios_client /
+// hv6_asgard_bridge). The Open-Meteo response is parsed into a fixed 48-hour
+// cache that is persisted in NVS so a reboot does not lose the forecast.
+// =============================================================================
+
+#include "hv6_forecast.h"
+#include "esphome/core/log.h"
+#include "esphome/components/network/util.h"
+#include "esp_http_client.h"
+#include "esp_crt_bundle.h"
+#include "esp_timer.h"
+#include "nvs.h"
+#include <cstdio>
+#include <cstring>
+#include <cmath>
+#include <ctime>
+#include <algorithm>
+#include <memory>
+#include <ArduinoJson.h>
+
+namespace esphome {
+namespace hv6_forecast {
+
+static const char *const TAG = "hv6_forecast";
+static const char *const NVS_NS = "hv6f";
+static const char *const NVS_KEY_HOURS = "hours";
+static const char *const NVS_KEY_META = "meta";
+
+struct CacheMeta {
+  uint32_t base_epoch;
+  uint8_t count;
+};
+
+static uint32_t epoch_s_() { return static_cast<uint32_t>(::time(nullptr)); }
+
+// =============================================================================
+// ESPHome lifecycle
+// =============================================================================
+
+void Hv6Forecast::setup() {
+  if (!zone_controller_ || !config_store_) {
+    ESP_LOGE(TAG, "zone_controller or config_store not set; forecast disabled");
+    this->mark_failed();
+    return;
+  }
+
+  for (uint8_t i = 0; i < hv6::NUM_ZONES; i++)
+    zone_peak_in_h_[i] = -1;
+
+  load_cache_();
+
+  xTaskCreatePinnedToCore(task_func_, "hv6_forecast", STACK_SIZE, this, PRIORITY, &task_handle_, CORE);
+
+  hv6::ForecastConfig cfg = config_store_->get_forecast_config();
+  ESP_LOGI(TAG, "Forecast task spawned (core=%d prio=%u stack=%u)",
+           (int) CORE, (unsigned) PRIORITY, (unsigned) STACK_SIZE);
+  ESP_LOGI(TAG, "  config: enabled=%s lat=%.4f lon=%.4f fetch=%us cached_hours=%u",
+           cfg.enabled ? "yes" : "no", cfg.latitude, cfg.longitude,
+           cfg.fetch_interval_s, hours_count_);
+}
+
+void Hv6Forecast::dump_config() {
+  hv6::ForecastConfig cfg = config_store_ ? config_store_->get_forecast_config() : hv6::ForecastConfig{};
+  ESP_LOGCONFIG(TAG, "HV6 Forecast (wind preload):");
+  ESP_LOGCONFIG(TAG, "  Enabled: %s  Status: %s", cfg.enabled ? "yes" : "no", get_status_str());
+  ESP_LOGCONFIG(TAG, "  Location: %.4f, %.4f", cfg.latitude, cfg.longitude);
+  ESP_LOGCONFIG(TAG, "  Fetch every %u s, recompute every %u s", cfg.fetch_interval_s, cfg.recompute_interval_s);
+  ESP_LOGCONFIG(TAG, "  Model: threshold=%.2f gain=%.2f max_offset=%.2f°C",
+                cfg.load_threshold, cfg.gain_c_per_load, cfg.max_offset_c);
+}
+
+const char *Hv6Forecast::get_status_str() const {
+  switch (status_) {
+    case Status::OK:       return "ok";
+    case Status::NO_DATA:  return "no data";
+    case Status::STALE:    return "stale";
+    case Status::EXTERNAL: return "external helios";
+    default:               return "disabled";
+  }
+}
+
+uint32_t Hv6Forecast::get_forecast_age_s() const {
+  if (hours_base_epoch_ == 0)
+    return 0;
+  uint32_t now = epoch_s_();
+  return (now > hours_base_epoch_) ? (now - hours_base_epoch_) : 0;
+}
+
+// =============================================================================
+// FreeRTOS task
+// =============================================================================
+
+void Hv6Forecast::task_func_(void *arg) { static_cast<Hv6Forecast *>(arg)->run_(); }
+
+void Hv6Forecast::run_() {
+  // Boot warmup — WiFi + SNTP must be up before TLS to Open-Meteo makes sense.
+  vTaskDelay(pdMS_TO_TICKS(30000));
+
+  uint32_t last_fetch_attempt_s = 0;
+
+  while (true) {
+    hv6::ForecastConfig cfg = config_store_->get_forecast_config();
+    hv6::HeliosConfig helios_cfg = config_store_->get_helios_config();
+
+    // ---- Stability gates --------------------------------------------------
+    // An enabled external Helios service owns the command slots; the local
+    // producer must not fight it.
+    if (helios_cfg.enabled) {
+      status_ = Status::EXTERNAL;
+      clear_offsets_();
+      vTaskDelay(pdMS_TO_TICKS(5000));
+      continue;
+    }
+    const bool config_ok = cfg.enabled && (cfg.latitude != 0.0f || cfg.longitude != 0.0f);
+    if (!config_ok || !esphome::network::is_connected()) {
+      if (!config_ok) {
+        status_ = Status::DISABLED;
+        fetch_fail_streak_ = 0;
+      }
+      clear_offsets_();
+      vTaskDelay(pdMS_TO_TICKS(5000));
+      continue;
+    }
+
+    // ---- Fetch ------------------------------------------------------------
+    const uint32_t now = epoch_s_();
+    const bool need_fetch = hours_count_ == 0 ||
+                            get_forecast_age_s() >= cfg.fetch_interval_s;
+    uint32_t backoff_s = 0;
+    if (need_fetch && (now - last_fetch_attempt_s) >= 60) {
+      last_fetch_attempt_s = now;
+      if (fetch_forecast_(cfg)) {
+        fetch_fail_streak_ = 0;
+        last_error_[0] = '\0';
+        save_cache_();
+      } else {
+        if (fetch_fail_streak_ < 0xFFFFFFFFu) fetch_fail_streak_++;
+        uint32_t shift = std::min<uint32_t>(fetch_fail_streak_, 5);
+        backoff_s = std::min<uint32_t>(60u * (1u << shift), 1800);
+      }
+    }
+
+    // ---- Evaluate ----------------------------------------------------------
+    if (hours_count_ > 0 && get_forecast_age_s() <= FORECAST_MAX_AGE_S) {
+      status_ = Status::OK;
+      recompute_preloads_(cfg);
+    } else {
+      status_ = (hours_count_ > 0) ? Status::STALE : Status::NO_DATA;
+      clear_offsets_();
+    }
+
+    uint32_t sleep_s = (cfg.recompute_interval_s > 0) ? cfg.recompute_interval_s : 300;
+    if (backoff_s > 0)
+      sleep_s = std::min(sleep_s, backoff_s);
+    vTaskDelay(pdMS_TO_TICKS(sleep_s * 1000));
+  }
+}
+
+// =============================================================================
+// Preload evaluation
+// =============================================================================
+
+void Hv6Forecast::recompute_preloads_(const hv6::ForecastConfig &cfg) {
+  const uint32_t now = epoch_s_();
+  if (now <= hours_base_epoch_)
+    return;
+  const size_t now_index = (now - hours_base_epoch_) / 3600;
+  if (now_index >= hours_count_) {
+    clear_offsets_();
+    return;
+  }
+
+  ::hv6fc::PreloadParams params;
+  params.indoor_ref_c = cfg.indoor_ref_c;
+  params.load_threshold = cfg.load_threshold;
+  params.gain_c_per_load = cfg.gain_c_per_load;
+  params.max_offset_c = cfg.max_offset_c;
+
+  hv6::DeviceConfig dev_cfg = config_store_->get_config();
+  bool any_active = false;
+  for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
+    const hv6::ZoneConfig &zc = dev_cfg.zones[i];
+
+    ::hv6fc::ZoneExposure exposure;
+    exposure.exterior_walls = zc.exterior_walls;
+    exposure.wind_exposure = zc.wind_exposure;
+    exposure.solar_gain = zc.solar_gain_factor;
+    exposure.thermal_lead_h = zc.thermal_lead_h;
+
+    ::hv6fc::PreloadDecision decision{};
+    if (zc.enabled)
+      decision = ::hv6fc::compute_zone_preload(hours_, hours_count_, now_index, exposure, params);
+
+    hv6::HeliosZoneCommand cmd;
+    cmd.setpoint_offset_c = decision.offset_c;  // zone controller clamps to [min,max]_offset_c
+    cmd.preheat_floor_c = 0.0f;
+    zone_controller_->apply_helios_command(i, cmd);
+
+    if (decision.offset_c > 0.0f && zone_offset_c_[i] <= 0.0f) {
+      ESP_LOGI(TAG, "Zone %u preload +%.2f°C (peak load %.2f in %dh)",
+               i + 1, decision.offset_c, decision.peak_load, decision.peak_in_h);
+    }
+    zone_offset_c_[i] = decision.offset_c;
+    zone_peak_in_h_[i] = decision.peak_in_h;
+    if (decision.offset_c > 0.0f)
+      any_active = true;
+  }
+  offsets_active_ = any_active || offsets_active_;
+}
+
+void Hv6Forecast::clear_offsets_() {
+  if (!offsets_active_)
+    return;
+  zone_controller_->clear_all_helios_commands();
+  for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
+    zone_offset_c_[i] = 0.0f;
+    zone_peak_in_h_[i] = -1;
+  }
+  offsets_active_ = false;
+  ESP_LOGI(TAG, "Preload offsets cleared");
+}
+
+// =============================================================================
+// Open-Meteo fetch
+// =============================================================================
+
+bool Hv6Forecast::fetch_forecast_(const hv6::ForecastConfig &cfg) {
+  char url[288];
+  snprintf(url, sizeof(url),
+           "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"
+           "&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,shortwave_radiation"
+           "&forecast_days=3&timeformat=unixtime&wind_speed_unit=ms&timezone=UTC",
+           cfg.latitude, cfg.longitude);
+
+  esp_http_client_config_t http_cfg{};
+  http_cfg.url = url;
+  http_cfg.method = HTTP_METHOD_GET;
+  http_cfg.timeout_ms = HTTP_TIMEOUT_MS;
+  http_cfg.crt_bundle_attach = esp_crt_bundle_attach;
+  http_cfg.buffer_size = 2048;
+
+  esp_http_client_handle_t client = esp_http_client_init(&http_cfg);
+  if (!client) {
+    snprintf(last_error_, sizeof(last_error_), "http init failed");
+    return false;
+  }
+
+  // 72 h × 4 hourly arrays + unixtime stamps ≈ 8–10 KB of JSON.
+  constexpr size_t BODY_CAP = 16384;
+  std::unique_ptr<char[]> body(new (std::nothrow) char[BODY_CAP]);
+  bool ok = false;
+
+  esp_err_t err = body ? esp_http_client_open(client, 0) : ESP_ERR_NO_MEM;
+  if (err == ESP_OK) {
+    esp_http_client_fetch_headers(client);
+    int status = esp_http_client_get_status_code(client);
+    int len = esp_http_client_read_response(client, body.get(), BODY_CAP - 1);
+    if (status == 200 && len > 0) {
+      body[len] = '\0';
+
+      // Parse with a heap document; only the hourly arrays are kept.
+      StaticJsonDocument<256> filter;
+      filter["hourly"]["time"] = true;
+      filter["hourly"]["temperature_2m"] = true;
+      filter["hourly"]["wind_speed_10m"] = true;
+      filter["hourly"]["wind_direction_10m"] = true;
+      filter["hourly"]["shortwave_radiation"] = true;
+
+      DynamicJsonDocument doc(20480);
+      DeserializationError jerr = deserializeJson(doc, body.get(), len, DeserializationOption::Filter(filter));
+      if (!jerr) {
+        JsonArrayConst times = doc["hourly"]["time"].as<JsonArrayConst>();
+        JsonArrayConst temps = doc["hourly"]["temperature_2m"].as<JsonArrayConst>();
+        JsonArrayConst winds = doc["hourly"]["wind_speed_10m"].as<JsonArrayConst>();
+        JsonArrayConst dirs = doc["hourly"]["wind_direction_10m"].as<JsonArrayConst>();
+        JsonArrayConst solar = doc["hourly"]["shortwave_radiation"].as<JsonArrayConst>();
+
+        // Skip hours that are already in the past so hours_[0] ≈ "now".
+        const uint32_t now = epoch_s_();
+        size_t start = 0;
+        while (start < times.size() && times[start].as<uint32_t>() + 3600 < now)
+          start++;
+
+        uint8_t count = 0;
+        uint32_t base_epoch = 0;
+        for (size_t i = start; i < times.size() && count < FORECAST_HOURS; i++, count++) {
+          if (count == 0)
+            base_epoch = times[i].as<uint32_t>();
+          hours_[count].temp_c = temps[i] | 0.0f;
+          hours_[count].wind_speed_ms = winds[i] | 0.0f;
+          hours_[count].wind_dir_deg = dirs[i] | 0.0f;
+          hours_[count].shortwave_wm2 = solar[i] | 0.0f;
+        }
+
+        if (count >= 24 && base_epoch > 0) {
+          hours_count_ = count;
+          hours_base_epoch_ = base_epoch;
+          ok = true;
+          ESP_LOGI(TAG, "Forecast updated: %u hours from epoch %lu", count, (unsigned long) base_epoch);
+        } else {
+          snprintf(last_error_, sizeof(last_error_), "short forecast (%u h)", count);
+        }
+      } else {
+        snprintf(last_error_, sizeof(last_error_), "json %s", jerr.c_str());
+      }
+    } else {
+      snprintf(last_error_, sizeof(last_error_), "http %d len %d", status, len);
+      ESP_LOGW(TAG, "Open-Meteo fetch failed: http %d len %d", status, len);
+    }
+  } else {
+    snprintf(last_error_, sizeof(last_error_), "%s", esp_err_to_name(err));
+    ESP_LOGW(TAG, "Open-Meteo fetch failed: %s", esp_err_to_name(err));
+  }
+
+  esp_http_client_close(client);
+  esp_http_client_cleanup(client);
+  return ok;
+}
+
+// =============================================================================
+// NVS cache (own namespace; survives reboots)
+// =============================================================================
+
+void Hv6Forecast::save_cache_() {
+  nvs_handle_t handle;
+  if (nvs_open(NVS_NS, NVS_READWRITE, &handle) != ESP_OK)
+    return;
+  CacheMeta meta{hours_base_epoch_, hours_count_};
+  nvs_set_blob(handle, NVS_KEY_META, &meta, sizeof(meta));
+  nvs_set_blob(handle, NVS_KEY_HOURS, hours_, sizeof(ForecastHour) * hours_count_);
+  nvs_commit(handle);
+  nvs_close(handle);
+}
+
+void Hv6Forecast::load_cache_() {
+  nvs_handle_t handle;
+  if (nvs_open(NVS_NS, NVS_READONLY, &handle) != ESP_OK)
+    return;
+  CacheMeta meta{};
+  size_t meta_len = sizeof(meta);
+  if (nvs_get_blob(handle, NVS_KEY_META, &meta, &meta_len) == ESP_OK &&
+      meta_len == sizeof(meta) && meta.count > 0 && meta.count <= FORECAST_HOURS) {
+    size_t hours_len = sizeof(ForecastHour) * meta.count;
+    if (nvs_get_blob(handle, NVS_KEY_HOURS, hours_, &hours_len) == ESP_OK) {
+      hours_count_ = meta.count;
+      hours_base_epoch_ = meta.base_epoch;
+      ESP_LOGI(TAG, "Restored %u cached forecast hours from NVS", hours_count_);
+    }
+  }
+  nvs_close(handle);
+}
+
+}  // namespace hv6_forecast
+}  // namespace esphome
