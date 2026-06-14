@@ -22,7 +22,7 @@ itself is still served at `/dashboard` + `/dashboard.js`.
   - `GET /api/hv6/v1/history` — 24 h zone-state ring buffer
   - `GET /api/hv6/v1/ble-scan` — discovered BTHome sensors
   - `GET /api/hv6/v1/peer` — compact board-to-board zone snapshot
-    (`{"ok":true,"zones":[{"t":21.4,"area":18.5,"en":true},…]}`) consumed by the peer
+    (`{"ok":true,"zones":[{"t":21.4,"sp":21.0,"area":18.5,"en":true},…]}`) consumed by the peer
     board's Asgard bridge; see [ecodan_integration.md](ecodan_integration.md)
 - Write endpoints (query parameters; return the v1 response envelope):
   - `POST /api/hv6/v1/zones/{zone}/setpoint?setpoint_c=<float>`

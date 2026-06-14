@@ -438,6 +438,44 @@ bool Hv6ConfigStore::load_motor_telemetry(uint8_t motor, MotorTelemetry &telemet
   return err == ESP_OK;
 }
 
+// -----------------------------------------------------------------------------
+// Sensor pairing (BLE MAC + temp source) — persisted under its own key so it
+// survives the version-based discard of the main config blob on firmware update.
+// Blob format: [uint32 version][SensorConfig].
+// -----------------------------------------------------------------------------
+
+void Hv6ConfigStore::save_sensor_config_(nvs_handle_t handle, const SensorConfig &sensor) {
+  uint8_t blob[sizeof(uint32_t) + sizeof(SensorConfig)];
+  uint32_t version = SENSOR_CONFIG_VERSION;
+  memcpy(blob, &version, sizeof(uint32_t));
+  memcpy(blob + sizeof(uint32_t), &sensor, sizeof(SensorConfig));
+  nvs_set_blob(handle, KEY_SENSORS, blob, sizeof(blob));
+}
+
+bool Hv6ConfigStore::load_sensor_config_(nvs_handle_t handle) {
+  size_t size = 0;
+  if (nvs_get_blob(handle, KEY_SENSORS, nullptr, &size) != ESP_OK)
+    return false;  // no durable copy yet (first boot, or pre-upgrade firmware)
+  if (size != sizeof(uint32_t) + sizeof(SensorConfig))
+    return false;  // layout changed — fall back to whatever the main blob/defaults gave
+
+  uint8_t blob[sizeof(uint32_t) + sizeof(SensorConfig)];
+  size_t read_size = size;
+  if (nvs_get_blob(handle, KEY_SENSORS, blob, &read_size) != ESP_OK)
+    return false;
+
+  uint32_t version = 0;
+  memcpy(&version, blob, sizeof(uint32_t));
+  if (version != SENSOR_CONFIG_VERSION)
+    return false;
+
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  memcpy(&config_.sensor_config, blob + sizeof(uint32_t), sizeof(SensorConfig));
+  xSemaphoreGive(mutex_);
+  ESP_LOGI(TAG, "Sensor pairing restored from durable key");
+  return true;
+}
+
 bool Hv6ConfigStore::erase_namespace() {
   if (!initialized_)
     return false;
@@ -523,7 +561,17 @@ void Hv6ConfigStore::load_config_() {
     }
   }
 
+  // Overlay the durable sensor pairing on top of whatever the main blob loaded
+  // (or the defaults, when the main blob was version-discarded above).
+  bool had_durable = load_sensor_config_(handle);
+
   nvs_close(handle);
+
+  // Migration: a returning device whose pairing only lived in the main blob has
+  // no durable copy yet. Seed one now (deferred commit) while the pairing is
+  // still present, so it survives the next CONFIG_VERSION bump.
+  if (!had_durable)
+    mark_dirty();
 }
 
 void Hv6ConfigStore::save_config_() {
@@ -540,6 +588,9 @@ void Hv6ConfigStore::save_config_() {
     return;
 
   nvs_set_blob(handle, KEY_CONFIG, &snapshot, sizeof(DeviceConfig));
+
+  // Mirror the sensor pairing to its own key so it outlives a CONFIG_VERSION bump.
+  save_sensor_config_(handle, snapshot.sensor_config);
 
   nvs_commit(handle);
   nvs_close(handle);

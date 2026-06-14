@@ -981,6 +981,43 @@ void Hv6ValveController::execute_move_(uint8_t zone, float target_pct) {
   if (!start_motor_(zone, dir))
     return;
 
+  // --- Soft-approach + adaptive endstop guard context for this move ---
+  // approach_stroke_* are the estimated travel for THIS move (remaining distance
+  // to the target), so soft-approach engages in the final stretch regardless of
+  // where the move started.
+  drive_to_endstop_active_ = drive_to_endstop;
+  approach_stroke_ms_ = (travel_time_ms > 0.0f) ? static_cast<uint32_t>(travel_time_ms) : 0;
+  approach_stroke_ripples_ = 0;
+  if (ripple_enabled_) {
+    if (!drive_to_endstop) {
+      approach_stroke_ripples_ = target_ripples;
+    } else {
+      float remaining = (dir == MotorDirection::OPEN) ? (100.0f - current_pct) : current_pct;
+      remaining = std::clamp(remaining, 0.0f, 100.0f) / 100.0f;
+      xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
+      uint32_t full = (dir == MotorDirection::OPEN)
+          ? telemetry_[zone].learned_open_ripples
+          : telemetry_[zone].learned_close_ripples;
+      xSemaphoreGive(telemetry_mutex_);
+      if (full > 0)
+        approach_stroke_ripples_ = static_cast<uint32_t>(remaining * static_cast<float>(full));
+    }
+  }
+
+  // Adaptive inrush blind window: base = boost + settle; shrink toward a floor
+  // just past boost when little travel remains (valve already near the stop) so a
+  // near-endstop move is not blind. The fast raw hard-cap (gated only on the boost
+  // phase) still protects the boost→guard region.
+  if (!calibrating_) {
+    uint32_t base_guard = motor_cfg_.pwm_boost_ms + ENDSTOP_SETTLE_MS;
+    uint32_t guard = base_guard;
+    if (drive_to_endstop && approach_stroke_ms_ > 0 && approach_stroke_ms_ < base_guard) {
+      uint32_t floor_guard = motor_cfg_.pwm_boost_ms + 100;
+      guard = std::max(floor_guard, approach_stroke_ms_ / 2);
+    }
+    endstop_guard_ms_ = guard;
+  }
+
   // Ripple safety limit for opening: stop if we exceed learned open stroke × factor
   uint32_t open_ripple_limit = 0;
   if (drive_to_endstop && dir == MotorDirection::OPEN
@@ -1105,7 +1142,16 @@ bool Hv6ValveController::start_motor_(uint8_t zone, MotorDirection dir, bool ove
   current_count_ = 0;
   debounce_count_ = 0;
   endstop_high_count_ = 0;
+  hard_cap_high_count_ = 0;
   low_current_count_ = 0;
+  // Conservative defaults — execute_move_() overrides these for normal moves.
+  // Calibration passes call start_motor_() directly and keep the fixed blind
+  // window / full-force drive so calibration behavior is unchanged.
+  drive_to_endstop_active_ = false;
+  soft_approach_active_ = false;
+  endstop_guard_ms_ = ENDSTOP_MIN_RUNTIME_MS;
+  approach_stroke_ripples_ = 0;
+  approach_stroke_ms_ = 0;
   slope_prev_current_ma_ = 0.0f;
   slope_tick_count_ = 0;
   current_slope_ma_per_s_ = 0.0f;
@@ -1248,7 +1294,7 @@ void Hv6ValveController::process_tick_() {
   // false TIMEOUTs while relearning a drifting or slow valve.
   if (!calibrating_ && lo > 0 && lc > 0) {
     uint32_t learned_max = std::max(lo, lc);
-    adaptive_cap = learned_max + 5000;
+    adaptive_cap = learned_max + motor_cfg_.adaptive_runtime_margin_ms;
     if (adaptive_cap > 1000 && static_cast<float>(adaptive_cap) < max_runtime_ms) {
       max_runtime_ms = static_cast<float>(adaptive_cap);
       adaptive_applied = true;
@@ -1262,6 +1308,25 @@ void Hv6ValveController::process_tick_() {
              adaptive_cap, adaptive_applied ? "applied" : "not_applied", lo, lc);
     trigger_fault_(FaultCode::MECHANICAL_OVERRUN,
                    "runtime safety cutoff (possible actuator pop-off)");
+    return;
+  }
+
+  // Calibration-only fast abort for a missing motor. A connected actuator
+  // produces commutation ripples within the first couple of seconds; if ripple
+  // counting is active and we've seen zero ripples well past the inrush window,
+  // nothing is wired to this driver. The IPROPI lines are wire-ORed onto one
+  // floating ADC pin, so noise can intermittently exceed the low-current
+  // threshold and defeat detect_open_circuit_(), letting the pass otherwise run
+  // to the full ~45 s runtime cap. Bail now so calibration fails fast instead
+  // of pinning the CPU for the whole safety window on every pass.
+  if (calibrating_ && ripple_enabled_ &&
+      motor_run_time_ms_ >= CALIBRATION_NO_RIPPLE_ABORT_MS &&
+      live_ripple_count_.load(std::memory_order_relaxed) == 0) {
+    xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
+    telemetry_[current_zone_].present = false;
+    telemetry_[current_zone_].presence_known = true;
+    xSemaphoreGive(telemetry_mutex_);
+    trigger_fault_(FaultCode::OPEN_CIRCUIT, "no ripple — motor not connected");
     return;
   }
 
@@ -1306,7 +1371,7 @@ void Hv6ValveController::apply_drive_output_() {
     uint32_t period = motor_cfg_.pwm_period_ms;
     if (period == 0)
       period = 40;
-    uint32_t on_time = (period * motor_cfg_.pwm_hold_duty_pct) / 100;
+    uint32_t on_time = (period * effective_hold_duty_()) / 100;
     uint32_t phase_pos = drive_phase_elapsed_ms_ % period;
 
     if (phase_pos < on_time) {
@@ -1326,82 +1391,136 @@ void Hv6ValveController::apply_drive_output_() {
   }
 }
 
-void Hv6ValveController::detect_endstop_() {
-  // Ignore endstop detection during startup to avoid reacting to inrush/current transients.
-  if (motor_run_time_ms_ < ENDSTOP_MIN_RUNTIME_MS)
-    return;
+uint8_t Hv6ValveController::effective_hold_duty_() {
+  uint8_t hold = motor_cfg_.pwm_hold_duty_pct;
+  uint8_t approach = motor_cfg_.pwm_approach_duty_pct;
+  uint8_t zone_pct = motor_cfg_.approach_zone_pct;
 
-  // Select per-direction parameters
-  bool is_opening = (current_dir_ == MotorDirection::OPEN);
-  float cfg_current_factor = effective_current_factor_(current_zone_, current_dir_);
-  float cfg_slope_thr      = is_opening ? motor_cfg_.open_slope_threshold_ma_per_s
-                                        : motor_cfg_.close_slope_threshold_ma_per_s;
-  float cfg_slope_cur_fac  = is_opening ? motor_cfg_.open_slope_current_factor
-                                        : motor_cfg_.close_slope_current_factor;
-
-  // --- Slope tracking (dI/dt) ---
-  // Initialize on first call after startup guard so slope_prev starts from
-  // a settled current reading, not zero.
-  if (!slope_initialized_) {
-    slope_prev_current_ma_ = current_filtered_ma_;
-    slope_tick_count_ = 0;
-    current_slope_ma_per_s_ = 0.0f;
-    slope_endstop_windows_ = 0;
-    slope_initialized_ = true;
+  // Soft-approach only applies when heading to a mechanical limit with usable
+  // travel data and a sane, lower approach duty configured.
+  if (!drive_to_endstop_active_ || approach == 0 || approach >= hold ||
+      zone_pct == 0 || zone_pct >= 100) {
+    soft_approach_active_ = false;
+    return hold;
   }
 
-  // Update slope estimate every SLOPE_WINDOW_TICKS (500ms).
-  // The VdMot current graphs show endstop as a gradual ramp over the last ~25%
-  // of travel (e.g. 19→35 mA closing, 15→25 mA opening).  Unlike VdMot which
-  // has a dedicated hardware tacho circuit (AC-coupled opamp from motor voltage),
-  // HV6 derives both ripple and current from the single IPROPI pin.  Slope
-  // detection on the current signal is therefore the best secondary indicator.
-  slope_tick_count_++;
-  if (slope_tick_count_ >= SLOPE_WINDOW_TICKS) {
-    float dt_s = static_cast<float>(SLOPE_WINDOW_TICKS * TICK_MS) / 1000.0f;
-    current_slope_ma_per_s_ = (current_filtered_ma_ - slope_prev_current_ma_) / dt_s;
-    slope_prev_current_ma_ = current_filtered_ma_;
-    slope_tick_count_ = 0;
-
-    // Check if this window shows endstop-like slope: current rising AND above
-    // mean×slope_current_factor (avoids false trigger on the mid-travel step when pin engages).
-    float mean = mean_currents_[current_zone_];
-    bool window_rising = current_slope_ma_per_s_ > cfg_slope_thr
-                         && current_filtered_ma_ > mean * cfg_slope_cur_fac;
-    if (window_rising) {
-      if (slope_endstop_windows_ < 255)
-        slope_endstop_windows_++;
-    } else {
-      slope_endstop_windows_ = 0;
-    }
-  }
-
-  // --- Primary path: absolute threshold with sustained debounce ---
-  float mean = mean_currents_[current_zone_];
-  float threshold = mean * cfg_current_factor;
-  bool above_threshold = current_filtered_ma_ > threshold;
-
-  if (above_threshold) {
-    if (endstop_high_count_ < 255)
-      endstop_high_count_++;
+  float progress;
+  if (ripple_enabled_ && approach_stroke_ripples_ > 0) {
+    uint32_t rip = live_ripple_count_.load(std::memory_order_relaxed);
+    progress = static_cast<float>(rip) / static_cast<float>(approach_stroke_ripples_);
+  } else if (approach_stroke_ms_ > 0) {
+    progress = static_cast<float>(motor_run_time_ms_) / static_cast<float>(approach_stroke_ms_);
   } else {
-    endstop_high_count_ = 0;
+    soft_approach_active_ = false;  // no learned travel data — keep full force
+    return hold;
   }
 
-  // --- Hard safety cap: instant stop if current far exceeds normal range ---
-  bool hard_cap_endstop = current_filtered_ma_ > ENDSTOP_HARD_CAP_MA;
+  bool active = progress >= (static_cast<float>(zone_pct) / 100.0f);
+  if (active && !soft_approach_active_) {
+    ESP_LOGD(TAG, "Motor %d soft-approach engaged (progress=%.0f%%, duty %u%%->%u%%)",
+             current_zone_ + 1, progress * 100.0f, hold, approach);
+  }
+  soft_approach_active_ = active;
+  return active ? approach : hold;
+}
 
-  // --- Evaluate all detection paths ---
-  bool threshold_endstop = endstop_high_count_ >= ENDSTOP_HIGH_TICKS;
-  bool slope_endstop = slope_endstop_windows_ >= ENDSTOP_SLOPE_WINDOWS;
+void Hv6ValveController::detect_endstop_() {
+  bool past_boost = motor_run_time_ms_ >= motor_cfg_.pwm_boost_ms;
+
+  // --- Fast hard safety cap (low latency) ---
+  // Evaluate the absolute over-current cap against the *raw* per-frame current
+  // (~17 ms latency) with a tiny debounce, rather than the ~200 ms-lagged EMA.
+  // Active as soon as the boost/inrush phase is over so it protects the
+  // vulnerable near-stop region even before the slope/threshold guard opens.
+  bool hard_cap_endstop = false;
+  if (past_boost) {
+    if (current_raw_ma_ > ENDSTOP_HARD_CAP_MA) {
+      if (hard_cap_high_count_ < 255)
+        hard_cap_high_count_++;
+    } else {
+      hard_cap_high_count_ = 0;
+    }
+    hard_cap_endstop = hard_cap_high_count_ >= HARD_CAP_TICKS;
+  }
+
+  // Threshold and slope detection only run after the (adaptive) inrush guard —
+  // shorter than the conservative calibration window, and shrunk further for
+  // moves that start already near the stop (see execute_move_).
+  bool threshold_endstop = false;
+  bool slope_endstop = false;
+  if (motor_run_time_ms_ >= endstop_guard_ms_) {
+    bool is_opening = (current_dir_ == MotorDirection::OPEN);
+    float cfg_current_factor = effective_current_factor_(current_zone_, current_dir_);
+    float cfg_slope_thr      = is_opening ? motor_cfg_.open_slope_threshold_ma_per_s
+                                          : motor_cfg_.close_slope_threshold_ma_per_s;
+    float cfg_slope_cur_fac  = is_opening ? motor_cfg_.open_slope_current_factor
+                                          : motor_cfg_.close_slope_current_factor;
+
+    // While soft-approach has reduced the drive duty, the running current is
+    // proportionally lower than the learned mean (captured at full hold duty),
+    // so scale the comparison mean to preserve detection sensitivity.
+    float detect_mean = mean_currents_[current_zone_];
+    if (soft_approach_active_ && motor_cfg_.pwm_hold_duty_pct > 0) {
+      detect_mean *= static_cast<float>(motor_cfg_.pwm_approach_duty_pct) /
+                     static_cast<float>(motor_cfg_.pwm_hold_duty_pct);
+    }
+
+    // --- Slope tracking (dI/dt) ---
+    // Initialize on first call after the guard so slope_prev starts from a
+    // settled current reading, not zero.
+    if (!slope_initialized_) {
+      slope_prev_current_ma_ = current_filtered_ma_;
+      slope_tick_count_ = 0;
+      current_slope_ma_per_s_ = 0.0f;
+      slope_endstop_windows_ = 0;
+      slope_initialized_ = true;
+    }
+
+    // Update slope estimate every SLOPE_WINDOW_TICKS (500ms). The VdMot current
+    // graphs show endstop as a gradual ramp over the last ~25% of travel (e.g.
+    // 19→35 mA closing, 15→25 mA opening). Unlike VdMot (dedicated AC-coupled
+    // tacho), HV6 derives both ripple and current from the single IPROPI pin, so
+    // slope detection on the current signal is the best secondary indicator.
+    slope_tick_count_++;
+    if (slope_tick_count_ >= SLOPE_WINDOW_TICKS) {
+      float dt_s = static_cast<float>(SLOPE_WINDOW_TICKS * TICK_MS) / 1000.0f;
+      current_slope_ma_per_s_ = (current_filtered_ma_ - slope_prev_current_ma_) / dt_s;
+      slope_prev_current_ma_ = current_filtered_ma_;
+      slope_tick_count_ = 0;
+
+      // Endstop-like slope: current rising AND above mean×slope_current_factor
+      // (avoids false trigger on the mid-travel step when the pin engages).
+      bool window_rising = current_slope_ma_per_s_ > cfg_slope_thr
+                           && current_filtered_ma_ > detect_mean * cfg_slope_cur_fac;
+      if (window_rising) {
+        if (slope_endstop_windows_ < 255)
+          slope_endstop_windows_++;
+      } else {
+        slope_endstop_windows_ = 0;
+      }
+    }
+
+    // --- Primary path: absolute threshold with sustained debounce ---
+    float threshold = detect_mean * cfg_current_factor;
+    if (current_filtered_ma_ > threshold) {
+      if (endstop_high_count_ < 255)
+        endstop_high_count_++;
+    } else {
+      endstop_high_count_ = 0;
+    }
+
+    threshold_endstop = endstop_high_count_ >= ENDSTOP_HIGH_TICKS;
+    slope_endstop = slope_endstop_windows_ >= ENDSTOP_SLOPE_WINDOWS;
+  }
 
   if (!threshold_endstop && !slope_endstop && !hard_cap_endstop)
     return;
 
   const char *trigger = hard_cap_endstop ? "hard_cap" : threshold_endstop ? "threshold" : "slope";
-  ESP_LOGI(TAG, "Motor %d endstop (%s: %.1f mA, mean=%.1f, thr=%.1f, slope=%.2f mA/s)",
-           current_zone_ + 1, trigger,
-           current_filtered_ma_, mean, threshold, current_slope_ma_per_s_);
+  ESP_LOGI(TAG, "Motor %d endstop (%s: filt=%.1f mA, raw=%.1f mA, mean=%.1f, slope=%.2f mA/s, t=%" PRIu32 "ms%s)",
+           current_zone_ + 1, trigger, current_filtered_ma_, current_raw_ma_,
+           mean_currents_[current_zone_], current_slope_ma_per_s_, motor_run_time_ms_,
+           soft_approach_active_ ? ", soft" : "");
 
   xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
   auto &t = telemetry_[current_zone_];
@@ -1783,13 +1902,17 @@ void Hv6ValveController::run_calibration_(uint8_t zone) {
              zone + 1, dropped_cmds);
   }
 
-  // Calibration can run for tens of seconds; temporarily boost this task's
-  // priority so it preempts non-critical app work on the same core.
+  // Calibration can run for tens of seconds; modestly boost this task's
+  // priority so it preempts non-critical app work on the same core. Keep the
+  // boost well below the ESP-IDF system services (esp_timer ~22, WiFi ~23,
+  // IPC 24) — outranking those while a pass runs for seconds can starve them
+  // and the ESPHome loop task, tripping the (panic-enabled) task watchdog.
   UBaseType_t original_prio = uxTaskPriorityGet(nullptr);
   UBaseType_t boosted_prio = original_prio;
-  UBaseType_t max_safe_prio = (configMAX_PRIORITIES > 2) ? (configMAX_PRIORITIES - 2) : original_prio;
-  if (max_safe_prio > boosted_prio)
-    boosted_prio = max_safe_prio;
+  UBaseType_t safe_ceiling = (configMAX_PRIORITIES > 2) ? (configMAX_PRIORITIES - 2) : original_prio;
+  UBaseType_t target_prio = std::min<UBaseType_t>(CALIBRATION_BOOST_PRIORITY, safe_ceiling);
+  if (target_prio > boosted_prio)
+    boosted_prio = target_prio;
   if (boosted_prio != original_prio)
     vTaskPrioritySet(nullptr, boosted_prio);
 

@@ -53,13 +53,12 @@ configurations/
 packages/
   board/                  ← ESP32-S3 board definition
   hardware/               ← BLE, display, I2C, motors, LED, 1-Wire, sensors
-  network/                ← WiFi, API, OTA, Helios client, Asgard bridge, forecast
+  network/                ← WiFi, API, OTA, Asgard bridge, forecast
   zones/                  ← Climate entities, zone sensors, UI, dashboard wiring
 components/               ← Custom ESPHome external components (C++)
   hv6_config_store/       ← NVS persistence (DeviceConfig struct)
   hv6_valve_controller/   ← Motor FSM, endstop detection, ripple counting
   hv6_zone_controller/    ← Zone state machine, control algorithms, hydraulic balance
-  hv6_helios_client/      ← HTTP client for external Helios-3 optimizer
   hv6_asgard_bridge/      ← Weighted house temp → Asgard/Ecodan virtual thermostat
   hv6_forecast/           ← Open-Meteo wind-aware per-zone preload (forecast_model = host-testable)
   hv6_dashboard/          ← HTTP API + SSE server, dashboard asset serving
@@ -78,15 +77,14 @@ test/forecast/            ← Host-side unit test for the forecast preload model
 
 ### Custom Components
 
-Seven ESPHome external components live under `components/`. Each has a Python `__init__.py` for ESPHome code-generation and C++ implementation files. The components depend on each other in this order:
+Six ESPHome external components live under `components/`. Each has a Python `__init__.py` for ESPHome code-generation and C++ implementation files. The components depend on each other in this order:
 
 ```
 hv6_config_store  ← hv6_valve_controller  ← hv6_zone_controller
                                                      ↑
-                                             hv6_helios_client
                                              hv6_asgard_bridge
                                              hv6_forecast
-                                             hv6_dashboard (reads all six)
+                                             hv6_dashboard (reads all five)
 ```
 
 ### FreeRTOS Task Layout
@@ -96,7 +94,6 @@ hv6_config_store  ← hv6_valve_controller  ← hv6_zone_controller
 | `hv6_valve` (motor FSM) | 1 | 7 | 10 ms tick |
 | `hv6_ripple` (DMA ADC) | 1 | 7 | continuous |
 | `hv6_zone` (control cycle) | 0 | 6 | 10 s (configurable) |
-| `hv6_helios` (HTTP) | 1 | 1 | 60 s poll |
 | `hv6_asgard` (HTTP) | 1 | 1 | 30 s push (coordinator only) |
 | `hv6_forecast` (HTTPS) | 1 | 1 | 1 h fetch / 5 min recompute |
 | `hv6_nvs` (flash commit) | 1 | 1 | event-driven |
@@ -114,15 +111,27 @@ All 6 IPROPI outputs are wire-ORed to a single ADC pin (GPIO7). The valve contro
 
 Motor calibration telemetry is stored separately per-motor under keys `mot0`–`mot5`.
 
+BLE sensor pairing (`SensorConfig`: per-zone `zone_ble_mac` + `zone_temp_source`) is
+**also mirrored to its own `sensors` NVS key** so it survives a `CONFIG_VERSION` bump —
+otherwise every firmware update that changes the struct would wipe the user's BLE
+pairings along with the rest of the discarded blob. On boot, `load_config_()` overlays
+the durable `sensors` blob on top of the (possibly version-reset) main config; a
+returning device with no durable copy yet seeds one automatically. Both keys are written
+together on every config commit, and `erase-nvs` clears it like everything else. The
+blob carries its own `SENSOR_CONFIG_VERSION` (bump only when `SensorConfig`'s layout
+changes).
+
 ### Dashboard
 
 Source files live under `web/dashboard-src/` and are bundled by esbuild into `web/dashboard.js`. The bundled artifact is committed and embedded into the firmware at build time via ESPHome's `web_server` component. The C++ `hv6_dashboard` component serves the app at `/dashboard` and exposes a JSON API at `/api/hv6/v1` on the device web server (port 80). The API contract is documented in [docs/hv6_api_v1.md](docs/hv6_api_v1.md).
 
 The dashboard **must not** call ESPHome entity REST routes (`/climate`, `/switch`, `/number`, etc.) — all dashboard traffic goes through `/api/hv6/v1`.
 
-### Helios-3 Integration
+The app has five top-level sections (nav in [web/dashboard-src/app/header.js](web/dashboard-src/app/header.js), one `<section data-section>` per area in [web/dashboard-src/app/app-root.js](web/dashboard-src/app/app-root.js)): **Dashboard**, **Zones**, **Smart Heating**, **Diagnostics**, **Settings**. The *Smart Heating* section groups all predictive-heating controls — the `smart-preheat-card` (Simple Preheat + Preheat Absorption) and the `settings-forecast-card` (Forecast Preload). Device controls (Motor Drivers, probe map, restart) stay in *Settings* under `settings-control-card`.
 
-`hv6_helios_client` optionally pushes a system snapshot to an external Helios-3 HTTP optimizer and polls for per-zone setpoint offset commands. Offsets are clamped by per-zone safety limits (`min_offset_c`, `max_offset_c`, `abs_min_c`, `abs_max_c` in `ZoneConfig`). The integration is configured via `HeliosConfig` in NVS and enabled/disabled at runtime — removing it reverts transparently to local control algorithms.
+### Helios command path (internal)
+
+The external `hv6_helios_client` component was **removed** — whole-house MPC is now handled by Odin via the Asgard bridge, not an external Helios-3 HTTP optimizer. What remains is the **internal command path**: `HeliosZoneCommand`, `Hv6ZoneController::apply_helios_command()` / `clear_all_helios_commands()`, and `HeliosConfig` in NVS. Forecast preload writes its per-zone offsets through this path so the per-zone safety clamps (`min_offset_c`, `max_offset_c` in `ZoneConfig`) apply unchanged. `HeliosConfig.enabled` is retained as a quiesce gate (always false now; lets forecast stand down if a future external optimizer is reintroduced) — the dashboard no longer exposes any Helios controls.
 
 ### Asgard / Ecodan Bridge
 

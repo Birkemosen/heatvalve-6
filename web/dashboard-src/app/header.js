@@ -213,6 +213,7 @@ const template = () => `
       <nav class="top-menu">
         <a href="#" class="menu-link active" data-section="overview">Dashboard</a>
         <a href="#" class="menu-link" data-section="zones">Zones</a>
+        <a href="#" class="menu-link" data-section="smart-heating">Smart Heating</a>
         <a href="#" class="menu-link" data-section="diagnostics">Diagnostics</a>
         <a href="#" class="menu-link" data-section="settings">Settings</a>
       </nav>

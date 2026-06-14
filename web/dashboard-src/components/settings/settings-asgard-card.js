@@ -172,6 +172,28 @@ const css = `
   line-height: 1.4;
 }
 
+.settings-asgard-card .setpoint-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--control-border);
+  border-radius: 12px;
+  background: var(--control-bg);
+}
+
+.settings-asgard-card .setpoint-box .note {
+  margin-top: 0;
+}
+
+.settings-asgard-card .setpoint-val {
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: .3px;
+  color: var(--accent);
+  line-height: 1;
+}
+
 .settings-asgard-card .status-grid {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -252,6 +274,12 @@ const template = () => `
       </div>
     </div>
 
+    <div class="section-title">Recommended setpoint</div>
+    <div class="setpoint-box">
+      <span class="setpoint-val sa-st-setpoint">—</span>
+      <span class="note">Fixed value to set as the virtual thermostat setpoint in Asgard — the area-weighted target of all enabled zones (derived from static zone settings, not live status).</span>
+    </div>
+
     <div class="section-title">Status</div>
     <div class="status-grid">
       <span>Peer</span><span class="val sa-st-peer">n/a</span>
@@ -281,6 +309,7 @@ export default component({
     const intervalEl = el.querySelector('.sa-interval');
     const stPeer    = el.querySelector('.sa-st-peer');
     const stPush    = el.querySelector('.sa-st-push');
+    const stSetpoint = el.querySelector('.sa-st-setpoint');
     const stZones   = el.querySelector('.sa-st-zones');
     const stErr     = el.querySelector('.sa-st-err');
 
@@ -355,6 +384,11 @@ export default component({
         stPush.textContent = '—';
       }
 
+      const setpointC = ev(gkey.asgardSetpointC);
+      stSetpoint.textContent = (setpointC != null && Number.isFinite(setpointC))
+        ? `${setpointC.toFixed(1)}°C`
+        : '—';
+
       const local = ev(gkey.asgardLocalZones);
       const remote = ev(gkey.asgardPeerZones);
       stZones.textContent = (local != null) ? `${local} local + ${remote || 0} peer` : '—';
@@ -382,6 +416,7 @@ export default component({
     subscribe(gkey.asgardRole,          updateStatus);
     subscribe(gkey.asgardPeerStatus,    updateStatus);
     subscribe(gkey.asgardLastPushC,     updateStatus);
+    subscribe(gkey.asgardSetpointC,     updateStatus);
     subscribe(gkey.asgardLastPushAgeS,  updateStatus);
     subscribe(gkey.asgardLocalZones,    updateStatus);
     subscribe(gkey.asgardPeerZones,     updateStatus);

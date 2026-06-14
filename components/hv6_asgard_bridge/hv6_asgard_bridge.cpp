@@ -40,6 +40,7 @@ void Hv6AsgardBridge::setup() {
 
   for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
     peer_temp_c_[i] = NAN;
+    peer_setpoint_c_[i] = NAN;
     peer_area_m2_[i] = 0.0f;
   }
 
@@ -49,6 +50,9 @@ void Hv6AsgardBridge::setup() {
   xTaskCreatePinnedToCore(task_func_, "hv6_asgard", STACK_SIZE, this, PRIORITY, &task_handle_, CORE);
 
   hv6::AsgardConfig cfg = config_store_->get_asgard_config();
+  // Seed the static recommendation so the dashboard shows it before the task's
+  // first loop iteration (which is gated behind a boot warmup delay).
+  last_recommended_setpoint_ = compute_recommended_setpoint_(cfg);
   ESP_LOGI(TAG, "Asgard bridge task spawned (core=%d prio=%u stack=%u)",
            (int) CORE, (unsigned) PRIORITY, (unsigned) STACK_SIZE);
   ESP_LOGI(TAG, "  config: enabled=%s coordinator=%s host='%s:%u' entity='%s' peer='%s:%u' interval=%us",
@@ -102,6 +106,10 @@ void Hv6AsgardBridge::run_() {
   while (true) {
     hv6::AsgardConfig cfg = config_store_->get_asgard_config();
     coordinator_active_ = cfg.enabled && cfg.coordinator;
+
+    // Recommended setpoint is a static, config-derived value — refresh it every
+    // cycle regardless of bridge state so the dashboard always shows it.
+    last_recommended_setpoint_ = compute_recommended_setpoint_(cfg);
 
     // ---- Stability gates --------------------------------------------------
     // Only the coordinator does HTTP work; a slave board just serves its
@@ -205,6 +213,43 @@ float Hv6AsgardBridge::compute_weighted_temp_(const hv6::AsgardConfig &cfg) {
 }
 
 // =============================================================================
+// Recommended Asgard setpoint (static — config only)
+// =============================================================================
+
+float Hv6AsgardBridge::compute_recommended_setpoint_(const hv6::AsgardConfig &cfg) {
+  float sum = 0.0f, weight = 0.0f;
+
+  // Local zones — area-weighted configured base setpoint (the effective setpoint
+  // would fold in transient Helios/forecast offsets; this recommendation is a
+  // fixed value, so it uses the base). Independent of current temperature so it
+  // shows even before any probe has reported.
+  hv6::DeviceConfig dev_cfg = config_store_->get_config();
+  for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
+    const auto &zc = dev_cfg.zones[i];
+    if (!zc.enabled || zc.area_m2 <= 0.0f || !std::isfinite(zc.setpoint_c))
+      continue;
+    sum += zc.setpoint_c * zc.area_m2;
+    weight += zc.area_m2;
+  }
+
+  // Peer zones — only when the last snapshot is fresh (populated only while the
+  // coordinator is actively polling; a disabled bridge falls back to local-only).
+  uint32_t age = (peer_last_success_s_ > 0) ? (mono_s_() - peer_last_success_s_) : UINT32_MAX;
+  if (age <= cfg.peer_stale_after_s) {
+    for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
+      if (!peer_enabled_[i] || peer_area_m2_[i] <= 0.0f || !std::isfinite(peer_setpoint_c_[i]))
+        continue;
+      sum += peer_setpoint_c_[i] * peer_area_m2_[i];
+      weight += peer_area_m2_[i];
+    }
+  }
+
+  if (weight <= 0.0f)
+    return NAN;
+  return sum / weight;
+}
+
+// =============================================================================
 // HTTP — peer poll
 // =============================================================================
 
@@ -241,6 +286,7 @@ bool Hv6AsgardBridge::fetch_peer_(const hv6::AsgardConfig &cfg) {
           peer_enabled_[i] = z["en"] | false;
           peer_area_m2_[i] = z["area"] | 0.0f;
           peer_temp_c_[i] = z["t"].isNull() ? NAN : (z["t"] | NAN);
+          peer_setpoint_c_[i] = z["sp"].isNull() ? NAN : (z["sp"] | NAN);
           i++;
         }
         for (; i < hv6::NUM_ZONES; i++)

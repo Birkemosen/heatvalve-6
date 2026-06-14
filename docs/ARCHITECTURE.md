@@ -20,7 +20,8 @@ loop and separate hardware control (motor FSM, endstop detection) from heating l
 │                                                              │
 │  hv6_config_store ← hv6_valve_controller ← hv6_zone_controller
 │                                                  ↑           │
-│                                          hv6_helios_client   │
+│                                          hv6_asgard_bridge   │
+│                                          hv6_forecast        │
 │                                          hv6_dashboard       │
 └────────────────────────────┬─────────────────────────────────┘
                              ▼
@@ -44,19 +45,20 @@ heatvalve-6/
 ├── packages/
 │   ├── board/                ESP32-S3 board definition
 │   ├── hardware/             BLE, display, I2C, motors, LED, 1-Wire, sensors
-│   ├── network/              WiFi, API, OTA, Helios client
+│   ├── network/              WiFi, API, OTA, Asgard bridge, forecast
 │   └── zones/                Climate entities, zone sensors, UI, dashboard wiring
 ├── components/               Custom ESPHome external components (C++)
 │   ├── hv6_config_store/     NVS persistence (DeviceConfig struct)
 │   ├── hv6_valve_controller/ Motor FSM, endstop detection, ripple counting
 │   ├── hv6_zone_controller/  Zone state machine, algorithms, hydraulic balance
-│   ├── hv6_helios_client/    HTTP client for external Helios optimizer
+│   ├── hv6_asgard_bridge/    Weighted house temp → Asgard/Ecodan thermostat
+│   ├── hv6_forecast/         Open-Meteo wind-aware per-zone preload
 │   └── hv6_dashboard/        HTTP API (/api/hv6/v1), dashboard asset serving
 ├── web/
 │   ├── dashboard-src/        Dashboard source (modular JS, esbuild)
 │   └── dashboard.js          Bundled artifact (committed, embedded in firmware)
 ├── test/ripple_counter/      Host-side unit tests (clang++, no ESP-IDF)
-├── docs/                     Architecture, API contract, integration specs
+├── docs/                     Architecture, API contract, integration docs
 └── Makefile                  Build/deploy/test targets
 ```
 
@@ -67,7 +69,8 @@ heatvalve-6/
 | `hv6_valve` (motor FSM) | 1 | 7 | 10 ms tick |
 | `hv6_ripple` (DMA ADC) | 1 | 7 | continuous |
 | `hv6_zone` (control cycle) | 0 | 6 | 10 s (configurable) |
-| `hv6_helios` (HTTP) | 1 | 1 | 60 s poll |
+| `hv6_asgard` (HTTP) | 1 | 1 | 30 s push (coordinator only) |
+| `hv6_forecast` (HTTPS) | 1 | 1 | 1 h fetch / 5 min recompute |
 | `hv6_nvs` (flash commit) | 1 | 1 | event-driven |
 | ESPHome loopTask | 1 | 1 | — |
 
@@ -88,17 +91,18 @@ Temp source (DS18B20 / BLE) → Zone state machine → Control algorithm → Hyd
                                                                        DRV8215 I2C
 ```
 
-### External Optimizer (Helios)
+### Setpoint-offset command path
 
-`hv6_helios_client` POSTs a system snapshot to an external Helios HTTP service and polls
-for per-zone setpoint-offset / preheat commands. Offsets are clamped in firmware by
-per-zone safety limits; if the service goes stale, all offsets are cleared and local
-control continues unchanged. The wire contract is defined in
-[integration_spec.md](integration_spec.md); the external service consumes weather and
-energy-price data (Open-Meteo, ENTSO-E) on its side.
+On-device optimizers (currently `hv6_forecast`) write per-zone setpoint-offset / preheat
+commands through `Hv6ZoneController::apply_helios_command()`. Offsets are clamped in
+firmware by per-zone safety limits; if a producer goes stale, its offsets are cleared and
+local control continues unchanged. `HeliosConfig.enabled` (NVS) acts as a quiesce gate so
+a producer can stand down if an external optimizer is ever reintroduced.
 
-Removing the optimizer reverts transparently to local control — no vendor lock-in, no
-firmware dependency on the external service.
+Whole-house MPC is provided by Odin via the [Asgard / Ecodan bridge](ecodan_integration.md),
+not an external HTTP optimizer — the previous `hv6_helios_client` was removed. Removing any
+producer reverts transparently to local control: no vendor lock-in, no firmware dependency
+on an external service.
 
 ## Hardware Layer
 
@@ -109,7 +113,7 @@ firmware dependency on the external service.
   limit) with per-direction parameters — see [endstop_detection.md](endstop_detection.md)
 - **Sensors**: 1-Wire DS18B20 (8 slots, NVS-persisted ROM mapping), BLE BTHome
 - **Communication**: WiFi, ESPHome native API (Home Assistant), HTTP/JSON (dashboard +
-  Helios). No message broker — MQTT was removed in favor of plain HTTP over LAN.
+  Asgard bridge). No message broker — MQTT was removed in favor of plain HTTP over LAN.
 
 ## Dashboard API
 

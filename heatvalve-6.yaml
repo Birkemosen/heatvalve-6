@@ -82,11 +82,10 @@ packages:
   version:      !include version.yaml
   # Board
   board:        !include packages/board/esp32-s3.yaml
-  # Network (radio-agnostic only — wifi/api/ota/helios are in every variant)
+  # Network (radio-agnostic only — wifi/api/ota are in every variant)
   wifi:         !include packages/network/wifi.yaml
   api:          !include packages/network/api.yaml
   ota:          !include packages/network/ota.yaml
-  helios:       !include packages/network/helios.yaml
   asgard:       !include packages/network/asgard.yaml
   forecast:     !include packages/network/forecast.yaml
   # Hardware
@@ -114,7 +113,6 @@ external_components:
       - hv6_zone_controller
       - hv6_config_store
       - hv6_dashboard
-      - hv6_helios_client
       - hv6_asgard_bridge
       - hv6_forecast
 
@@ -201,7 +199,7 @@ interval:
     then:
       - lambda: |-
           static const char *const task_names[] = {
-            "hv6_valve", "hv6_ripple", "hv6_zone", "hv6_helios", "hv6_asgard", "hv6_forecast", "hv6_nvs", "loopTask"
+            "hv6_valve", "hv6_ripple", "hv6_zone", "hv6_asgard", "hv6_forecast", "hv6_nvs", "loopTask"
           };
           for (const char *name : task_names) {
             TaskHandle_t handle = xTaskGetHandle(name);

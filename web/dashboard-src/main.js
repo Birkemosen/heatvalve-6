@@ -23,9 +23,9 @@ import './components/diagnostics/diag-zone-recovery-card.js';
 import './components/settings/settings-manifold-card.js';
 import './components/settings/settings-control-card.js';
 import './components/settings/settings-motor-calibration-card.js';
-import './components/settings/settings-helios-card.js';
 import './components/settings/settings-asgard-card.js';
 import './components/settings/settings-forecast-card.js';
+import './components/settings/smart-preheat-card.js';
 
 // root
 import './app/app-root.js';

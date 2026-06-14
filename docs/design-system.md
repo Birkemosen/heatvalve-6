@@ -1,6 +1,6 @@
-# Helios-6 UI Design System
+# HeatValve-6 UI Design System
 
-Design guideline for the Helios-6 dashboard UI. All values are derived from the HV6 reference implementation and should be treated as the canonical source of truth.
+Design guideline for the HeatValve-6 dashboard UI. All values are derived from the HV6 reference implementation and should be treated as the canonical source of truth.
 
 ---
 

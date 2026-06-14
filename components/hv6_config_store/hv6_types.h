@@ -233,9 +233,15 @@ struct SensorConfig {
   char zone_ble_mac[NUM_ZONES][BLE_MAC_LEN] = {};
 };
 
+/// Version tag for the standalone sensor-pairing NVS blob. This is persisted
+/// under its own key (separate from the main DeviceConfig blob) so BLE MAC
+/// pairings + temp sources survive a CONFIG_VERSION bump on firmware update.
+/// Bump only when SensorConfig's layout changes.
+static constexpr uint32_t SENSOR_CONFIG_VERSION = 1;
+
 struct BalancingConfig {
   bool dynamic_balancing_enabled = false;   ///< Use measured return temps for balance factors
-  bool modulating_heat_source = false;      ///< True when heat source can modulate flow temp (Helios-6/Ecodan)
+  bool modulating_heat_source = false;      ///< True when heat source can modulate flow temp (e.g. Ecodan)
   float minimum_flow_pct = 15.0f;           ///< Per-zone minimum valve opening (only active with modulating source)
   float flow_increase_threshold_pct = 80.0f;///< Request higher flow temp when avg zone opening exceeds this
   float flow_decrease_threshold_pct = 30.0f;///< Request lower flow temp when avg zone opening drops below this
@@ -303,9 +309,18 @@ struct MotorConfig {
   uint32_t pwm_boost_ms = 350;
   uint8_t pwm_hold_duty_pct = 70;
   uint32_t pwm_period_ms = 40;
+  // Soft-approach: reduce drive force in the final stretch of a drive-to-endstop
+  // move so the actuator coasts into the mechanical stop instead of slamming it
+  // (prevents piston-lock / socket pop-off). 0 disables.
+  uint8_t pwm_approach_duty_pct = 40;  // reduced hold duty during final approach
+  uint8_t approach_zone_pct = 80;      // begin soft-approach at this % of the move
   uint32_t max_runtime_s = 45;  // Reduced from 65s to prevent piston lock/socket pop-off (mechanical limit ~40s)
   uint32_t generic_profile_runtime_limit_s = 45;
   uint32_t hmip_vdmot_runtime_limit_s = 40;
+  // Margin added to the learned stroke time to form the adaptive runtime safety
+  // cap (caps a calibrated valve sooner than the per-profile limit). Smaller =
+  // tighter overrun protection.
+  uint32_t adaptive_runtime_margin_ms = 3000;
   uint32_t calibration_timeout_s = 120;
   // Close-direction endstop (higher current at mechanical stop)
   float close_current_factor = 1.7f;
@@ -415,7 +430,7 @@ struct SystemConfig {
 /// v15 adds AsgardConfig (Ecodan heat-pump bridge, weighted z1 temperature push).
 /// v16 adds preheat absorption fields to ControlConfig.
 /// v17 adds ForecastConfig and per-zone exposure fields (forecast preload).
-static constexpr uint32_t CONFIG_VERSION = 17;
+static constexpr uint32_t CONFIG_VERSION = 18;
 
 struct DeviceConfig {
   uint32_t config_version = CONFIG_VERSION;

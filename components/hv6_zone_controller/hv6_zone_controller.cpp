@@ -494,6 +494,20 @@ std::string Hv6ZoneController::get_zone_ble_mac(uint8_t zone) const {
   return std::string(config_store_->get_config().sensor_config.zone_ble_mac[zone]);
 }
 
+int8_t Hv6ZoneController::match_ble_mac(const char *mac) const {
+  if (mac == nullptr || mac[0] == '\0' || !config_store_)
+    return -1;
+  char cfg[BLE_MAC_LEN];
+  for (uint8_t z = 0; z < NUM_ZONES; z++) {
+    config_store_->get_zone_ble_mac_str(z, cfg, sizeof(cfg));
+    if (cfg[0] == '\0')
+      continue;
+    if (strncmp(cfg, mac, BLE_MAC_LEN) == 0)
+      return static_cast<int8_t>(z);
+  }
+  return -1;
+}
+
 void Hv6ZoneController::set_zone_area_m2(uint8_t zone, float area_m2) {
   if (zone >= NUM_ZONES || !config_store_)
     return;
@@ -1351,7 +1365,7 @@ float Hv6ZoneController::apply_hydraulic_balance_(uint8_t zone, float raw_positi
   return raw_position * balance_factors_[zone];
 }
 
-/// Enforce per-zone minimum flow when a modulating heat source is present (Helios-6/Ecodan).
+/// Enforce per-zone minimum flow when a modulating heat source is present (e.g. Ecodan).
 /// This ensures the heat pump always has sufficient flow through the manifold.
 void Hv6ZoneController::apply_minimum_flow_(std::array<float, NUM_ZONES> &positions) {
   if (!config_store_)
@@ -1660,12 +1674,13 @@ void Hv6ZoneController::update_zone_display_states_() {
 // BLE Sensor Discovery
 // =============================================================================
 
-void Hv6ZoneController::report_ble_sensor_seen(const char *mac, float temp_c, int8_t rssi) {
+void Hv6ZoneController::report_ble_sensor_seen(const char *mac, float temp_c, int8_t rssi, const char *name) {
   if (ble_seen_mutex_ == nullptr || mac == nullptr)
     return;
   if (xSemaphoreTake(ble_seen_mutex_, pdMS_TO_TICKS(5)) != pdTRUE)
     return;
 
+  const bool has_name = name != nullptr && name[0] != '\0';
   uint32_t now = esphome::millis();
   int oldest_slot = 0;
   uint32_t oldest_ms = UINT32_MAX;
@@ -1675,6 +1690,12 @@ void Hv6ZoneController::report_ble_sensor_seen(const char *mac, float temp_c, in
       // Empty slot — claim it
       strncpy(ble_seen_[i].mac, mac, sizeof(ble_seen_[i].mac) - 1);
       ble_seen_[i].mac[sizeof(ble_seen_[i].mac) - 1] = '\0';
+      if (has_name) {
+        strncpy(ble_seen_[i].name, name, sizeof(ble_seen_[i].name) - 1);
+        ble_seen_[i].name[sizeof(ble_seen_[i].name) - 1] = '\0';
+      } else {
+        ble_seen_[i].name[0] = '\0';
+      }
       ble_seen_[i].temp_c = temp_c;
       ble_seen_[i].rssi = rssi;
       ble_seen_[i].last_ms = now;
@@ -1684,8 +1705,14 @@ void Hv6ZoneController::report_ble_sensor_seen(const char *mac, float temp_c, in
       return;
     }
     if (memcmp(ble_seen_[i].mac, mac, 17) == 0) {
-      // Already tracked — update
-      ble_seen_[i].temp_c = temp_c;
+      // Already tracked — update. Keep last known name/temperature when this
+      // packet omits them (Shelly BLU rotates fields across advertisements).
+      if (has_name) {
+        strncpy(ble_seen_[i].name, name, sizeof(ble_seen_[i].name) - 1);
+        ble_seen_[i].name[sizeof(ble_seen_[i].name) - 1] = '\0';
+      }
+      if (!std::isnan(temp_c))
+        ble_seen_[i].temp_c = temp_c;
       ble_seen_[i].rssi = rssi;
       ble_seen_[i].last_ms = now;
       xSemaphoreGive(ble_seen_mutex_);
@@ -1700,6 +1727,12 @@ void Hv6ZoneController::report_ble_sensor_seen(const char *mac, float temp_c, in
   // All slots occupied — evict oldest
   strncpy(ble_seen_[oldest_slot].mac, mac, sizeof(ble_seen_[0].mac) - 1);
   ble_seen_[oldest_slot].mac[sizeof(ble_seen_[0].mac) - 1] = '\0';
+  if (has_name) {
+    strncpy(ble_seen_[oldest_slot].name, name, sizeof(ble_seen_[0].name) - 1);
+    ble_seen_[oldest_slot].name[sizeof(ble_seen_[0].name) - 1] = '\0';
+  } else {
+    ble_seen_[oldest_slot].name[0] = '\0';
+  }
   ble_seen_[oldest_slot].temp_c = temp_c;
   ble_seen_[oldest_slot].rssi = rssi;
   ble_seen_[oldest_slot].last_ms = now;

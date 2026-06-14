@@ -60,16 +60,6 @@ struct DashboardSnapshot {
   float             preheat_absorb_band_c;
   float             preheat_detect_delta_c;
   bool              preheat_absorbing;
-  hv6::HeliosConfig helios;             // current helios config
-  char              helios_status[16];  // "active"|"degraded"|"offline"
-  char              helios_device_id[33]; // system.controller_id fallback
-  char              helios_endpoint[SNAPSHOT_TEXT_LEN];
-  char              helios_endpoint_source[16];
-  char              helios_last_error[SNAPSHOT_TEXT_LEN];
-  int32_t           helios_last_http_status{0};
-  uint32_t          helios_fail_streak{0};
-  uint32_t          helios_next_retry_s{0};
-  uint32_t          helios_last_success_age_s{0};
 
   // --- Asgard bridge (Ecodan) ---
   hv6::AsgardConfig asgard;               // current asgard config
@@ -77,6 +67,7 @@ struct DashboardSnapshot {
   char              asgard_peer_status[16];
   char              asgard_last_error[SNAPSHOT_TEXT_LEN];
   float             asgard_last_push_c{0.0f};
+  float             asgard_setpoint_c{NAN};   // recommended fixed Asgard setpoint
   uint32_t          asgard_last_push_age_s{0};
   uint32_t          asgard_push_fail_streak{0};
   uint8_t           asgard_local_zones{0};
@@ -128,7 +119,6 @@ class HV6Dashboard : public Component, public AsyncWebHandler {
   void set_zone_controller(hv6::Hv6ZoneController *controller) { this->zone_controller_ = controller; }
   void set_valve_controller(hv6::Hv6ValveController *ctrl) { this->valve_controller_ = ctrl; }
   void set_config_store(hv6::Hv6ConfigStore *store) { this->config_store_ = store; }
-  void set_helios_client(esphome::Component *client) { this->helios_client_ = client; }
   void set_asgard_bridge(esphome::Component *bridge) { this->asgard_bridge_ = bridge; }
   void set_forecast(esphome::Component *forecast) { this->forecast_ = forecast; }
   void set_wifi_signal_sensor(sensor::Sensor *sensor) { this->wifi_signal_sensor_ = sensor; }
@@ -191,7 +181,6 @@ class HV6Dashboard : public Component, public AsyncWebHandler {
   hv6::Hv6ZoneController *zone_controller_{nullptr};
   hv6::Hv6ValveController *valve_controller_{nullptr};
   hv6::Hv6ConfigStore *config_store_{nullptr};
-  esphome::Component *helios_client_{nullptr};
   esphome::Component *asgard_bridge_{nullptr};
   esphome::Component *forecast_{nullptr};
   sensor::Sensor *wifi_signal_sensor_{nullptr};

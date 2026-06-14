@@ -101,17 +101,26 @@ class Hv6ZoneController : public esphome::Component {
   void set_zone_ble_mac(uint8_t zone, const std::string &mac);
   std::string get_zone_ble_mac(uint8_t zone) const;
 
+  // Lightweight MAC match for the BLE advertise hot path (loopTask). Copies
+  // only the 18-byte MAC fields — never the whole DeviceConfig — so it is safe
+  // to call per advertisement. Returns the matching zone index (0..5) or -1.
+  int8_t match_ble_mac(const char *mac) const;
+
   // BLE sensor discovery — callable from BLE advertise lambda (loopTask)
   struct BleSensorSeen {
     char mac[18];       ///< "AA:BB:CC:DD:EE:FF\0"
-    float temp_c;
+    char name[24];      ///< Advertised local name (scan response); "" if unknown
+    float temp_c;       ///< Last parsed temperature, or NAN if not seen yet
     int8_t rssi;
     uint32_t last_ms;
   };
   static constexpr uint8_t BLE_SEEN_SLOTS = 16;
   static constexpr uint32_t BLE_SEEN_STALE_MS = 10 * 60 * 1000UL;  ///< 10 min
 
-  void report_ble_sensor_seen(const char *mac, float temp_c, int8_t rssi);
+  // temp_c may be NAN (device seen but no temperature in this packet); name may
+  // be null/empty (no scan-response name yet). Existing entries keep a known
+  // name/temperature when a later packet omits it.
+  void report_ble_sensor_seen(const char *mac, float temp_c, int8_t rssi, const char *name = nullptr);
   uint8_t get_ble_discovered(BleSensorSeen *out, uint8_t max) const;
 
   // Zone physical properties

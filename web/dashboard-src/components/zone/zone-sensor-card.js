@@ -274,9 +274,16 @@ export default component({
       scanList.style.display = '';
       scanList.innerHTML = '<div class="scan-msg">Scanning…</div>';
 
-      fetch('/api/hv6/v1/ble-scan')
-        .then(r => r.json())
+      const ctrl = new AbortController();
+      const timeout = setTimeout(() => ctrl.abort(), 8000);
+
+      fetch('/api/hv6/v1/ble-scan', { cache: 'no-store', signal: ctrl.signal })
+        .then(r => {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
         .then(data => {
+          clearTimeout(timeout);
           scanBtn.disabled = false;
           scanBtn.textContent = 'Scan';
           if (!data.ok || !data.sensors || data.sensors.length === 0) {
@@ -285,18 +292,25 @@ export default component({
           }
           const zone = selectedZone();
           const currentMac = (es(key.ble(zone)) || '').toUpperCase();
+          const esc = (str) => String(str).replace(/[&<>"']/g, (c) =>
+            ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
           let html = '';
           for (const s of data.sensors) {
             const mac = s.mac.toUpperCase();
+            const name = s.name ? esc(s.name) : '';
             const temp = s.temp_c != null ? s.temp_c.toFixed(1) + '°C' : '—';
             const rssi = s.rssi != null ? s.rssi + ' dBm' : '';
             const age = s.age_s < 60 ? s.age_s + 's ago' : Math.round(s.age_s / 60) + 'm ago';
             let badge = '';
             if (mac === currentMac) badge = '<span class="ble-badge">assigned to this zone</span>';
             else if (s.zone > 0) badge = '<span class="ble-badge">zone ' + s.zone + '</span>';
+            // Name as primary line when known, MAC as secondary; MAC alone otherwise.
+            const title = name
+              ? `<div class="ble-mac">${name}</div><div class="ble-meta">${mac}</div>`
+              : `<div class="ble-mac">${mac}</div>`;
             html += `<div class="ble-scan-item">
               <div>
-                <div class="ble-mac">${mac}</div>
+                ${title}
                 <div class="ble-meta">${temp} &nbsp;${rssi} &nbsp;${age}</div>
                 ${badge}
               </div>
@@ -314,10 +328,14 @@ export default component({
             });
           });
         })
-        .catch(() => {
+        .catch((err) => {
+          clearTimeout(timeout);
           scanBtn.disabled = false;
           scanBtn.textContent = 'Scan';
-          scanList.innerHTML = '<div class="scan-msg">Scan failed. Check device connectivity.</div>';
+          const msg = (err && err.name === 'AbortError')
+            ? 'Scan timed out — device busy or BLE not responding. Try again.'
+            : 'Scan failed. Check device connectivity.';
+          scanList.innerHTML = '<div class="scan-msg">' + msg + '</div>';
         });
     });
 

@@ -2,7 +2,7 @@ import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
 import { es, ev, isEntityOn, setEntity } from '../../core/store.js';
 import { setGlobalSelect, setGlobalNumber, setZoneNumber } from '../../core/api.js';
-import { gkey } from '../../utils/keys.js';
+import { key, gkey } from '../../utils/keys.js';
 
 const ZONES = [1, 2, 3, 4, 5, 6];
 
@@ -167,7 +167,7 @@ const template = () => `
         ${ZONES.map(zoneRow).join('')}
       </tbody>
     </table>
-    <div class="note fc-note">Wind 0–1 = facade exposure · Solar 0–1 = passive gain relief · Lead h = hours of slab charging before a forecast load peak. Exterior walls (per zone, set in the zone sensor card) decide which wind directions count.</div>
+    <div class="note fc-note">Wind (0–1) = how exposed this room's outside walls are to wind-driven heat loss (0 sheltered/internal, 1 fully exposed). Solar (0–1) = how much passive sun this room gains, which reduces its preload (0 none, 1 strong). Lead h = how many hours ahead to start charging the slab before a forecast cold/wind peak (fixed per room, not learned). The live wind speed, direction and sun come from the forecast; the room's exterior walls (set in the zone sensor card) decide which wind directions count.</div>
   </div>
 `;
 
@@ -226,9 +226,9 @@ export default component({
           }
         });
       };
-      bindZone(windEl, 'zone_wind_exposure', gkey.windExposure, 0, 1);
-      bindZone(solarEl, 'zone_solar_gain', gkey.solarGain, 0, 1);
-      bindZone(leadEl, 'zone_thermal_lead_h', gkey.thermalLeadH, 0, 48);
+      bindZone(windEl, 'zone_wind_exposure', key.windExposure, 0, 1);
+      bindZone(solarEl, 'zone_solar_gain', key.solarGain, 0, 1);
+      bindZone(leadEl, 'zone_thermal_lead_h', key.thermalLeadH, 0, 48);
     });
 
     function updateStatus() {
@@ -248,8 +248,8 @@ export default component({
       el.querySelectorAll('.fc-zone-body tr').forEach((row) => {
         const z = parseInt(row.getAttribute('data-zone'), 10);
         const cell = row.querySelector('.fc-offset');
-        const off = ev(gkey.forecastOffset(z));
-        const peak = ev(gkey.forecastPeakH(z));
+        const off = ev(key.forecastOffset(z));
+        const peak = ev(key.forecastPeakH(z));
         if (off != null && off > 0.01) {
           cell.textContent = `+${off.toFixed(1)}°` + (peak != null && peak >= 0 ? ` (${peak}h)` : '');
           cell.classList.add('active');
@@ -271,9 +271,9 @@ export default component({
       set(maxEl, gkey.forecastMaxOffsetC, 1.5);
       el.querySelectorAll('.fc-zone-body tr').forEach((row) => {
         const z = parseInt(row.getAttribute('data-zone'), 10);
-        set(row.querySelector('.fc-wind'), gkey.windExposure(z), 0.5);
-        set(row.querySelector('.fc-solar'), gkey.solarGain(z), 0.3);
-        set(row.querySelector('.fc-lead'), gkey.thermalLeadH(z), 4);
+        set(row.querySelector('.fc-wind'), key.windExposure(z), 0.5);
+        set(row.querySelector('.fc-solar'), key.solarGain(z), 0.3);
+        set(row.querySelector('.fc-lead'), key.thermalLeadH(z), 4);
       });
     }
 
@@ -284,10 +284,10 @@ export default component({
     subscribe(gkey.forecastLoadThreshold, populateInputs);
     subscribe(gkey.forecastMaxOffsetC, populateInputs);
     ZONES.forEach((z) => {
-      subscribe(gkey.windExposure(z), populateInputs);
-      subscribe(gkey.solarGain(z), populateInputs);
-      subscribe(gkey.thermalLeadH(z), populateInputs);
-      subscribe(gkey.forecastOffset(z), updateOffsets);
+      subscribe(key.windExposure(z), populateInputs);
+      subscribe(key.solarGain(z), populateInputs);
+      subscribe(key.thermalLeadH(z), populateInputs);
+      subscribe(key.forecastOffset(z), updateOffsets);
     });
 
     updateStatus();

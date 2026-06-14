@@ -103,9 +103,11 @@ class Hv6ValveController : public esphome::Component {
   static constexpr float CURRENT_FILTER_ALPHA = 0.05f;
   static constexpr uint8_t DEBOUNCE_TICKS = 50;
   static constexpr float INITIAL_MEAN_CURRENT_MA = 20.0f;
-  static constexpr uint32_t ENDSTOP_MIN_RUNTIME_MS = 1200;
+  static constexpr uint32_t ENDSTOP_MIN_RUNTIME_MS = 1200;      ///< Conservative blind window (calibration)
+  static constexpr uint32_t ENDSTOP_SETTLE_MS = 300;            ///< Post-boost settle before threshold/slope detection
   static constexpr uint8_t ENDSTOP_HIGH_TICKS = 6;
   static constexpr float ENDSTOP_HARD_CAP_MA = 100.0f;          ///< Safety cap: immediate endstop above this
+  static constexpr uint8_t HARD_CAP_TICKS = 2;                  ///< Consecutive raw-current ticks above cap to stop
   static constexpr uint32_t SLOPE_WINDOW_TICKS = 50;             ///< 500ms window for dI/dt estimation
   static constexpr float ENDSTOP_SLOPE_MA_PER_S = 0.4f;         ///< Slope threshold (mA/s) for ramp detection
   static constexpr float ENDSTOP_SLOPE_CURRENT_FACTOR = 1.3f;   ///< Current must exceed mean×1.3 for slope trigger
@@ -113,6 +115,8 @@ class Hv6ValveController : public esphome::Component {
   static constexpr uint32_t RELEARN_CHECK_INTERVAL_MS = 10000;  ///< Check relearn triggers every 10s
   static constexpr uint32_t CALIBRATION_REQUEST_GUARD_MS = 15000;  ///< Ignore calibration requests briefly after boot
   static constexpr uint32_t AUTO_START_DELAY_MS = 10000;  ///< Delay after boot before auto-enable + full calibration
+  static constexpr uint32_t CALIBRATION_NO_RIPPLE_ABORT_MS = 3000;  ///< Abort a calibration pass if no commutation ripples seen (no motor wired)
+  static constexpr UBaseType_t CALIBRATION_BOOST_PRIORITY = PRIORITY + 3;  ///< Modest boost during calibration; stays below ESP-IDF system tasks
   static constexpr bool DEVELOPMENT_KEEP_NSLEEP_AWAKE = false;  ///< Set true only when debugging brownout/resets
   static constexpr uint16_t TRACE_MAX_SAMPLES = 2000;
   static constexpr uint32_t TRACE_SAMPLE_PERIOD_US = 2000;
@@ -147,6 +151,7 @@ class Hv6ValveController : public esphome::Component {
   bool start_motor_(uint8_t zone, MotorDirection dir, bool override_drivers = false);
   void stop_motor_(bool record_event);
   void apply_drive_output_();
+  uint8_t effective_hold_duty_();  ///< PWM hold duty for this tick (reduced during soft-approach)
 
   // Current sensing
   float read_current_ma_();
@@ -228,7 +233,15 @@ class Hv6ValveController : public esphome::Component {
   int current_count_ = 0;
   int debounce_count_ = 0;
   uint8_t endstop_high_count_ = 0;
+  uint8_t hard_cap_high_count_ = 0;  ///< Consecutive raw-current ticks above the hard cap
   int low_current_count_ = 0;
+
+  // Per-move context for soft-approach + adaptive endstop guard (set at move start)
+  bool drive_to_endstop_active_ = false;  ///< Current move targets a mechanical limit
+  bool soft_approach_active_ = false;     ///< Reduced drive duty engaged this tick
+  uint32_t endstop_guard_ms_ = ENDSTOP_MIN_RUNTIME_MS;  ///< Blind window before threshold/slope detection
+  uint32_t approach_stroke_ripples_ = 0;  ///< Estimated ripples for this move (0 = unknown)
+  uint32_t approach_stroke_ms_ = 0;       ///< Estimated travel time for this move (0 = unknown)
 
   // Slope-based endstop detection state
   float slope_prev_current_ma_ = 0.0f;

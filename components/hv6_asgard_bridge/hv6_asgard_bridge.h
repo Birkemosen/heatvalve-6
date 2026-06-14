@@ -35,6 +35,10 @@ class Hv6AsgardBridge : public esphome::Component {
   const char *get_role_str() const;
   const char *get_peer_status_str() const;
   float    get_last_push_value() const { return last_push_value_; }
+  /// Recommended fixed setpoint to enter in Asgard's virtual thermostat: the
+  /// area-weighted average of per-zone target setpoints over the same zones the
+  /// pushed temperature is weighted across. NAN until first compute.
+  float    get_recommended_setpoint_c() const { return last_recommended_setpoint_; }
   uint32_t get_last_push_age_s() const;
   uint32_t get_push_fail_streak() const { return push_fail_streak_; }
   const char *get_last_error() const { return last_error_; }
@@ -52,9 +56,15 @@ class Hv6AsgardBridge : public esphome::Component {
 
   bool fetch_peer_(const hv6::AsgardConfig &cfg);
   bool push_asgard_(const hv6::AsgardConfig &cfg, float value);
-  /// Area-weighted average over local + fresh peer zones. Returns NAN when no
-  /// zone qualifies. Sets local_zones_used_/peer_zones_used_.
+  /// Area-weighted average temperature over local + fresh peer zones. Returns
+  /// NAN when no zone qualifies. Sets local_zones_used_/peer_zones_used_.
   float compute_weighted_temp_(const hv6::AsgardConfig &cfg);
+
+  /// Area-weighted recommended Asgard setpoint: Σ(setpoint × area) / Σ(area)
+  /// over all enabled local zones (+ fresh peer zones) using each zone's
+  /// configured base setpoint. Independent of bridge state and of current
+  /// temperatures — a static recommendation. NAN when no zone qualifies.
+  float compute_recommended_setpoint_(const hv6::AsgardConfig &cfg);
 
   hv6::Hv6ZoneController *zone_controller_{nullptr};
   hv6::Hv6ConfigStore *config_store_{nullptr};
@@ -62,6 +72,7 @@ class Hv6AsgardBridge : public esphome::Component {
 
   // Peer zone cache (written by HTTP task only)
   float peer_temp_c_[hv6::NUM_ZONES];
+  float peer_setpoint_c_[hv6::NUM_ZONES];
   float peer_area_m2_[hv6::NUM_ZONES];
   bool  peer_enabled_[hv6::NUM_ZONES]{};
   uint32_t peer_last_success_s_{0};  ///< mono seconds; 0 = never
@@ -70,6 +81,7 @@ class Hv6AsgardBridge : public esphome::Component {
   // Diagnostic state (written by HTTP task, read by dashboard)
   bool coordinator_active_{false};
   float last_push_value_{NAN};
+  float last_recommended_setpoint_{NAN};  ///< Weighted target setpoint for Asgard
   uint32_t last_push_s_{0};  ///< mono seconds; 0 = never
   uint32_t push_fail_streak_{0};
   uint8_t local_zones_used_{0};

@@ -64,6 +64,7 @@ class Hv6ConfigStore : public esphome::Component {
   static constexpr const char *NVS_NAMESPACE = "hv6";
   static constexpr const char *KEY_CONFIG = "config";
   static constexpr const char *KEY_MOTOR_PFX = "mot";
+  static constexpr const char *KEY_SENSORS = "sensors";  // BLE pairing, survives config version bump
   static constexpr uint64_t DIRTY_DELAY_US = 1000000ULL;  // 1 second
   // Dedicated NVS persistence task — keeps flash commits off the main loop
   // task so loopTask isn't blocked for the 50–500 ms a commit can take.
@@ -74,6 +75,13 @@ class Hv6ConfigStore : public esphome::Component {
 
   void load_config_();
   void save_config_();
+
+  /// Persist/restore the sensor pairing (BLE MAC + temp source) under KEY_SENSORS,
+  /// independent of the main config blob's version gate. Called from save_config_/
+  /// load_config_ with an already-open NVS handle.
+  void save_sensor_config_(nvs_handle_t handle, const SensorConfig &sensor);
+  /// Returns true if a valid durable sensor blob was found and applied.
+  bool load_sensor_config_(nvs_handle_t handle);
 
   static void dirty_timer_cb_(void *arg);
   static void nvs_task_entry_(void *arg);

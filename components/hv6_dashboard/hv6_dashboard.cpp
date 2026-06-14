@@ -1,9 +1,6 @@
 #include "hv6_dashboard.h"
 
 #include "esphome/core/log.h"
-#ifdef USE_HV6_HELIOS_CLIENT
-#include "../hv6_helios_client/hv6_helios_client.h"
-#endif
 #ifdef USE_HV6_ASGARD_BRIDGE
 #include "../hv6_asgard_bridge/hv6_asgard_bridge.h"
 #endif
@@ -240,56 +237,6 @@ void HV6Dashboard::update_snapshot_() {
 
   s.drivers_enabled = this->valve_controller_ && this->valve_controller_->are_drivers_enabled();
 
-  // Helios connection status
-#ifdef USE_HV6_HELIOS_CLIENT
-  if (this->helios_client_ != nullptr) {
-    auto *hc = static_cast<hv6_helios_client::Hv6HeliosClient *>(this->helios_client_);
-    switch (hc->get_helios_status()) {
-      case hv6_helios_client::HeliosStatus::ACTIVE:
-        strncpy(s.helios_status, "active", sizeof(s.helios_status));
-        break;
-      case hv6_helios_client::HeliosStatus::DEGRADED:
-        strncpy(s.helios_status, "degraded", sizeof(s.helios_status));
-        break;
-      default:
-        strncpy(s.helios_status, "offline", sizeof(s.helios_status));
-        break;
-    }
-    const auto copy_text = [](const char *src, char *dst, size_t len) {
-      if (dst == nullptr || len == 0)
-        return;
-      if (src == nullptr) {
-        dst[0] = '\0';
-        return;
-      }
-      size_t out = 0;
-      for (size_t i = 0; src[i] && out + 1 < len; i++) {
-        const char c = src[i];
-        dst[out++] = (c == '"' || c == '\\') ? '_' : c;
-      }
-      dst[out] = '\0';
-    };
-    copy_text(hc->get_active_endpoint(), s.helios_endpoint, sizeof(s.helios_endpoint));
-    copy_text(hc->get_endpoint_source_str(), s.helios_endpoint_source, sizeof(s.helios_endpoint_source));
-    copy_text(hc->get_last_error(), s.helios_last_error, sizeof(s.helios_last_error));
-    s.helios_last_http_status = hc->get_last_http_status();
-    s.helios_fail_streak = hc->get_consecutive_failures();
-    s.helios_next_retry_s = hc->get_next_retry_s();
-    s.helios_last_success_age_s = hc->get_last_success_age_s();
-  } else {
-    strncpy(s.helios_status, "offline", sizeof(s.helios_status));
-    s.helios_endpoint[0] = '\0';
-    strncpy(s.helios_endpoint_source, "none", sizeof(s.helios_endpoint_source));
-    s.helios_last_error[0] = '\0';
-  }
-#else
-  strncpy(s.helios_status, "offline", sizeof(s.helios_status));
-  s.helios_endpoint[0] = '\0';
-  strncpy(s.helios_endpoint_source, "none", sizeof(s.helios_endpoint_source));
-  s.helios_last_error[0] = '\0';
-#endif
-  s.helios_status[sizeof(s.helios_status) - 1] = '\0';
-
   // Asgard bridge status
 #ifdef USE_HV6_ASGARD_BRIDGE
   if (this->asgard_bridge_ != nullptr) {
@@ -298,6 +245,7 @@ void HV6Dashboard::update_snapshot_() {
     strncpy(s.asgard_peer_status, ab->get_peer_status_str(), sizeof(s.asgard_peer_status) - 1);
     strncpy(s.asgard_last_error, ab->get_last_error(), sizeof(s.asgard_last_error) - 1);
     s.asgard_last_push_c      = ab->get_last_push_value();
+    s.asgard_setpoint_c       = ab->get_recommended_setpoint_c();
     s.asgard_last_push_age_s  = ab->get_last_push_age_s();
     s.asgard_push_fail_streak = ab->get_push_fail_streak();
     s.asgard_local_zones      = ab->get_local_zones_used();
@@ -345,12 +293,8 @@ void HV6Dashboard::update_snapshot_() {
     s.preheat_absorb_band_c  = ctrl_cfg.preheat_absorb_band_c;
     s.preheat_detect_delta_c = ctrl_cfg.preheat_detect_delta_c;
     s.preheat_absorbing = this->zone_controller_ && this->zone_controller_->is_preheat_absorbing();
-    s.helios                 = this->config_store_->get_helios_config();
     s.asgard                 = this->config_store_->get_asgard_config();
     s.forecast               = this->config_store_->get_forecast_config();
-    const auto dev_cfg = this->config_store_->get_config();
-    strncpy(s.helios_device_id, dev_cfg.system.controller_id, sizeof(s.helios_device_id) - 1);
-    s.helios_device_id[sizeof(s.helios_device_id) - 1] = '\0';
     for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
       s.zones[i]            = this->config_store_->get_zone_config(i);
       s.zone_temp_source[i] = this->config_store_->get_zone_temp_source(i);
@@ -618,9 +562,6 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
     appendf(buf, BUF_SIZE, offset, "\"%s\":{\"state\":\"%s\"},", MOTOR_FAULT_KEYS[i], snap->motor_fault[i]);
   }
 
-  // helios connectivity status
-  appendf(buf, BUF_SIZE, offset, "\"helios_status\":{\"state\":\"%s\"},", snap->helios_status);
-
   // flush before config section; each zone config (~550 bytes) would overflow combined
   if (!flush()) return;
 
@@ -760,48 +701,6 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
   appendf(buf, BUF_SIZE, offset,
       "\"number-learned_factor_max_deviation_pct\":{\"value\":%s},", num_buf);
 
-  // --- helios config ---
-  appendf(buf, BUF_SIZE, offset,
-      "\"switch-helios_enabled\":{\"state\":\"%s\"},"
-      "\"switch-helios_auto_discover\":{\"state\":\"%s\"},"
-      "\"text-helios_host\":{\"state\":\"%s\"},"
-      "\"text-helios_mdns_host\":{\"state\":\"%s\"},"
-      "\"text-helios_controller_id\":{\"state\":\"%s\"},",
-      snap->helios.enabled ? "on" : "off",
-      snap->helios.auto_discover ? "on" : "off",
-      snap->helios.host,
-      snap->helios.mdns_host,
-      snap->helios.controller_id);
-  appendf(buf, BUF_SIZE, offset,
-      "\"number-helios_port\":{\"value\":%u},"
-      "\"number-helios_poll_interval_s\":{\"value\":%u},"
-      "\"number-helios_stale_after_s\":{\"value\":%u},"
-      "\"number-helios_mdns_resolve_interval_s\":{\"value\":%u},"
-      "\"text-helios_device_id\":{\"state\":\"%s\"},",
-      static_cast<unsigned>(snap->helios.port),
-      static_cast<unsigned>(snap->helios.poll_interval_s),
-      static_cast<unsigned>(snap->helios.stale_after_s),
-      static_cast<unsigned>(snap->helios.mdns_resolve_interval_s),
-      snap->helios_device_id);
-    appendf(buf, BUF_SIZE, offset,
-      "\"text-helios_status\":{\"state\":\"%s\"},"
-      "\"text-helios_endpoint\":{\"state\":\"%s\"},"
-      "\"text-helios_endpoint_source\":{\"state\":\"%s\"},"
-      "\"text-helios_last_error\":{\"state\":\"%s\"},",
-      snap->helios_status,
-      snap->helios_endpoint,
-      snap->helios_endpoint_source,
-      snap->helios_last_error);
-    appendf(buf, BUF_SIZE, offset,
-      "\"sensor-helios_last_http_status\":{\"state\":%ld},"
-      "\"sensor-helios_fail_streak\":{\"state\":%lu},"
-      "\"sensor-helios_next_retry_s\":{\"state\":%lu},"
-      "\"sensor-helios_last_success_age_s\":{\"state\":%lu},",
-      static_cast<long>(snap->helios_last_http_status),
-      static_cast<unsigned long>(snap->helios_fail_streak),
-      static_cast<unsigned long>(snap->helios_next_retry_s),
-      static_cast<unsigned long>(snap->helios_last_success_age_s));
-
   // flush before asgard section
   if (!flush()) return;
 
@@ -827,11 +726,14 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
       static_cast<unsigned>(snap->asgard.push_interval_s),
       static_cast<unsigned>(snap->asgard.peer_stale_after_s));
   format_float_token(num_buf, sizeof(num_buf), snap->asgard_last_push_c, 2);
+  char sp_buf[16];
+  format_float_token(sp_buf, sizeof(sp_buf), snap->asgard_setpoint_c, 1);
   appendf(buf, BUF_SIZE, offset,
       "\"text-asgard_role\":{\"state\":\"%s\"},"
       "\"text-asgard_peer_status\":{\"state\":\"%s\"},"
       "\"text-asgard_last_error\":{\"state\":\"%s\"},"
       "\"sensor-asgard_last_push_c\":{\"value\":%s},"
+      "\"sensor-asgard_setpoint_c\":{\"value\":%s},"
       "\"sensor-asgard_last_push_age_s\":{\"state\":%lu},"
       "\"sensor-asgard_push_fail_streak\":{\"state\":%lu},"
       "\"sensor-asgard_local_zones\":{\"state\":%u},"
@@ -840,6 +742,7 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
       snap->asgard_peer_status,
       snap->asgard_last_error,
       num_buf,
+      sp_buf,
       static_cast<unsigned long>(snap->asgard_last_push_age_s),
       static_cast<unsigned long>(snap->asgard_push_fail_streak),
       static_cast<unsigned>(snap->asgard_local_zones),
@@ -1274,63 +1177,6 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
       this->valve_controller_->reload_motor_config();
     }
 
-  // ---- helios_enabled ----
-  } else if (strcmp(key, "helios_enabled") == 0 && has_str && this->config_store_) {
-    auto helios_cfg = this->config_store_->get_helios_config();
-    helios_cfg.enabled = (strcasecmp(str_val, "on") == 0 || strcmp(str_val, "1") == 0);
-    this->config_store_->update_helios(helios_cfg);
-
-  // ---- helios_auto_discover ----
-  } else if (strcmp(key, "helios_auto_discover") == 0 && has_str && this->config_store_) {
-    auto helios_cfg = this->config_store_->get_helios_config();
-    helios_cfg.auto_discover = (strcasecmp(str_val, "on") == 0 || strcmp(str_val, "1") == 0);
-    this->config_store_->update_helios(helios_cfg);
-
-  // ---- helios_host ----
-  } else if (strcmp(key, "helios_host") == 0 && has_str && this->config_store_) {
-    auto helios_cfg = this->config_store_->get_helios_config();
-    strncpy(helios_cfg.host, str_val, sizeof(helios_cfg.host) - 1);
-    helios_cfg.host[sizeof(helios_cfg.host) - 1] = '\0';
-    this->config_store_->update_helios(helios_cfg);
-
-  // ---- helios_mdns_host ----
-  } else if (strcmp(key, "helios_mdns_host") == 0 && has_str && this->config_store_) {
-    auto helios_cfg = this->config_store_->get_helios_config();
-    strncpy(helios_cfg.mdns_host, str_val, sizeof(helios_cfg.mdns_host) - 1);
-    helios_cfg.mdns_host[sizeof(helios_cfg.mdns_host) - 1] = '\0';
-    this->config_store_->update_helios(helios_cfg);
-
-  // ---- helios_port ----
-  } else if (strcmp(key, "helios_port") == 0 && has_num && this->config_store_) {
-    auto helios_cfg = this->config_store_->get_helios_config();
-    helios_cfg.port = static_cast<uint16_t>(std::max(1.0f, std::min(65535.0f, num_val)));
-    this->config_store_->update_helios(helios_cfg);
-
-  // ---- helios_controller_id ----
-  } else if (strcmp(key, "helios_controller_id") == 0 && this->config_store_) {
-    auto helios_cfg = this->config_store_->get_helios_config();
-    strncpy(helios_cfg.controller_id, str_val, sizeof(helios_cfg.controller_id) - 1);
-    helios_cfg.controller_id[sizeof(helios_cfg.controller_id) - 1] = '\0';
-    this->config_store_->update_helios(helios_cfg);
-
-  // ---- helios_poll_interval_s ----
-  } else if (strcmp(key, "helios_poll_interval_s") == 0 && has_num && this->config_store_) {
-    auto helios_cfg = this->config_store_->get_helios_config();
-    helios_cfg.poll_interval_s = static_cast<uint16_t>(std::max(5.0f, std::min(3600.0f, num_val)));
-    this->config_store_->update_helios(helios_cfg);
-
-  // ---- helios_stale_after_s ----
-  } else if (strcmp(key, "helios_stale_after_s") == 0 && has_num && this->config_store_) {
-    auto helios_cfg = this->config_store_->get_helios_config();
-    helios_cfg.stale_after_s = static_cast<uint16_t>(std::max(10.0f, std::min(86400.0f, num_val)));
-    this->config_store_->update_helios(helios_cfg);
-
-  // ---- helios_mdns_resolve_interval_s ----
-  } else if (strcmp(key, "helios_mdns_resolve_interval_s") == 0 && has_num && this->config_store_) {
-    auto helios_cfg = this->config_store_->get_helios_config();
-    helios_cfg.mdns_resolve_interval_s = static_cast<uint16_t>(std::max(15.0f, std::min(3600.0f, num_val)));
-    this->config_store_->update_helios(helios_cfg);
-
   // ---- asgard_enabled ----
   } else if (strcmp(key, "asgard_enabled") == 0 && has_str && this->config_store_) {
     auto asgard_cfg = this->config_store_->get_asgard_config();
@@ -1604,27 +1450,36 @@ void HV6Dashboard::handle_peer_(AsyncWebServerRequest *request) {
     return;
   }
   float temps[hv6::NUM_ZONES];
+  float setpoints[hv6::NUM_ZONES];
   float areas[hv6::NUM_ZONES];
   bool enabled[hv6::NUM_ZONES];
   for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
     temps[i] = this->snapshot_.zone_temp_c[i];
+    setpoints[i] = this->snapshot_.zones[i].setpoint_c;
     areas[i] = this->snapshot_.zones[i].area_m2;
     enabled[i] = this->snapshot_.zones[i].enabled;
   }
   xSemaphoreGive(snapshot_lock_);
 
-  char buf[512];
+  // Static (not stack): the httpd worker thread stack is ~4 KB and the lwip
+  // send path is deep. Single-threaded httpd makes this safe.
+  static char buf[640];
   size_t off = 0;
   off += static_cast<size_t>(snprintf(buf + off, sizeof(buf) - off, "{\"ok\":true,\"zones\":["));
-  for (uint8_t i = 0; i < hv6::NUM_ZONES && off < sizeof(buf) - 64; i++) {
+  for (uint8_t i = 0; i < hv6::NUM_ZONES && off < sizeof(buf) - 80; i++) {
     char temp_buf[16];
     if (std::isfinite(temps[i]))
       snprintf(temp_buf, sizeof(temp_buf), "%.2f", temps[i]);
     else
       snprintf(temp_buf, sizeof(temp_buf), "null");
+    char sp_buf[16];
+    if (std::isfinite(setpoints[i]))
+      snprintf(sp_buf, sizeof(sp_buf), "%.2f", setpoints[i]);
+    else
+      snprintf(sp_buf, sizeof(sp_buf), "null");
     off += static_cast<size_t>(snprintf(buf + off, sizeof(buf) - off,
-        "%s{\"t\":%s,\"area\":%.1f,\"en\":%s}",
-        (i > 0) ? "," : "", temp_buf, areas[i], enabled[i] ? "true" : "false"));
+        "%s{\"t\":%s,\"sp\":%s,\"area\":%.1f,\"en\":%s}",
+        (i > 0) ? "," : "", temp_buf, sp_buf, areas[i], enabled[i] ? "true" : "false"));
   }
   if (off < sizeof(buf) - 3)
     off += static_cast<size_t>(snprintf(buf + off, sizeof(buf) - off, "]}"));
@@ -1642,16 +1497,11 @@ void HV6Dashboard::handle_ble_scan_(AsyncWebServerRequest *request) {
     return;
   }
 
-  hv6::Hv6ZoneController::BleSensorSeen sensors[hv6::Hv6ZoneController::BLE_SEEN_SLOTS];
+  // Kept static (not on the stack): the httpd worker thread has only a ~4 KB
+  // stack and the lwip send path below is deep, so large stack locals here
+  // overflow it. The httpd server is single-threaded, so static is safe.
+  static hv6::Hv6ZoneController::BleSensorSeen sensors[hv6::Hv6ZoneController::BLE_SEEN_SLOTS];
   uint8_t count = zone_controller_->get_ble_discovered(sensors, hv6::Hv6ZoneController::BLE_SEEN_SLOTS);
-
-  // Build a set of assigned MACs for O(1) lookup
-  char assigned_macs[hv6::NUM_ZONES][18] = {};
-  for (uint8_t z = 0; z < hv6::NUM_ZONES; z++) {
-    std::string mac = zone_controller_->get_zone_ble_mac(z);
-    if (!mac.empty())
-      strncpy(assigned_macs[z], mac.c_str(), 17);
-  }
 
   httpd_req_t *req = *request;
   httpd_resp_set_status(req, "200 OK");
@@ -1659,7 +1509,7 @@ void HV6Dashboard::handle_ble_scan_(AsyncWebServerRequest *request) {
   httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
-  char buf[1536];
+  static char buf[2048];
   size_t off = 0;
 
   uint32_t now = millis();
@@ -1670,13 +1520,10 @@ void HV6Dashboard::handle_ble_scan_(AsyncWebServerRequest *request) {
     const auto &s = sensors[i];
     uint32_t age_s = (now - s.last_ms) / 1000;
 
-    int8_t assigned_zone = -1;
-    for (uint8_t z = 0; z < hv6::NUM_ZONES; z++) {
-      if (assigned_macs[z][0] != '\0' && memcmp(assigned_macs[z], s.mac, 17) == 0) {
-        assigned_zone = static_cast<int8_t>(z + 1);
-        break;
-      }
-    }
+    // 1-based zone, or -1 if unassigned. match_ble_mac copies only the MAC
+    // fields (never the whole DeviceConfig).
+    int8_t mz = zone_controller_->match_ble_mac(s.mac);
+    int8_t assigned_zone = (mz >= 0) ? static_cast<int8_t>(mz + 1) : -1;
 
     char temp_buf[12];
     if (std::isfinite(s.temp_c))
@@ -1684,10 +1531,24 @@ void HV6Dashboard::handle_ble_scan_(AsyncWebServerRequest *request) {
     else
       snprintf(temp_buf, sizeof(temp_buf), "null");
 
+    // JSON-escape the advertised name (quotes/backslashes/control chars).
+    char name_esc[2 * sizeof(s.name)];
+    size_t ne = 0;
+    for (size_t j = 0; s.name[j] != '\0' && ne < sizeof(name_esc) - 2; j++) {
+      char c = s.name[j];
+      if (c == '"' || c == '\\') {
+        name_esc[ne++] = '\\';
+        name_esc[ne++] = c;
+      } else if (static_cast<unsigned char>(c) >= 0x20) {
+        name_esc[ne++] = c;
+      }
+    }
+    name_esc[ne] = '\0';
+
     off += static_cast<size_t>(snprintf(buf + off, sizeof(buf) - off,
-        "%s{\"mac\":\"%s\",\"temp_c\":%s,\"rssi\":%d,\"age_s\":%lu,\"zone\":%d}",
+        "%s{\"mac\":\"%s\",\"name\":\"%s\",\"temp_c\":%s,\"rssi\":%d,\"age_s\":%lu,\"zone\":%d}",
         (i > 0) ? "," : "",
-        s.mac, temp_buf, static_cast<int>(s.rssi),
+        s.mac, name_esc, temp_buf, static_cast<int>(s.rssi),
         static_cast<unsigned long>(age_s),
         static_cast<int>(assigned_zone)));
   }

@@ -9,7 +9,7 @@ specific facade; HeatValve-6 must, and to do that it has to know which way the w
 
 ## How it works
 
-1. **Fetch.** A FreeRTOS task (Core 1, same pattern as the Helios/Asgard components) pulls a
+1. **Fetch.** A FreeRTOS task (Core 1, same pattern as the Asgard component) pulls a
    48 h Open-Meteo forecast over HTTPS every `fetch_interval_s` (default 1 h): hourly
    temperature, wind speed, wind direction and shortwave radiation. The parsed forecast is
    cached in its own NVS namespace (`hv6f`) so a reboot does not lose it.
@@ -34,11 +34,12 @@ specific facade; HeatValve-6 must, and to do that it has to know which way the w
    `thermal_lead_h` before the storm — longer for high-mass floors (concrete ground floor
    ≈ 8–12 h), shorter for the light first floor (≈ 2–3 h).
 
-4. **Apply.** The offset is fed through the **existing Helios command path**
+4. **Apply.** The offset is fed through the **internal setpoint-offset command path**
    (`apply_helios_command`), so every per-zone firmware safety clamp applies unchanged:
    `[min_offset_c, max_offset_c]`, `abs_min_c/abs_max_c`. The forecast producer
-   **auto-quiesces whenever an external Helios service is enabled** — that service then owns
-   the command slots and the local producer clears its offsets to avoid fighting it.
+   **auto-quiesces whenever the `HeliosConfig.enabled` gate is set** — a hook left in place
+   so an external optimizer could reclaim the command slots; with the external Helios client
+   removed this gate is normally off and the local producer stays active.
 
 The forecast and the preheat-absorption logic (see
 [ecodan_integration.md](ecodan_integration.md)) are complementary: forecast preload opens

@@ -20,7 +20,8 @@ esp32:
       CONFIG_SPIRAM: "y"
       CONFIG_SPIRAM_MODE_QUAD: "y"
       # Prefer PSRAM for large networking/crypto/BLE allocations to keep
-      # internal heap available for MQTT write paths and mDNS allocations.
+      # internal heap available for the HTTP(S) client tasks (Helios/Asgard/
+      # forecast) and the dashboard web server.
       CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP: "y"
       CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: "y"
       CONFIG_BT_ALLOCATION_FROM_SPIRAM_FIRST: "y"
@@ -29,6 +30,11 @@ esp32:
       CONFIG_ESP_TASK_WDT_TIMEOUT_S: "15"
       CONFIG_LWIP_MAX_LISTENING_TCP: "5"
       CONFIG_HTTPD_MAX_URI_LEN: "128"
+      # loopTask (ESPHome main loop) runs every component loop() plus the BLE
+      # advertise lambda. The 3584 B default left only ~672 B headroom, risking
+      # stack overflow during BLE bursts; 8 KB gives comfortable margin. RAM use
+      # is ~16%, so the extra few KB is free.
+      CONFIG_ESP_MAIN_TASK_STACK_SIZE: "8192"
 
 # Enable the ESPHome `psram:` component so the debug platform can expose a
 # Free PSRAM sensor. The IDF sdkconfig above already enables SPIRAM at the

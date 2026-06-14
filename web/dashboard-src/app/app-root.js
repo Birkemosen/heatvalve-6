@@ -105,9 +105,15 @@ body {
 
 .zone-layout,
 .diag-layout,
-.settings-layout {
+.settings-layout,
+.smart-heating-layout {
   display: grid;
   gap: 14px;
+}
+
+.smart-heating-layout {
+  grid-template-columns: 1.15fr .85fr;
+  align-items: start;
 }
 
 .zone-layout {
@@ -168,7 +174,8 @@ body {
 @media (max-width: 860px) {
   .zone-layout,
   .dashboard-grid,
-  .settings-layout { grid-template-columns: 1fr; }
+  .settings-layout,
+  .smart-heating-layout { grid-template-columns: 1fr; }
 
   .zone-detail-slot {
     grid-column: 1;
@@ -224,6 +231,12 @@ const template = (ctx) => `
           <div class="zone-room-slot"></div>
         </div>
       </section>
+      <section class="sec" data-section="smart-heating">
+        <div class="smart-heating-layout">
+          <div class="smart-heating-preheat-slot"></div>
+          <div class="smart-heating-forecast-slot"></div>
+        </div>
+      </section>
       <section class="sec" data-section="diagnostics">
         <div class="diag-manual-badge-slot"></div>
         <div class="diag-layout"></div>
@@ -233,9 +246,7 @@ const template = (ctx) => `
           <div class="settings-manifold-slot"></div>
           <div class="settings-control-slot"></div>
           <div class="settings-motor-cal-slot"></div>
-          <div class="settings-helios-slot"></div>
           <div class="settings-asgard-slot"></div>
-          <div class="settings-forecast-slot"></div>
         </div>
       </section>
       <div class="ftr">HEATVALVE-6 · UFH CONTROLLER</div>
@@ -266,9 +277,10 @@ component({
     el.querySelector('.settings-manifold-slot').appendChild(mountComponent('settings-manifold-card'));
     el.querySelector('.settings-control-slot').appendChild(mountComponent('settings-control-card'));
     el.querySelector('.settings-motor-cal-slot').appendChild(mountComponent('settings-motor-calibration-card'));
-    el.querySelector('.settings-helios-slot').appendChild(mountComponent('settings-helios-card'));
     el.querySelector('.settings-asgard-slot').appendChild(mountComponent('settings-asgard-card'));
-    el.querySelector('.settings-forecast-slot').appendChild(mountComponent('settings-forecast-card'));
+
+    el.querySelector('.smart-heating-preheat-slot').appendChild(mountComponent('smart-preheat-card'));
+    el.querySelector('.smart-heating-forecast-slot').appendChild(mountComponent('settings-forecast-card'));
 
     el.querySelector('.diag-manual-badge-slot').appendChild(mountComponent('diag-manual-badge'));
 

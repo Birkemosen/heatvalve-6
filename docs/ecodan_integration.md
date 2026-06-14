@@ -38,6 +38,18 @@ identical firmware; the **coordinator (master)** role is a runtime toggle persis
 2. The master computes the **house-weighted average of real zone temperatures** across
    all 12 zones: `Σ(temp × area) / Σ(area)` (enabled zones with a valid temperature).
 3. The master pushes that value to Asgard's virtual thermostat z1 input via REST.
+4. In parallel the board computes the **recommended fixed setpoint**: the area-weighted
+   average of each enabled zone's *configured* base setpoint
+   (`Σ(setpoint × area) / Σ(area)`, transient forecast/command-path offsets excluded). This is
+   the value the operator enters once as Asgard's virtual-thermostat setpoint, so the
+   pump calls for heat exactly when the weighted house temperature drops below the
+   weighted house target. It is a **static** recommendation: computed purely from zone
+   settings, so it is shown on the dashboard Asgard card **regardless of whether the
+   bridge is enabled** and **regardless of current zone temperatures** (it appears even
+   before any probe has reported). It is never pushed automatically — the Asgard setpoint
+   is a fixed user-entered value. Peer-board zones are folded in only while the
+   coordinator is actively polling a fresh peer snapshot; otherwise the value reflects the
+   local board's zones.
 
 ## Why a real weighted temperature (not a synthetic demand signal)
 
@@ -70,8 +82,12 @@ dashboard's Asgard card:
 | `push_interval_s` | Push cadence (30–60 s) |
 | `peer_host` | The other HeatValve-6 board (master only) |
 
-Dashboard settings card shows coordinator role, peer status, last push and failure
-counter.
+Dashboard settings card shows coordinator role, peer status, last push, the recommended
+fixed Asgard setpoint, and the failure counter.
+
+The board-to-board `/api/hv6/v1/peer` snapshot carries each zone's `sp` (configured
+setpoint) alongside `t`/`area`/`en` so the coordinator can fold the peer board's zones
+into the recommended-setpoint average.
 
 ## Preheat Absorption
 
@@ -89,9 +105,9 @@ satisfied zones keep their maintenance opening and the slab absorbs the buffer.
 
 The state releases immediately when any zone drops into DEMAND (the buffer is then routed
 to the cold zone by normal control) or when the flow temperature decays. Configured from
-the dashboard Control card (`ControlConfig` in NVS: `preheat_absorb_enabled`,
+the dashboard Smart Heating card (`ControlConfig` in NVS: `preheat_absorb_enabled`,
 `preheat_absorb_band_c`, `preheat_detect_delta_c`); live state is shown as an
-"active/idle" badge and reported to Helios in the snapshot's `system.preheat_absorbing`.
+"active/idle" badge in the dashboard.
 
 ## Troubleshooting
 

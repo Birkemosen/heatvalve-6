@@ -7,10 +7,17 @@
 
 esp32_ble_tracker:
   scan_parameters:
-    active: false
-    # Lower BLE duty cycle to reduce event pressure and heap churn during
-    # MQTT/TLS reconnect windows on low-free-heap boots.
-    interval: 3000ms
+    # Active scanning sends scan requests so devices reply with their scan
+    # response, which carries the local name (Shelly BLU H&T put the name there,
+    # not in the primary advertisement). Costs a little extra battery on the
+    # sensors; set to false if that matters and you only need MAC-based pairing.
+    active: true
+    # ~9% listen duty cycle (window/interval). High enough to reliably catch
+    # BTHome advertisements from Shelly BLU H&T (which broadcast every few
+    # seconds) while keeping radio/heap pressure modest alongside the HTTP(S)
+    # client tasks. A much lower duty cycle (e.g. 30ms/3000ms) misses most
+    # advertisements and leaves the discovery cache empty.
+    interval: 320ms
     window: 30ms
   on_ble_advertise:
     then:
@@ -27,11 +34,11 @@ esp32_ble_tracker:
             auto addr_raw = x.address();
             snprintf(mac_buf, sizeof(mac_buf), "%02X:%02X:%02X:%02X:%02X:%02X",
                      addr_raw[0], addr_raw[1], addr_raw[2], addr_raw[3], addr_raw[4], addr_raw[5]);
-            std::string device_mac(mac_buf);
 
-            // Rate-limit: accept at most one update per MAC per 60 seconds.
-            // Use a fixed-size cache (no heap allocations) to avoid
-            // fragmentation from dynamic std::map growth.
+            // Rate-limit EVERY BTHome device to one update per MAC per 30 s.
+            // Throttle here, before any per-MAC work, so an unconfigured device
+            // being discovered is not reprocessed on every advertisement. Uses a
+            // fixed-size cache (no heap) to avoid fragmentation.
             struct LastSeen {
               char mac[18];
               uint32_t ts;
@@ -41,15 +48,26 @@ esp32_ble_tracker:
             uint32_t now = millis();
             int slot = -1;
             for (int i = 0; i < 16; i++) {
-              if (!last_update[i].used)
-                continue;
-              if (memcmp(last_update[i].mac, mac_buf, 18) == 0) {
+              if (last_update[i].used && memcmp(last_update[i].mac, mac_buf, 18) == 0) {
                 slot = i;
                 break;
               }
             }
-            if (slot >= 0 && (now - last_update[slot].ts) < 60000)
+            if (slot >= 0 && (now - last_update[slot].ts) < 30000)
               continue;
+            if (slot < 0) {
+              // Claim a free slot, else evict the least-recently-updated one.
+              int oldest = 0;
+              uint32_t oldest_ts = UINT32_MAX;
+              for (int i = 0; i < 16; i++) {
+                if (!last_update[i].used) { oldest = i; break; }
+                if (last_update[i].ts < oldest_ts) { oldest_ts = last_update[i].ts; oldest = i; }
+              }
+              slot = oldest;
+              memcpy(last_update[slot].mac, mac_buf, 18);
+              last_update[slot].used = true;
+            }
+            last_update[slot].ts = now;
 
             // Parse BTHome v2 payload for temperature
             // Object IDs: 0x02 = temperature 0.01°C, 0x45 = temperature 0.1°C
@@ -122,46 +140,33 @@ esp32_ble_tracker:
               pos += 1 + dlen;
             }
 
+            // Record EVERY BTHome device in the discovery cache (even when this
+            // packet had no parseable temperature) so the dashboard lists all
+            // nearby sensors for tap-to-assign. The advertised local name (from
+            // the scan response — requires active scanning) is shown when known.
+            const std::string &dev_name = x.get_name();
+            id(hv6_zones).report_ble_sensor_seen(mac_buf, temperature,
+                                                  static_cast<int8_t>(x.get_rssi()),
+                                                  dev_name.empty() ? nullptr : dev_name.c_str());
+
+            // Only the zone-temperature assignment below needs a valid reading.
             if (std::isnan(temperature))
               continue;
 
-            // Record in discovery cache so the dashboard can offer tap-to-assign
-            id(hv6_zones).report_ble_sensor_seen(mac_buf, temperature,
-                                                  static_cast<int8_t>(x.get_rssi()));
-
-            // Match against zone BLE MACs
-            for (uint8_t z = 0; z < 6; z++) {
-              std::string cfg_mac = id(hv6_zones).get_zone_ble_mac(z);
-              if (cfg_mac.empty())
-                continue;
-
-              bool match = (cfg_mac.size() == 17 && device_mac.size() == 17 &&
-                            memcmp(cfg_mac.c_str(), device_mac.c_str(), 17) == 0);
-
-              if (match) {
-                if (slot < 0) {
-                  for (int i = 0; i < 16; i++) {
-                    if (!last_update[i].used) {
-                      slot = i;
-                      break;
-                    }
-                  }
-                  if (slot < 0)
-                    slot = 0;  // deterministic overwrite when cache is full
-                  memcpy(last_update[slot].mac, mac_buf, 18);
-                  last_update[slot].used = true;
-                }
-                last_update[slot].ts = now;
-                ESP_LOGI("ble_temp", "Zone %d BLE temp: %.1f°C (%s)", z + 1, temperature, mac_buf);
-                id(hv6_zones).set_zone_external_temperature(z, temperature);
-                switch (z) {
-                  case 0: id(ble_temp_zone_1).publish_state(temperature); break;
-                  case 1: id(ble_temp_zone_2).publish_state(temperature); break;
-                  case 2: id(ble_temp_zone_3).publish_state(temperature); break;
-                  case 3: id(ble_temp_zone_4).publish_state(temperature); break;
-                  case 4: id(ble_temp_zone_5).publish_state(temperature); break;
-                  case 5: id(ble_temp_zone_6).publish_state(temperature); break;
-                }
+            // Match against configured zone MACs without copying the whole
+            // DeviceConfig (match_ble_mac copies only the 18-byte MAC fields).
+            int8_t mz = id(hv6_zones).match_ble_mac(mac_buf);
+            if (mz >= 0) {
+              uint8_t z = static_cast<uint8_t>(mz);
+              ESP_LOGI("ble_temp", "Zone %d BLE temp: %.1f°C (%s)", z + 1, temperature, mac_buf);
+              id(hv6_zones).set_zone_external_temperature(z, temperature);
+              switch (z) {
+                case 0: id(ble_temp_zone_1).publish_state(temperature); break;
+                case 1: id(ble_temp_zone_2).publish_state(temperature); break;
+                case 2: id(ble_temp_zone_3).publish_state(temperature); break;
+                case 3: id(ble_temp_zone_4).publish_state(temperature); break;
+                case 4: id(ble_temp_zone_5).publish_state(temperature); break;
+                case 5: id(ble_temp_zone_6).publish_state(temperature); break;
               }
             }
           }

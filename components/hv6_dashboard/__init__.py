@@ -30,7 +30,6 @@ CONF_MOTOR_CLOSE_FACTOR_IDS = "motor_close_factor_ids"
 CONF_PROBE_TEMP_IDS = "probe_temp_ids"
 CONF_ZONE_STATE_IDS = "zone_state_ids"
 CONF_MOTOR_FAULT_IDS = "motor_fault_ids"
-CONF_HELIOS_CLIENT_ID = "helios_client_id"
 CONF_ASGARD_BRIDGE_ID = "asgard_bridge_id"
 CONF_FORECAST_ID = "forecast_id"
 
@@ -40,7 +39,6 @@ HV6Dashboard = hv6_dashboard_ns.class_("HV6Dashboard", cg.Component)
 Hv6ZoneController = hv6_ns.class_("Hv6ZoneController", cg.Component)
 Hv6ValveController = hv6_ns.class_("Hv6ValveController", cg.Component)
 Hv6ConfigStore = hv6_ns.class_("Hv6ConfigStore", cg.Component)
-Hv6HeliosClient = cg.esphome_ns.namespace("hv6_helios_client").class_("Hv6HeliosClient", cg.Component)
 Hv6AsgardBridge = cg.esphome_ns.namespace("hv6_asgard_bridge").class_("Hv6AsgardBridge", cg.Component)
 Hv6Forecast = cg.esphome_ns.namespace("hv6_forecast").class_("Hv6Forecast", cg.Component)
 
@@ -89,7 +87,6 @@ CONFIG_SCHEMA = cv.Schema(
             cv.ensure_list(cv.use_id(text_sensor.TextSensor)), cv.Length(max=6)
         ),
         cv.Optional(CONF_DASHBOARD_JS): cv.file_,
-        cv.Optional(CONF_HELIOS_CLIENT_ID): cv.use_id(Hv6HeliosClient),
         cv.Optional(CONF_ASGARD_BRIDGE_ID): cv.use_id(Hv6AsgardBridge),
         cv.Optional(CONF_FORECAST_ID): cv.use_id(Hv6Forecast),
     }
@@ -203,11 +200,6 @@ async def to_code(config):
         for i, ts_id in enumerate(config[CONF_MOTOR_FAULT_IDS]):
             ts = await cg.get_variable(ts_id)
             cg.add(var.set_motor_fault_sensor(i, ts))
-
-    if CONF_HELIOS_CLIENT_ID in config:
-        helios = await cg.get_variable(config[CONF_HELIOS_CLIENT_ID])
-        cg.add(var.set_helios_client(helios))
-        cg.add_define("USE_HV6_HELIOS_CLIENT")
 
     if CONF_ASGARD_BRIDGE_ID in config:
         asgard = await cg.get_variable(config[CONF_ASGARD_BRIDGE_ID])
