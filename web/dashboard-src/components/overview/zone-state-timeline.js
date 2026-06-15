@@ -26,7 +26,13 @@ const ROW_GAP    = 4;
 const LABEL_W    = 54;
 const AXIS_H     = 20;
 const PAD_TOP    = 4;
-const CHART_H    = NZ * (ROW_H + ROW_GAP) - ROW_GAP + PAD_TOP + AXIS_H;
+const BAND_H     = 10;          // preheat-absorption band height
+const BAND_GAP   = 6;           // gap between zone rows and the absorption band
+const ABSORB_COLOR = '#b07bd1'; // distinct from heating (orange) / idle (blue)
+const ABSORB_INDEX = NZ + 1;    // entry shape: [uptime_s, z0..z5, absorbing]
+const ZONES_BOTTOM = PAD_TOP + NZ * (ROW_H + ROW_GAP) - ROW_GAP;
+const BAND_Y       = ZONES_BOTTOM + BAND_GAP;
+const CHART_H    = ZONES_BOTTOM + BAND_GAP + BAND_H + AXIS_H;
 
 // ========================================
 // CSS
@@ -239,6 +245,62 @@ function renderTimeline(histData, currentUptimeS) {
     drawSeg(segStart, uptime, segState);
   }
 
+  // ── Preheat-absorption band ───────────────────────────────────
+  // Spans the full time axis; filled where absorption was active so the user
+  // can correlate episodes with zone activity above.
+  {
+    const bandBg = document.createElementNS(ns, 'rect');
+    bandBg.setAttribute('x', LABEL_W);
+    bandBg.setAttribute('y', BAND_Y);
+    bandBg.setAttribute('width', chartW);
+    bandBg.setAttribute('height', BAND_H);
+    bandBg.setAttribute('fill', 'rgba(176,123,209,0.08)');
+    bandBg.setAttribute('rx', '2');
+    svg.appendChild(bandBg);
+
+    const bandLabel = document.createElementNS(ns, 'text');
+    bandLabel.setAttribute('x', LABEL_W - 4);
+    bandLabel.setAttribute('y', BAND_Y + BAND_H / 2 + 1);
+    bandLabel.setAttribute('text-anchor', 'end');
+    bandLabel.setAttribute('dominant-baseline', 'middle');
+    bandLabel.setAttribute('fill', 'rgba(191,211,245,.65)');
+    bandLabel.setAttribute('font-size', '8.5');
+    bandLabel.setAttribute('font-family', 'Montserrat, sans-serif');
+    bandLabel.setAttribute('font-weight', '600');
+    bandLabel.textContent = 'Absorb';
+    svg.appendChild(bandLabel);
+
+    const aEntries = entries
+      .filter((e) => e[0] >= windowStart)
+      .map((e) => ({ t: e[0], on: e.length > ABSORB_INDEX ? e[ABSORB_INDEX] : 0 }));
+
+    if (aEntries.length) {
+      const drawBand = (t0, t1) => {
+        const x0 = tToX(t0);
+        const w = Math.max(1, tToX(t1) - x0);
+        const rect = document.createElementNS(ns, 'rect');
+        rect.setAttribute('x', x0);
+        rect.setAttribute('y', BAND_Y);
+        rect.setAttribute('width', w);
+        rect.setAttribute('height', BAND_H);
+        rect.setAttribute('fill', ABSORB_COLOR);
+        rect.setAttribute('rx', '2');
+        rect.setAttribute('opacity', '0.9');
+        svg.appendChild(rect);
+      };
+      let segStart = aEntries[0].t;
+      let segOn = aEntries[0].on;
+      for (let i = 1; i < aEntries.length; i++) {
+        if (aEntries[i].on !== segOn) {
+          if (segOn) drawBand(segStart, aEntries[i].t);
+          segStart = aEntries[i].t;
+          segOn = aEntries[i].on;
+        }
+      }
+      if (segOn) drawBand(segStart, uptime);
+    }
+  }
+
   // ── Time axis labels ──────────────────────────────────────────
   const AXIS_Y = CHART_H - AXIS_H + 14;
   const axisLabels = [
@@ -286,6 +348,11 @@ function renderLegend(el) {
       item.label;
     el.appendChild(div);
   }
+  const absorb = document.createElement('div');
+  absorb.className = 'tl-legend-item';
+  absorb.innerHTML =
+    '<span class="tl-legend-dot" style="background:' + ABSORB_COLOR + '"></span>Preheat absorption';
+  el.appendChild(absorb);
 }
 
 // ========================================

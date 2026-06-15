@@ -1,4 +1,5 @@
 api:
+  reboot_timeout: 0s
   encryption:
     key: !secret api_key
   services:

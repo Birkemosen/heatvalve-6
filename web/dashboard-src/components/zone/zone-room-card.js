@@ -1,105 +1,29 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
+import { cardForm } from '../../core/ui-kit.js';
 import { ev, es, getDashboardValue, setZoneName, subscribeDashboard, zoneTag } from '../../core/store.js';
 import { key } from '../../utils/keys.js';
 import { setZoneNumber, setZoneSelect, setZoneText } from '../../core/api.js';
+
+// Mirror firmware default_wind_exposure(): wind exposure seeded from wall count.
+const WIND_EXPOSURE_BY_WALLS = [0, 0.5, 0.7, 0.85, 1];
+function seededWindExposure(wallCount) {
+  return WIND_EXPOSURE_BY_WALLS[Math.min(wallCount, 4)];
+}
 
 // ========================================
 // CSS
 // ========================================
 const css = `
-.zone-room-card {
-  background: var(--panel-bg-vibrant);
-  border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  padding: 18px;
-  box-shadow: var(--panel-shadow);
-  height: 100%;
-  box-sizing: border-box;
-}
-
-.zone-room-card .card-title {
-  font-size: .84rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 1.1px;
-  color: var(--accent);
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--panel-border);
-}
-
-.zone-room-card .cfg-row {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.zone-room-card .cfg-row.two-col {
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  align-items: start;
-}
-
-.zone-room-card .cfg-row > div:not(.wall-btn-group) {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.zone-room-card .cfg-row.two-col > div {
-  margin-bottom: 0;
-}
-
-@media (max-width: 480px) {
-  .zone-room-card .cfg-row.two-col {
-    grid-template-columns: 1fr;
-  }
-}
-
-.zone-room-card .lbl {
-  color: var(--text-secondary);
-  font-size: .78rem;
-  font-weight: 700;
-  letter-spacing: .45px;
-  text-transform: uppercase;
-  line-height: 1.2;
-}
-
-.zone-room-card .txt,
-.zone-room-card .sel {
-  width: 100%;
-  border: 1px solid var(--control-border);
-  background: var(--control-bg);
-  color: var(--text);
-  border-radius: 10px;
-  padding: 9px 10px;
-  font-size: .88rem;
-  transition: border-color .15s ease;
-}
-
-.zone-room-card .txt:focus,
-.zone-room-card .sel:focus {
-  outline: 2px solid rgba(83,168,255,.6);
-  outline-offset: 1px;
-  border-color: rgba(83,168,255,.55);
-}
+.zone-room-card { height: 100%; }
 
 .zone-room-card .wall-lbl-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: .75rem;
-  color: var(--text-secondary);
-  margin-top: 0;
-  margin-bottom: 8px;
-}
-
-.zone-room-card .wall-lbl-hint::after {
-  content: 'Select all that apply';
+  font-size: .72rem;
+  color: var(--text-faint);
   font-style: italic;
+  margin: 2px 0 8px;
 }
+.zone-room-card .wall-lbl-hint::after { content: 'Select all that apply'; }
 
 .zone-room-card .wall-btn-group {
   display: grid;
@@ -130,12 +54,6 @@ const css = `
   color: #fff;
   border-color: var(--accent);
 }
-
-@media (max-width: 680px) {
-  .zone-room-card .wall-btn-group {
-    grid-template-columns: repeat(5, 1fr);
-  }
-}
 `;
 
 injectStyle('zone-room-card', css);
@@ -144,29 +62,52 @@ injectStyle('zone-room-card', css);
 // TEMPLATE
 // ========================================
 const template = () => `
-  <div class="zone-room-card">
-    <div class="card-title">Zone Settings</div>
-    <div class="cfg-row"><span class="lbl">Friendly Name</span><input class="txt zr-friendly" maxlength="24" placeholder="e.g. Living Room"></div>
-    <div class="cfg-row two-col">
-      <div><span class="lbl">Zone Area</span><input class="txt zr-area" type="number" min="1" step="0.1" placeholder="m2"></div>
-      <div><span class="lbl">Pipe Spacing C-C</span><input class="txt zr-spacing" type="number" min="50" step="5" placeholder="200"></div>
+  <div class="ui-card zone-room-card">
+    <div class="ui-card-title">Zone Settings</div>
+    <div class="ui-row">
+      <span class="ui-label">Friendly Name</span>
+      <span class="ui-field"><input class="ui-input wide zr-friendly" maxlength="24" placeholder="e.g. Living Room"></span>
     </div>
-    <div class="cfg-row"><span class="lbl">Pipe Type</span>
-      <select class="sel zr-pipe">
+    <div class="ui-row">
+      <span class="ui-label">Zone Area (m²)</span>
+      <span class="ui-field"><input class="ui-input zr-area" type="number" min="1" step="0.1" placeholder="m2"></span>
+    </div>
+    <div class="ui-row">
+      <span class="ui-label">Pipe Spacing C-C (mm)</span>
+      <span class="ui-field"><input class="ui-input zr-spacing" type="number" min="50" step="5" placeholder="200"></span>
+    </div>
+    <div class="ui-row">
+      <span class="ui-label">Pipe Type</span>
+      <span class="ui-field"><select class="ui-select zr-pipe">
         <option>PEX 16mm</option><option>PEX 12mm</option><option>PEX 14mm</option><option>PEX 17mm</option><option>PEX 18mm</option><option>PEX 20mm</option><option>ALUPEX 16mm</option><option>ALUPEX 20mm</option><option>Unknown</option>
-      </select>
+      </select></span>
     </div>
-    <div class="cfg-row">
-      <span class="lbl">Exterior Walls</span>
-      <div class="wall-lbl-hint"></div>
-      <div class="wall-btn-group">
-        <button class="wall-btn" data-wall="None">None</button>
-        <button class="wall-btn" data-wall="N">N</button>
-        <button class="wall-btn" data-wall="S">S</button>
-        <button class="wall-btn" data-wall="E">E</button>
-        <button class="wall-btn" data-wall="W">W</button>
-      </div>
+
+    <div class="ui-section">Exterior Walls</div>
+    <div class="wall-lbl-hint"></div>
+    <div class="wall-btn-group">
+      <button class="wall-btn" data-wall="None">None</button>
+      <button class="wall-btn" data-wall="N">N</button>
+      <button class="wall-btn" data-wall="S">S</button>
+      <button class="wall-btn" data-wall="E">E</button>
+      <button class="wall-btn" data-wall="W">W</button>
     </div>
+
+    <div class="ui-divider"></div>
+    <div class="ui-section">Forecast Preload</div>
+    <div class="ui-row">
+      <span class="ui-label">Wind Exposure</span>
+      <span class="ui-field"><input class="ui-input zr-wind" type="number" min="0" max="1" step="0.05" placeholder="0.5"></span>
+    </div>
+    <div class="ui-row">
+      <span class="ui-label">Solar Gain</span>
+      <span class="ui-field"><input class="ui-input zr-solar" type="number" min="0" max="1" step="0.05" placeholder="0.3"></span>
+    </div>
+    <div class="ui-row">
+      <span class="ui-label">Thermal Lead (h)</span>
+      <span class="ui-field"><input class="ui-input zr-lead" type="number" min="0" max="48" step="1" placeholder="4"></span>
+    </div>
+    <div class="ui-note">Wind exposure (0–1) is auto-seeded from the exterior walls above — edit it for a sheltered or extra-exposed site. Solar (0–1) is the passive sun gain that reduces preload; Lead h is how far ahead to start charging the slab before a forecast cold/wind peak.</div>
   </div>
 `;
 
@@ -181,74 +122,85 @@ export default component({
     const areaEl = el.querySelector('.zr-area');
     const spacingEl = el.querySelector('.zr-spacing');
     const pipeEl = el.querySelector('.zr-pipe');
-    const wallBtns = el.querySelectorAll('.wall-btn');
+    const wallBtns = el.querySelector('.wall-btn-group').querySelectorAll('.wall-btn');
+    const windEl = el.querySelector('.zr-wind');
+    const solarEl = el.querySelector('.zr-solar');
+    const leadEl = el.querySelector('.zr-lead');
 
     function zone() {
       return getDashboardValue('selectedZone');
     }
 
-    function update() {
-      const z = zone();
-      if (document.activeElement !== nameEl) nameEl.value = zoneTag(z) || '';
-      if (document.activeElement !== areaEl) areaEl.value = ev(key.area(z)) != null ? String(ev(key.area(z))) : '';
-      if (document.activeElement !== spacingEl) spacingEl.value = ev(key.spacing(z)) != null ? String(ev(key.spacing(z))) : '';
-      pipeEl.value = es(key.pipeType(z)) || 'Unknown';
-      const rawWalls = es(key.exteriorWalls(z)) || 'None';
-      const activeDirs = rawWalls === 'None' ? [] : rawWalls.split(',').filter(Boolean);
+    const form = cardForm(el);
+
+    form.text(nameEl, { read: () => zoneTag(zone()) || '', commit: (v) => setZoneName(zone(), v) });
+    form.num(areaEl, { read: () => ev(key.area(zone())), commit: (v) => setZoneNumber(zone(), 'zone_area_m2', v) });
+    form.num(spacingEl, { read: () => ev(key.spacing(zone())), commit: (v) => setZoneNumber(zone(), 'zone_pipe_spacing_mm', v || 200) });
+    form.select(pipeEl, { read: () => es(key.pipeType(zone())) || 'Unknown', commit: (v) => setZoneSelect(zone(), 'zone_pipe_type', v) });
+    const windField = form.num(windEl, { read: () => ev(key.windExposure(zone())), commit: (v) => setZoneNumber(zone(), 'zone_wind_exposure', v) });
+    form.num(solarEl, { read: () => ev(key.solarGain(zone())), commit: (v) => setZoneNumber(zone(), 'zone_solar_gain', v) });
+    form.num(leadEl, { read: () => ev(key.thermalLeadH(zone())), commit: (v) => setZoneNumber(zone(), 'zone_thermal_lead_h', v) });
+
+    // Exterior-wall buttons: a custom multi-select staged with the rest of the
+    // form. Toggling walls re-seeds wind exposure (mirroring the firmware) and
+    // stages that too, so Apply commits both together.
+    let stagedWalls = [];
+    function paintWalls() {
       wallBtns.forEach(btn => {
         const w = btn.dataset.wall;
-        btn.classList.toggle('active', w === 'None' ? activeDirs.length === 0 : activeDirs.includes(w));
+        btn.classList.toggle('active', w === 'None' ? stagedWalls.length === 0 : stagedWalls.includes(w));
       });
     }
-
-    function updateIfSelectedZone(id) {
-      const z = zone();
-      if (
-        id === key.area(z) ||
-        id === key.spacing(z) ||
-        id === key.pipeType(z) ||
-        id === key.exteriorWalls(z)
-      ) {
-        update();
-      }
-    }
-
-    nameEl.addEventListener('change', () => {
-      setZoneName(zone(), nameEl.value);
-    });
-    areaEl.addEventListener('change', () => {
-      setZoneNumber(zone(), 'zone_area_m2', areaEl.value);
-    });
-    spacingEl.addEventListener('change', () => {
-      setZoneNumber(zone(), 'zone_pipe_spacing_mm', spacingEl.value || '200');
-    });
-    pipeEl.addEventListener('change', () => {
-      setZoneSelect(zone(), 'zone_pipe_type', pipeEl.value);
+    const wallsField = form.custom({
+      sync: () => {
+        const raw = es(key.exteriorWalls(zone())) || 'None';
+        stagedWalls = raw === 'None' ? [] : raw.split(',').filter(Boolean);
+        paintWalls();
+      },
+      commit: () => setZoneText(zone(), 'zone_exterior_walls', stagedWalls.length ? stagedWalls.join(',') : 'None')
     });
     wallBtns.forEach(btn => {
       btn.addEventListener('click', () => {
         const w = btn.dataset.wall;
-        const rawWalls = es(key.exteriorWalls(zone())) || 'None';
-        let dirs = rawWalls === 'None' ? [] : rawWalls.split(',').filter(Boolean);
+        let dirs = stagedWalls.slice();
         if (w === 'None') {
           dirs = [];
         } else {
           const idx = dirs.indexOf(w);
           if (idx >= 0) dirs.splice(idx, 1); else dirs.push(w);
         }
-        const ordered = ['N', 'S', 'E', 'W'].filter(d => dirs.includes(d));
-        setZoneText(zone(), 'zone_exterior_walls', ordered.length ? ordered.join(',') : 'None');
+        stagedWalls = ['N', 'S', 'E', 'W'].filter(d => dirs.includes(d));
+        paintWalls();
+        wallsField.markDirty();
+        // Re-seed wind exposure (staged) to match the new wall count.
+        windEl.value = String(seededWindExposure(stagedWalls.length));
+        windField.markDirty();
       });
     });
 
-    subscribeDashboard('selectedZone', update);
-    subscribeDashboard('zoneNames', update);
-    for (let z = 1; z <= 6; z++) {
-      subscribe(key.area(z), updateIfSelectedZone);
-      subscribe(key.spacing(z), updateIfSelectedZone);
-      subscribe(key.pipeType(z), updateIfSelectedZone);
-      subscribe(key.exteriorWalls(z), updateIfSelectedZone);
+    function refreshIfSelectedZone(id) {
+      const z = zone();
+      if (
+        id === key.area(z) || id === key.spacing(z) || id === key.pipeType(z) ||
+        id === key.exteriorWalls(z) || id === key.windExposure(z) ||
+        id === key.solarGain(z) || id === key.thermalLeadH(z)
+      ) {
+        form.refresh();
+      }
     }
-    update();
+
+    // Switching zones abandons any pending edits and loads the new zone.
+    subscribeDashboard('selectedZone', form.discard);
+    subscribeDashboard('zoneNames', form.refresh);
+    for (let z = 1; z <= 6; z++) {
+      subscribe(key.area(z), refreshIfSelectedZone);
+      subscribe(key.spacing(z), refreshIfSelectedZone);
+      subscribe(key.pipeType(z), refreshIfSelectedZone);
+      subscribe(key.exteriorWalls(z), refreshIfSelectedZone);
+      subscribe(key.windExposure(z), refreshIfSelectedZone);
+      subscribe(key.solarGain(z), refreshIfSelectedZone);
+      subscribe(key.thermalLeadH(z), refreshIfSelectedZone);
+    }
+    form.refresh();
   }
 });

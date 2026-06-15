@@ -11,28 +11,28 @@ const css = `
 .connectivity-card {
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  padding: 20px;
+  border-radius: 14px;
+  padding: 12px 14px;
   box-shadow: var(--panel-shadow);
   height: 100%;
   box-sizing: border-box;
 }
 
 .connectivity-card .card-title {
-  font-size: .84rem;
+  font-size: .72rem;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 1.1px;
+  letter-spacing: 1px;
   color: var(--accent);
-  margin-bottom: 12px;
-  padding-bottom: 10px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
   border-bottom: 1px solid var(--panel-border);
 }
 
 .connectivity-card .st { width: 100%; border-collapse: collapse; }
-.connectivity-card .st td { padding: 10px 0; font-size: .88rem; }
-.connectivity-card .st td:first-child { color: var(--text-secondary); width: 48%; }
-.connectivity-card .st td:last-child { text-align: right; font-weight: 700; color: var(--text-strong); }
+.connectivity-card .st td { padding: 5px 0; font-size: .72rem; }
+.connectivity-card .st td:first-child { color: var(--text-secondary); width: 42%; }
+.connectivity-card .st td:last-child { text-align: right; font-weight: 700; color: var(--text-strong); font-family: var(--mono); }
 .connectivity-card .st tr:not(:last-child) td { border-bottom: 1px solid rgba(255,255,255,.07); }
 `;
 

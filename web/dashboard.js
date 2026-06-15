@@ -1,8 +1,252 @@
-(()=>{var ot={},Ae={};function _(e){return ot[e.tag]=e,e}function O(e,t){let o=ot[e];if(!o)throw new Error("Component not found: "+e);let r=t||{};if(o.state){let i=o.state(t||{});for(let c in i)r[c]=i[c]}if(o.methods)for(let i in o.methods)r[i]=o.methods[i];let s=document.createElement("div");s.innerHTML=o.render(r);let a=s.firstElementChild;return o.onMount&&o.onMount(r,a),a}function g(e,t){(Ae[e]||(Ae[e]=[])).push(t)}function G(e){let t=Ae[e];if(t)for(let o=0;o<t.length;o++)t[o](e)}var K=6,$t=28,Le=Object.create(null),jt=Gt(),D={section:"overview",selectedZone:1,live:!1,pendingWrites:0,lastWriteAt:0,firmwareVersion:"",i2cResult:"No scan has been run yet.",activityLog:[],zoneLog:Vt(),historyFlow:[],historyReturn:[],historyDemand:[],lastHistoryAt:0,zoneNames:jt,manualMode:!1,zoneStateHistory:null};function Vt(){let e=Object.create(null);for(let t=1;t<=K;t++)e[t]=[];return e}function Gt(){let e=[];try{e=JSON.parse(localStorage.getItem("hv6_zone_names")||"[]")}catch(t){e=[]}for(;e.length<K;)e.push("");return e.slice(0,K)}function Ut(){try{localStorage.setItem("hv6_zone_names",JSON.stringify(D.zoneNames))}catch(e){}}function X(e){return"$dashboard:"+e}function Fe(e){return Math.max(1,Math.min(K,Number(e)||1))}function at(e){if(e==null)return null;if(typeof e=="number")return Number.isFinite(e)?e:null;if(typeof e=="string"){let t=Number(e);if(!Number.isNaN(t))return t;let o=e.match(/-?\d+(?:[\.,]\d+)?/);if(o){let r=Number(String(o[0]).replace(",","."));return Number.isNaN(r)?null:r}}return null}function h(e){let t=Le[e];return t?t.v!=null?t.v:t.value!=null?t.value:at(t.s!=null?t.s:t.state):null}function z(e){let t=Le[e];return t?t.s!=null?t.s:t.state!=null?t.state:t.v===!0?"ON":t.v===!1?"OFF":t.value===!0?"ON":t.value===!1?"OFF":"":""}function Xt(e){return e===!0?!0:e===!1?!1:String(e||"").toLowerCase()==="on"}function H(e){return Xt(z(e))}function u(e,t){let o=Le[e];o||(o=Le[e]={v:null,s:null}),"v"in t&&(o.v=t.v,o.value=t.v),"value"in t&&(o.v=t.value,o.value=t.value),"s"in t&&(o.s=t.s,o.state=t.s),"state"in t&&(o.s=t.state,o.state=t.state);for(let r in t)r==="v"||r==="value"||r==="s"||r==="state"||(o[r]=t[r]);G(e),e==="text_sensor-firmware_version"&&le("firmwareVersion",z(e)||"")}function F(e,t){g(X(e),t)}function E(e){return D[e]}function le(e,t){D[e]=t,G(X(e))}function nt(e){D.section!==e&&(D.section=e,G(X("section")))}function st(e){let t=Fe(e);D.selectedZone!==t&&(D.selectedZone=t,G(X("selectedZone")))}function de(e){let t=!!e;D.live!==t&&(D.live=t,G(X("live")))}function it(){D.pendingWrites+=1,G(X("pendingWrites"))}function $e(){D.pendingWrites=Math.max(0,D.pendingWrites-1),D.lastWriteAt=Date.now(),G(X("pendingWrites"))}function lt(){return D.pendingWrites>0?!0:Date.now()-D.lastWriteAt<2e3}function dt(e,t){let o=Fe(e)-1;D.zoneNames[o]=String(t||"").trim(),Ut(),G(X("zoneNames"))}function oe(e){return D.zoneNames[Fe(e)-1]||""}function ce(e){let t=Fe(e),o=oe(t);return o?"Zone "+t+" \xB7 "+o:"Zone "+t}function pe(e){D.i2cResult=e||"No scan has been run yet.",G(X("i2cResult"))}function C(e,t){let o={time:Yt(),msg:String(e||"")};for(D.activityLog.push(o);D.activityLog.length>60;)D.activityLog.shift();if(t>=1&&t<=K){let r=D.zoneLog[t];for(r.push(o);r.length>8;)r.shift();G(X("zoneLog:"+t))}G(X("activityLog"))}function ct(e){return e>=1&&e<=K?D.zoneLog[e]:D.activityLog}function We(e,t){let o=D[e];if(!Array.isArray(o))return;let r=at(t);if(r!=null){for(o.push(r);o.length>$t;)o.shift();G(X(e))}}function xe(e){let t=Date.now();if(!e&&t-D.lastHistoryAt<3200)return;D.lastHistoryAt=t;let o=0,r=0;for(let s=1;s<=K;s++){let a=h("sensor-zone_"+s+"_valve_pct");a!=null&&(o+=a,r+=1)}We("historyFlow",h("sensor-manifold_flow_temperature")),We("historyReturn",h("sensor-manifold_return_temperature")),We("historyDemand",r?o/r:0)}function Yt(){let e=new Date;return String(e.getHours()).padStart(2,"0")+":"+String(e.getMinutes()).padStart(2,"0")+":"+String(e.getSeconds()).padStart(2,"0")}function Me(e){D.zoneStateHistory=e||null,G(X("zoneStateHistory"))}var l={temp:e=>"sensor-zone_"+e+"_temperature",setpoint:e=>"number-zone_"+e+"_setpoint",climate:e=>"climate-zone_"+e,valve:e=>"sensor-zone_"+e+"_valve_pct",state:e=>"text_sensor-zone_"+e+"_state",enabled:e=>"switch-zone_"+e+"_enabled",probe:e=>"select-zone_"+e+"_probe",tempSource:e=>"select-zone_"+e+"_temp_source",syncTo:e=>"select-zone_"+e+"_sync_to",pipeType:e=>"select-zone_"+e+"_pipe_type",area:e=>"number-zone_"+e+"_area_m2",spacing:e=>"number-zone_"+e+"_pipe_spacing_mm",ble:e=>"text-zone_"+e+"_ble_mac",exteriorWalls:e=>"text-zone_"+e+"_exterior_walls",motorTarget:e=>"number-motor_"+e+"_target_position",motorOpenRipples:e=>"sensor-motor_"+e+"_learned_open_ripples",motorCloseRipples:e=>"sensor-motor_"+e+"_learned_close_ripples",motorOpenFactor:e=>"sensor-motor_"+e+"_learned_open_factor",motorCloseFactor:e=>"sensor-motor_"+e+"_learned_close_factor",preheatAdvance:e=>"sensor-zone_"+e+"_preheat_advance_c",motorLastFault:e=>"text_sensor-motor_"+e+"_last_fault",probeTemp:e=>"sensor-probe_"+e+"_temperature",windExposure:e=>"number-zone_"+e+"_wind_exposure",solarGain:e=>"number-zone_"+e+"_solar_gain",thermalLeadH:e=>"number-zone_"+e+"_thermal_lead_h",forecastOffset:e=>"sensor-zone_"+e+"_forecast_offset_c",forecastPeakH:e=>"sensor-zone_"+e+"_forecast_peak_h"},n={deviceVariant:"text-device_variant",flow:"sensor-manifold_flow_temperature",ret:"sensor-manifold_return_temperature",uptime:"sensor-uptime",wifi:"sensor-wifi_signal",drivers:"switch-motor_drivers_enabled",fault:"binary_sensor-motor_fault",ip:"text_sensor-ip_address",ssid:"text_sensor-connected_ssid",mac:"text_sensor-mac_address",firmware:"text_sensor-firmware_version",manifoldFlowProbe:"select-manifold_flow_probe",manifoldReturnProbe:"select-manifold_return_probe",manifoldType:"select-manifold_type",motorProfileDefault:"select-motor_profile_default",closeThresholdMultiplier:"number-close_threshold_multiplier",closeSlopeThreshold:"number-close_slope_threshold",closeSlopeCurrentFactor:"number-close_slope_current_factor",openThresholdMultiplier:"number-open_threshold_multiplier",openSlopeThreshold:"number-open_slope_threshold",openSlopeCurrentFactor:"number-open_slope_current_factor",openRippleLimitFactor:"number-open_ripple_limit_factor",genericRuntimeLimitSeconds:"number-generic_runtime_limit_seconds",hmipRuntimeLimitSeconds:"number-hmip_runtime_limit_seconds",relearnAfterMovements:"number-relearn_after_movements",relearnAfterHours:"number-relearn_after_hours",learnedFactorMinSamples:"number-learned_factor_min_samples",learnedFactorMaxDeviationPct:"number-learned_factor_max_deviation_pct",simplePreheatEnabled:"switch-simple_preheat_enabled",preheatAbsorbEnabled:"switch-preheat_absorb_enabled",preheatAbsorbBandC:"number-preheat_absorb_band_c",preheatDetectDeltaC:"number-preheat_detect_delta_c",preheatAbsorbing:"text-preheat_absorbing",asgardEnabled:"switch-asgard_enabled",asgardCoordinator:"switch-asgard_coordinator",asgardHost:"text-asgard_host",asgardPort:"number-asgard_port",asgardEntityName:"text-asgard_entity_name",asgardPeerHost:"text-asgard_peer_host",asgardPushIntervalS:"number-asgard_push_interval_s",asgardRole:"text-asgard_role",asgardPeerStatus:"text-asgard_peer_status",asgardLastError:"text-asgard_last_error",asgardLastPushC:"sensor-asgard_last_push_c",asgardSetpointC:"sensor-asgard_setpoint_c",asgardLastPushAgeS:"sensor-asgard_last_push_age_s",asgardLocalZones:"sensor-asgard_local_zones",asgardPeerZones:"sensor-asgard_peer_zones",forecastEnabled:"switch-forecast_enabled",forecastStatus:"text-forecast_status",forecastLastError:"text-forecast_last_error",forecastAgeS:"sensor-forecast_age_s",forecastFailStreak:"sensor-forecast_fail_streak",forecastLatitude:"number-forecast_latitude",forecastLongitude:"number-forecast_longitude",forecastLoadThreshold:"number-forecast_load_threshold",forecastMaxOffsetC:"number-forecast_max_offset_c"};var B=6,Jt=8,pt=null,ve=0,k={temp:new Float32Array(B),setpoint:new Float32Array(B),valve:new Float32Array(B),enabled:new Uint8Array(B),driversEnabled:1,fault:0,manualMode:0};function Qt(){k.manualMode=0,le("manualMode",!1);for(let a=0;a<B;a++){k.temp[a]=20.5+a*.4,k.setpoint[a]=21+a%3*.5,k.valve[a]=12+a*8,k.enabled[a]=a===4?0:1;let i=a+1;u(l.temp(i),{value:k.temp[a]}),u(l.setpoint(i),{value:k.setpoint[a]}),u(l.valve(i),{value:k.valve[a]}),u(l.state(i),{state:k.valve[a]>5?"heating":"idle"}),u(l.enabled(i),{value:!!k.enabled[a],state:k.enabled[a]?"on":"off"}),u(l.probe(i),{state:"Probe "+i}),u(l.tempSource(i),{state:i%2?"Local Probe":"BLE"}),u(l.syncTo(i),{state:"None"}),u(l.pipeType(i),{state:"PEX 16mm"}),u(l.area(i),{value:8+i*3.5}),u(l.spacing(i),{value:[150,200,150,100,200,150][a]}),u(l.ble(i),{state:"AA:BB:CC:DD:EE:0"+i}),u(l.exteriorWalls(i),{state:["N","E","S","W","N,E","S,W"][a]}),u(l.preheatAdvance(i),{value:.08+a*.03})}for(let a=1;a<=Jt;a++){let i=a<=B?a:B,c=k.temp[i-1]+(a>B?1:.1*a);u(l.probeTemp(a),{value:c})}u(n.flow,{value:34.1}),u(n.ret,{value:30.4}),u(n.uptime,{value:18*3600+720}),u(n.wifi,{value:-57}),u(n.drivers,{value:!0,state:"on"}),u(n.fault,{value:!1,state:"off"}),u(n.ip,{state:"192.168.1.86"}),u(n.ssid,{state:"MockLab"}),u(n.mac,{state:"D8:3B:DA:12:34:56"}),u(n.firmware,{state:"0.5.x-mock"}),u(n.manifoldFlowProbe,{state:"Probe 7"}),u(n.manifoldReturnProbe,{state:"Probe 8"}),u(n.manifoldType,{state:"NC (Normally Closed)"}),u(n.motorProfileDefault,{state:"HmIP VdMot"}),u(n.closeThresholdMultiplier,{value:1.7}),u(n.closeSlopeThreshold,{value:1}),u(n.closeSlopeCurrentFactor,{value:1.4}),u(n.openThresholdMultiplier,{value:1.7}),u(n.openSlopeThreshold,{value:.8}),u(n.openSlopeCurrentFactor,{value:1.3}),u(n.openRippleLimitFactor,{value:1}),u(n.genericRuntimeLimitSeconds,{value:45}),u(n.hmipRuntimeLimitSeconds,{value:40}),u(n.relearnAfterMovements,{value:2e3}),u(n.relearnAfterHours,{value:168}),u(n.learnedFactorMinSamples,{value:3}),u(n.learnedFactorMaxDeviationPct,{value:12}),u(n.simplePreheatEnabled,{state:"on"}),xe(!0);let e=300,t=Number(Date.now()/1e3)|0,o=288,r=[[5,5,5,6,5,5,5,5,6,6,5,5,5,5,5,6,5,5,5,5,5,6,6,5],[6,6,5,5,6,6,6,5,5,6,6,6,5,5,6,6,6,6,5,5,6,6,5,5],[5,5,5,5,5,5,6,6,6,6,6,6,5,5,5,5,6,6,6,6,5,5,5,5],[6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[5,6,5,5,5,6,6,5,5,6,5,5,5,6,5,5,6,6,5,5,5,5,6,6]],s=[];for(let a=0;a<o;a++){let i=(o-1-a)*e,c=t-i,p=Math.floor(a/12)%24,m=r.map(b=>b[p%b.length]);s.push([c,...m])}Me({interval_s:e,uptime_s:t,count:o,entries:s})}function Kt(){ve+=1,u(n.uptime,{value:Number(Date.now()/1e3)|0}),u(n.wifi,{value:-55-Math.round((1+Math.sin(ve/4))*6)});let e=0,t=0,o=0;for(let i=0;i<B;i++){let c=i+1,p=!!k.enabled[i],m=k.temp[i],b=k.setpoint[i],v=p&&k.driversEnabled&&!k.manualMode&&m<b-.25;k.manualMode?k.valve[i]=Math.max(0,k.valve[i]):!p||!k.driversEnabled?k.valve[i]=Math.max(0,k.valve[i]-6):v?k.valve[i]=Math.min(100,k.valve[i]+7+c%3):k.valve[i]=Math.max(0,k.valve[i]-5);let w=v?.05+k.valve[i]/2200:-.03+k.valve[i]/3200;k.temp[i]=m+w+Math.sin((ve+c)/5)*.04,p&&k.valve[i]>0&&(e+=k.valve[i],t+=1,o=Math.max(o,k.valve[i])),u(l.temp(c),{value:k.temp[i]}),u(l.valve(c),{value:Math.round(k.valve[i])});let d=Math.max(0,(k.setpoint[i]-k.temp[i]-.15)*.22);u(l.preheatAdvance(c),{value:Number(d.toFixed(2))}),u(l.state(c),{state:p?v?"heating":"idle":"off"}),u(l.enabled(c),{value:p,state:p?"on":"off"}),u(l.probeTemp(c),{value:k.temp[i]+Math.sin((ve+c)/6)*.1})}let r=29.5+o*.075+t*.18+Math.sin(ve/6)*.25,s=r-(t?2.1+e/Math.max(1,t*50):1.1);u(n.flow,{value:Number(r.toFixed(1))}),u(n.ret,{value:Number(s.toFixed(1))}),u(l.probeTemp(7),{value:Number((s-.4).toFixed(1))}),u(l.probeTemp(8),{value:Number((r+.2).toFixed(1))}),xe(!0);let a=E("zoneStateHistory");a&&(a.uptime_s=Number(Date.now()/1e3)|0)}function gt(){pt||(Qt(),de(!0),pt=setInterval(Kt,1200))}function Ne(e){let t=e.key||"",o=e.value,r=e.zone||0;if(t==="zone_setpoint"&&r>=1&&r<=B){let a=Number(o);Number.isNaN(a)||(k.setpoint[r-1]=a,u(l.setpoint(r),{value:a}),C("Zone "+r+" setpoint set to "+a.toFixed(1)+"\xB0C",r));return}if(t==="zone_enabled"&&r>=1&&r<=B){let a=o>.5;k.enabled[r-1]=a?1:0,u(l.enabled(r),{value:a,state:a?"on":"off"}),C("Zone "+r+(a?" enabled":" disabled"),r);return}if(t==="drivers_enabled"){let a=o>.5;k.driversEnabled=a?1:0,u(n.drivers,{value:a,state:a?"on":"off"}),C(a?"Motor drivers enabled":"Motor drivers disabled");return}if(t==="manual_mode"){let a=o>.5;k.manualMode=a?1:0,le("manualMode",a);return}if(t==="motor_target"&&r>=1&&r<=B){let a=Number(o||0);u(l.motorTarget(r),{value:Math.max(0,Math.min(100,Math.round(a)))}),C("Motor "+r+" target set to "+a+"%",r);return}if(t==="command"){let a=String(o);if(a==="i2c_scan"){pe(`I2C_SCAN: ----- begin -----
+(()=>{var ht={},Le={};function E(e){return ht[e.tag]=e,e}function q(e,t){let r=ht[e];if(!r)throw new Error("Component not found: "+e);let o=t||{};if(r.state){let s=r.state(t||{});for(let l in s)o[l]=s[l]}if(r.methods)for(let s in r.methods)o[s]=r.methods[s];let i=document.createElement("div");i.innerHTML=r.render(o);let a=i.firstElementChild;return r.onMount&&r.onMount(o,a),a}function f(e,t){(Le[e]||(Le[e]=[])).push(t)}function j(e){let t=Le[e];if(t)for(let r=0;r<t.length;r++)t[r](e)}var ee=6,wo=28,Me=Object.create(null),_o=ko(),D={section:"overview",selectedZone:1,live:!1,pendingWrites:0,lastWriteAt:0,firmwareVersion:"",i2cResult:"No scan has been run yet.",activityLog:[],zoneLog:So(),historyFlow:[],historyReturn:[],historyDemand:[],lastHistoryAt:0,zoneNames:_o,manualMode:!1,zoneStateHistory:null,deviceLog:[],deviceLogSeq:0,forecastHours:null},zo=300;function So(){let e=Object.create(null);for(let t=1;t<=ee;t++)e[t]=[];return e}function ko(){let e=[];try{e=JSON.parse(localStorage.getItem("hv6_zone_names")||"[]")}catch(t){e=[]}for(;e.length<ee;)e.push("");return e.slice(0,ee)}function Eo(){try{localStorage.setItem("hv6_zone_names",JSON.stringify(D.zoneNames))}catch(e){}}function V(e){return"$dashboard:"+e}function Ne(e){return Math.max(1,Math.min(ee,Number(e)||1))}function xt(e){if(e==null)return null;if(typeof e=="number")return Number.isFinite(e)?e:null;if(typeof e=="string"){let t=Number(e);if(!Number.isNaN(t))return t;let r=e.match(/-?\d+(?:[\.,]\d+)?/);if(r){let o=Number(String(r[0]).replace(",","."));return Number.isNaN(o)?null:o}}return null}function _(e){let t=Me[e];return t?t.v!=null?t.v:t.value!=null?t.value:xt(t.s!=null?t.s:t.state):null}function A(e){let t=Me[e];return t?t.s!=null?t.s:t.state!=null?t.state:t.v===!0?"ON":t.v===!1?"OFF":t.value===!0?"ON":t.value===!1?"OFF":"":""}function Co(e){return e===!0?!0:e===!1?!1:String(e||"").toLowerCase()==="on"}function I(e){return Co(A(e))}function g(e,t){let r=Me[e];r||(r=Me[e]={v:null,s:null}),"v"in t&&(r.v=t.v,r.value=t.v),"value"in t&&(r.v=t.value,r.value=t.value),"s"in t&&(r.s=t.s,r.state=t.s),"state"in t&&(r.s=t.state,r.state=t.state);for(let o in t)o==="v"||o==="value"||o==="s"||o==="state"||(r[o]=t[o]);j(e),e==="text_sensor-firmware_version"&&fe("firmwareVersion",A(e)||"")}function L(e,t){f(V(e),t)}function M(e){return D[e]}function fe(e,t){D[e]=t,j(V(e))}function yt(e){D.section!==e&&(D.section=e,j(V("section")))}function wt(e){let t=Ne(e);D.selectedZone!==t&&(D.selectedZone=t,j(V("selectedZone")))}function be(e){let t=!!e;D.live!==t&&(D.live=t,j(V("live")))}function _t(){D.pendingWrites+=1,j(V("pendingWrites"))}function ot(){D.pendingWrites=Math.max(0,D.pendingWrites-1),D.lastWriteAt=Date.now(),j(V("pendingWrites"))}function zt(){return D.pendingWrites>0?!0:Date.now()-D.lastWriteAt<2e3}function St(e,t){let r=Ne(e)-1;D.zoneNames[r]=String(t||"").trim(),Eo(),j(V("zoneNames"))}function de(e){return D.zoneNames[Ne(e)-1]||""}function re(e){let t=Ne(e),r=de(t);return r?"Zone "+t+" \xB7 "+r:"Zone "+t}function ve(e){D.i2cResult=e||"No scan has been run yet.",j(V("i2cResult"))}function N(e,t){let r={time:Ao(),msg:String(e||"")};for(D.activityLog.push(r);D.activityLog.length>60;)D.activityLog.shift();if(t>=1&&t<=ee){let o=D.zoneLog[t];for(o.push(r);o.length>8;)o.shift();j(V("zoneLog:"+t))}j(V("activityLog"))}function kt(e){return e>=1&&e<=ee?D.zoneLog[e]:D.activityLog}function tt(e,t){let r=D[e];if(!Array.isArray(r))return;let o=xt(t);if(o!=null){for(r.push(o);r.length>wo;)r.shift();j(V(e))}}function ze(e){let t=Date.now();if(!e&&t-D.lastHistoryAt<3200)return;D.lastHistoryAt=t;let r=0,o=0;for(let i=1;i<=ee;i++){let a=_("sensor-zone_"+i+"_valve_pct");a!=null&&(r+=a,o+=1)}tt("historyFlow",_("sensor-manifold_flow_temperature")),tt("historyReturn",_("sensor-manifold_return_temperature")),tt("historyDemand",o?r/o:0)}function Ao(){let e=new Date;return String(e.getHours()).padStart(2,"0")+":"+String(e.getMinutes()).padStart(2,"0")+":"+String(e.getSeconds()).padStart(2,"0")}function De(e){D.zoneStateHistory=e||null,j(V("zoneStateHistory"))}function Et(){return D.deviceLogSeq}function Te(e,t){if(Array.isArray(e)&&e.length){for(let r of e)D.deviceLog.push({seq:r[0],level:r[1],tag:r[2],msg:r[3]}),r[0]>D.deviceLogSeq&&(D.deviceLogSeq=r[0]);for(;D.deviceLog.length>zo;)D.deviceLog.shift();j(V("deviceLog"))}typeof t=="number"&&t>D.deviceLogSeq&&(D.deviceLogSeq=t-1)}function Ct(){return D.deviceLog}function At(){D.deviceLog=[],j(V("deviceLog"))}function Oe(e){D.forecastHours=e||null,j(V("forecastHours"))}function Ft(){return D.forecastHours}var p={temp:e=>"sensor-zone_"+e+"_temperature",setpoint:e=>"number-zone_"+e+"_setpoint",climate:e=>"climate-zone_"+e,valve:e=>"sensor-zone_"+e+"_valve_pct",state:e=>"text_sensor-zone_"+e+"_state",enabled:e=>"switch-zone_"+e+"_enabled",probe:e=>"select-zone_"+e+"_probe",tempSource:e=>"select-zone_"+e+"_temp_source",syncTo:e=>"select-zone_"+e+"_sync_to",pipeType:e=>"select-zone_"+e+"_pipe_type",area:e=>"number-zone_"+e+"_area_m2",spacing:e=>"number-zone_"+e+"_pipe_spacing_mm",ble:e=>"text-zone_"+e+"_ble_mac",exteriorWalls:e=>"text-zone_"+e+"_exterior_walls",motorTarget:e=>"number-motor_"+e+"_target_position",motorOpenRipples:e=>"sensor-motor_"+e+"_learned_open_ripples",motorCloseRipples:e=>"sensor-motor_"+e+"_learned_close_ripples",motorOpenFactor:e=>"sensor-motor_"+e+"_learned_open_factor",motorCloseFactor:e=>"sensor-motor_"+e+"_learned_close_factor",preheatAdvance:e=>"sensor-zone_"+e+"_preheat_advance_c",motorLastFault:e=>"text_sensor-motor_"+e+"_last_fault",probeTemp:e=>"sensor-probe_"+e+"_temperature",windExposure:e=>"number-zone_"+e+"_wind_exposure",solarGain:e=>"number-zone_"+e+"_solar_gain",thermalLeadH:e=>"number-zone_"+e+"_thermal_lead_h",forecastOffset:e=>"sensor-zone_"+e+"_forecast_offset_c",forecastPeakH:e=>"sensor-zone_"+e+"_forecast_peak_h"},n={deviceVariant:"text-device_variant",flow:"sensor-manifold_flow_temperature",ret:"sensor-manifold_return_temperature",uptime:"sensor-uptime",wifi:"sensor-wifi_signal",drivers:"switch-motor_drivers_enabled",fault:"binary_sensor-motor_fault",ip:"text_sensor-ip_address",ssid:"text_sensor-connected_ssid",mac:"text_sensor-mac_address",firmware:"text_sensor-firmware_version",manifoldFlowProbe:"select-manifold_flow_probe",manifoldReturnProbe:"select-manifold_return_probe",manifoldType:"select-manifold_type",motorProfileDefault:"select-motor_profile_default",closeThresholdMultiplier:"number-close_threshold_multiplier",closeSlopeThreshold:"number-close_slope_threshold",closeSlopeCurrentFactor:"number-close_slope_current_factor",openThresholdMultiplier:"number-open_threshold_multiplier",openSlopeThreshold:"number-open_slope_threshold",openSlopeCurrentFactor:"number-open_slope_current_factor",openRippleLimitFactor:"number-open_ripple_limit_factor",genericRuntimeLimitSeconds:"number-generic_runtime_limit_seconds",hmipRuntimeLimitSeconds:"number-hmip_runtime_limit_seconds",relearnAfterMovements:"number-relearn_after_movements",relearnAfterHours:"number-relearn_after_hours",learnedFactorMinSamples:"number-learned_factor_min_samples",learnedFactorMaxDeviationPct:"number-learned_factor_max_deviation_pct",simplePreheatEnabled:"switch-simple_preheat_enabled",preheatAbsorbEnabled:"switch-preheat_absorb_enabled",preheatAbsorbBandC:"number-preheat_absorb_band_c",preheatDetectDeltaC:"number-preheat_detect_delta_c",preheatAbsorbing:"text-preheat_absorbing",asgardEnabled:"switch-asgard_enabled",asgardCoordinator:"switch-asgard_coordinator",asgardHost:"text-asgard_host",asgardPort:"number-asgard_port",asgardEntityName:"text-asgard_entity_name",asgardPeerHost:"text-asgard_peer_host",asgardPushIntervalS:"number-asgard_push_interval_s",asgardRole:"text-asgard_role",asgardPeerStatus:"text-asgard_peer_status",asgardLastError:"text-asgard_last_error",asgardLastPushC:"sensor-asgard_last_push_c",asgardSetpointC:"sensor-asgard_setpoint_c",asgardLastPushAgeS:"sensor-asgard_last_push_age_s",asgardLocalZones:"sensor-asgard_local_zones",asgardPeerZones:"sensor-asgard_peer_zones",minZoneFlowPct:"number-min_zone_flow_pct",forecastEnabled:"switch-forecast_enabled",forecastStatus:"text-forecast_status",forecastLastError:"text-forecast_last_error",forecastAgeS:"sensor-forecast_age_s",forecastFailStreak:"sensor-forecast_fail_streak",forecastLatitude:"number-forecast_latitude",forecastLongitude:"number-forecast_longitude",forecastLoadThreshold:"number-forecast_load_threshold",forecastMaxOffsetC:"number-forecast_max_offset_c"};var W=6,Fo=8,Lt=null,he=0,Pe=1,Mt=[[3,"hv6_zone","Control cycle: 4 zones heating, house avg 21.3\xB0C"],[3,"hv6_valve","Motor 2 reached open endstop (ripples=412)"],[5,"hv6_ripple","ADC DMA buffer drained, 2048 samples"],[3,"hv6_forecast","Forecast updated: 48 hours from Open-Meteo"],[2,"hv6_zone","Zone 5 disabled \u2014 skipping control"],[3,"hv6_asgard","Pushed z1 thermostat 21.4\xB0C to Asgard"]],F={temp:new Float32Array(W),setpoint:new Float32Array(W),valve:new Float32Array(W),enabled:new Uint8Array(W),driversEnabled:1,fault:0,manualMode:0};function Lo(){F.manualMode=0,fe("manualMode",!1);for(let s=0;s<W;s++){F.temp[s]=20.5+s*.4,F.setpoint[s]=21+s%3*.5,F.valve[s]=12+s*8,F.enabled[s]=s===4?0:1;let l=s+1;g(p.temp(l),{value:F.temp[s]}),g(p.setpoint(l),{value:F.setpoint[s]}),g(p.valve(l),{value:F.valve[s]}),g(p.state(l),{state:F.valve[s]>5?"heating":"idle"}),g(p.enabled(l),{value:!!F.enabled[s],state:F.enabled[s]?"on":"off"}),g(p.probe(l),{state:"Probe "+l}),g(p.tempSource(l),{state:l%2?"Local Probe":"BLE"}),g(p.syncTo(l),{state:"None"}),g(p.pipeType(l),{state:"PEX 16mm"}),g(p.area(l),{value:8+l*3.5}),g(p.spacing(l),{value:[150,200,150,100,200,150][s]}),g(p.ble(l),{state:"AA:BB:CC:DD:EE:0"+l}),g(p.exteriorWalls(l),{state:["N","E","S","W","N,E","S,W"][s]}),g(p.windExposure(l),{value:[.5,.5,.5,.5,.7,.7][s]}),g(p.solarGain(l),{value:.3}),g(p.thermalLeadH(l),{value:4}),g(p.preheatAdvance(l),{value:.08+s*.03})}for(let s=1;s<=Fo;s++){let l=s<=W?s:W,m=F.temp[l-1]+(s>W?1:.1*s);g(p.probeTemp(s),{value:m})}g(n.flow,{value:34.1}),g(n.ret,{value:30.4}),g(n.uptime,{value:18*3600+720}),g(n.wifi,{value:-57}),g(n.drivers,{value:!0,state:"on"}),g(n.fault,{value:!1,state:"off"}),g(n.ip,{state:"192.168.1.86"}),g(n.ssid,{state:"MockLab"}),g(n.mac,{state:"D8:3B:DA:12:34:56"}),g(n.firmware,{state:"0.5.x-mock"}),g(n.manifoldFlowProbe,{state:"Probe 7"}),g(n.manifoldReturnProbe,{state:"Probe 8"}),g(n.manifoldType,{state:"NC (Normally Closed)"}),g(n.motorProfileDefault,{state:"HmIP VdMot"}),g(n.closeThresholdMultiplier,{value:1.7}),g(n.closeSlopeThreshold,{value:1}),g(n.closeSlopeCurrentFactor,{value:1.4}),g(n.openThresholdMultiplier,{value:1.7}),g(n.openSlopeThreshold,{value:.8}),g(n.openSlopeCurrentFactor,{value:1.3}),g(n.openRippleLimitFactor,{value:1}),g(n.genericRuntimeLimitSeconds,{value:45}),g(n.hmipRuntimeLimitSeconds,{value:40}),g(n.relearnAfterMovements,{value:2e3}),g(n.relearnAfterHours,{value:168}),g(n.learnedFactorMinSamples,{value:3}),g(n.learnedFactorMaxDeviationPct,{value:12}),g(n.simplePreheatEnabled,{state:"on"}),ze(!0);let e=300,t=Number(Date.now()/1e3)|0,r=288,o=[[5,5,5,6,5,5,5,5,6,6,5,5,5,5,5,6,5,5,5,5,5,6,6,5],[6,6,5,5,6,6,6,5,5,6,6,6,5,5,6,6,6,6,5,5,6,6,5,5],[5,5,5,5,5,5,6,6,6,6,6,6,5,5,5,5,6,6,6,6,5,5,5,5],[6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[5,6,5,5,5,6,6,5,5,6,5,5,5,6,5,5,6,6,5,5,5,5,6,6]],i=[];for(let s=0;s<r;s++){let l=(r-1-s)*e,m=t-l,u=Math.floor(s/12)%24,v=o.map(S=>S[u%S.length]),w=l/3600,y=w>2.5&&w<3.5||w>8.5&&w<9.5?1:0;i.push([m,...v,y])}De({interval_s:e,uptime_s:t,count:r,entries:i});let a=[];for(let s=0;s<48;s++){let l=6-3*Math.sin(s/24*Math.PI)-(s>10&&s<20?2:0),m=4+(s>8&&s<18?9*Math.exp(-Math.pow(s-13,2)/12):0)+Math.sin(s/5),u=(220+s*4)%360;a.push([Number(l.toFixed(1)),Number(Math.max(0,m).toFixed(1)),Math.round(u)])}Oe({base_epoch:t,age_s:480,count:48,hours:a}),Nt(6)}function Nt(e){let t=[];for(let r=0;r<e;r++){let o=Mt[Pe%Mt.length];t.push([Pe,o[0],o[1],o[2]]),Pe++}Te(t,Pe)}function Mo(){he+=1,g(n.uptime,{value:Number(Date.now()/1e3)|0}),g(n.wifi,{value:-55-Math.round((1+Math.sin(he/4))*6)});let e=0,t=0,r=0;for(let s=0;s<W;s++){let l=s+1,m=!!F.enabled[s],u=F.temp[s],v=F.setpoint[s],w=m&&F.driversEnabled&&!F.manualMode&&u<v-.25;F.manualMode?F.valve[s]=Math.max(0,F.valve[s]):!m||!F.driversEnabled?F.valve[s]=Math.max(0,F.valve[s]-6):w?F.valve[s]=Math.min(100,F.valve[s]+7+l%3):F.valve[s]=Math.max(0,F.valve[s]-5);let y=w?.05+F.valve[s]/2200:-.03+F.valve[s]/3200;F.temp[s]=u+y+Math.sin((he+l)/5)*.04,m&&F.valve[s]>0&&(e+=F.valve[s],t+=1,r=Math.max(r,F.valve[s])),g(p.temp(l),{value:F.temp[s]}),g(p.valve(l),{value:Math.round(F.valve[s])});let S=Math.max(0,(F.setpoint[s]-F.temp[s]-.15)*.22);g(p.preheatAdvance(l),{value:Number(S.toFixed(2))}),g(p.state(l),{state:m?w?"heating":"idle":"off"}),g(p.enabled(l),{value:m,state:m?"on":"off"}),g(p.probeTemp(l),{value:F.temp[s]+Math.sin((he+l)/6)*.1})}let o=29.5+r*.075+t*.18+Math.sin(he/6)*.25,i=o-(t?2.1+e/Math.max(1,t*50):1.1);g(n.flow,{value:Number(o.toFixed(1))}),g(n.ret,{value:Number(i.toFixed(1))}),g(p.probeTemp(7),{value:Number((i-.4).toFixed(1))}),g(p.probeTemp(8),{value:Number((o+.2).toFixed(1))}),ze(!0);let a=M("zoneStateHistory");a&&(a.uptime_s=Number(Date.now()/1e3)|0),he%3===0&&Nt(1)}function Dt(){Lt||(Lo(),be(!0),Lt=setInterval(Mo,1200))}function qe(e){let t=e.key||"",r=e.value,o=e.zone||0;if(t==="zone_setpoint"&&o>=1&&o<=W){let a=Number(r);Number.isNaN(a)||(F.setpoint[o-1]=a,g(p.setpoint(o),{value:a}),N("Zone "+o+" setpoint set to "+a.toFixed(1)+"\xB0C",o));return}if(t==="zone_enabled"&&o>=1&&o<=W){let a=r>.5;F.enabled[o-1]=a?1:0,g(p.enabled(o),{value:a,state:a?"on":"off"}),N("Zone "+o+(a?" enabled":" disabled"),o);return}if(t==="drivers_enabled"){let a=r>.5;F.driversEnabled=a?1:0,g(n.drivers,{value:a,state:a?"on":"off"}),N(a?"Motor drivers enabled":"Motor drivers disabled");return}if(t==="manual_mode"){let a=r>.5;F.manualMode=a?1:0,fe("manualMode",a);return}if(t==="motor_target"&&o>=1&&o<=W){let a=Number(r||0);g(p.motorTarget(o),{value:Math.max(0,Math.min(100,Math.round(a)))}),N("Motor "+o+" target set to "+a+"%",o);return}if(t==="command"){let a=String(r);if(a==="i2c_scan"){ve(`I2C_SCAN: ----- begin -----
 I2C_SCAN: found 0x3C
 I2C_SCAN: found 0x44
 I2C_SCAN: found 0x76
-I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_motors"||a==="restart"){C("Command executed: "+a);return}if(a==="open_motor_timed"&&r>=1&&r<=B){C("Motor "+r+" open timed",r);return}if(a==="close_motor_timed"&&r>=1&&r<=B){C("Motor "+r+" close timed",r);return}if(a==="stop_motor"&&r>=1&&r<=B){C("Motor "+r+" stopped",r);return}if(a==="motor_reset_fault"&&r>=1&&r<=B){C("Motor "+r+" fault reset",r);return}if(a==="motor_reset_learned_factors"&&r>=1&&r<=B){C("Motor "+r+" learned factors reset",r);return}if(a==="motor_reset_and_relearn"&&r>=1&&r<=B){C("Motor "+r+" reset and relearn started",r);return}return}if(t==="zone_probe"&&r>=1){u(l.probe(r),{state:String(o)}),C("Setting updated: "+t+" = "+o,r);return}if(t==="zone_temp_source"&&r>=1){u(l.tempSource(r),{state:String(o)}),C("Setting updated: "+t+" = "+o,r);return}if(t==="zone_sync_to"&&r>=1){u(l.syncTo(r),{state:String(o)}),C("Setting updated: "+t+" = "+o,r);return}if(t==="zone_pipe_type"&&r>=1){u(l.pipeType(r),{state:String(o)}),C("Setting updated: "+t+" = "+o,r);return}if(t==="manifold_type"){u(n.manifoldType,{state:String(o)}),C("Setting updated: "+t+" = "+o);return}if(t==="manifold_flow_probe"){u(n.manifoldFlowProbe,{state:String(o)}),C("Setting updated: "+t+" = "+o);return}if(t==="manifold_return_probe"){u(n.manifoldReturnProbe,{state:String(o)}),C("Setting updated: "+t+" = "+o);return}if(t==="motor_profile_default"){u(n.motorProfileDefault,{state:String(o)}),C("Setting updated: "+t+" = "+o);return}if(t==="simple_preheat_enabled"){u(n.simplePreheatEnabled,{state:String(o)}),C("Setting updated: "+t+" = "+o);return}if(t==="zone_ble_mac"&&r>=1){u(l.ble(r),{state:String(o)}),C("Setting updated: "+t+" = "+o,r);return}if(t==="zone_exterior_walls"&&r>=1){u(l.exteriorWalls(r),{state:String(o)||"None"}),C("Setting updated: "+t+" = "+o,r);return}if(t==="zone_area_m2"&&r>=1){u(l.area(r),{value:Number(o)}),C("Setting updated: "+t+" = "+o,r);return}if(t==="zone_pipe_spacing_mm"&&r>=1){u(l.spacing(r),{value:Number(o)}),C("Setting updated: "+t+" = "+o,r);return}let s={close_threshold_multiplier:n.closeThresholdMultiplier,close_slope_threshold:n.closeSlopeThreshold,close_slope_current_factor:n.closeSlopeCurrentFactor,open_threshold_multiplier:n.openThresholdMultiplier,open_slope_threshold:n.openSlopeThreshold,open_slope_current_factor:n.openSlopeCurrentFactor,open_ripple_limit_factor:n.openRippleLimitFactor,generic_runtime_limit_seconds:n.genericRuntimeLimitSeconds,hmip_runtime_limit_seconds:n.hmipRuntimeLimitSeconds,relearn_after_movements:n.relearnAfterMovements,relearn_after_hours:n.relearnAfterHours,learned_factor_min_samples:n.learnedFactorMinSamples,learned_factor_max_deviation_pct:n.learnedFactorMaxDeviationPct};if(s[t]){let a=Number(o);Number.isNaN(a)||(u(s[t],{value:a}),C("Setting updated: "+t+" = "+o));return}}window.__hv6_mock={setSetpoint(e,t){Ne({key:"zone_setpoint",value:t,zone:e})},toggleZone(e){let t=!k.enabled[e-1];Ne({key:"zone_enabled",value:t?1:0,zone:e})}};var ut="/api/hv6/v1";function mt(){return!!(window.HV6_DASHBOARD_CONFIG&&window.HV6_DASHBOARD_CONFIG.mock)}function V(e,t,o){if(it(),mt())try{return Ne(o),Promise.resolve({ok:!0})}finally{$e()}let r=new URLSearchParams;for(let[i,c]of Object.entries(t||{}))c!=null&&r.append(i,c);let s=r.toString(),a=ut+e+(s?"?"+s:"");return fetch(a,{method:"POST"}).then(i=>(i.ok||console.warn(`API call failed: POST ${e} status=${i.status}`),i)).catch(i=>{throw console.error(`API call error: POST ${e}:`,i),i}).finally(()=>{$e()})}function je(e,t){return u(l.setpoint(e),{value:t}),V(`/zones/${e}/setpoint`,{setpoint_c:t},{key:"zone_setpoint",value:t,zone:e})}function bt(e,t){return u(l.enabled(e),{state:t?"on":"off",value:t}),V(`/zones/${e}/enabled`,{enabled:!!t},{key:"zone_enabled",value:t?1:0,zone:e})}function Te(e){return u(n.drivers,{state:e?"on":"off",value:e}),V("/drivers/enabled",{enabled:!!e},{key:"drivers_enabled",value:e?1:0})}function ae(e,t){return V("/commands",{command:e,zone:t||void 0},{key:"command",value:e,zone:t||void 0})}function ft(){return pe("Scanning I2C bus..."),C("I2C scan started"),ae("i2c_scan")}var er={zone_probe:e=>l.probe(e),zone_temp_source:e=>l.tempSource(e),zone_sync_to:e=>l.syncTo(e),zone_pipe_type:e=>l.pipeType(e)},tr={zone_ble_mac:e=>l.ble(e),zone_exterior_walls:e=>l.exteriorWalls(e)},rr={zone_area_m2:e=>l.area(e),zone_pipe_spacing_mm:e=>l.spacing(e)},or={manifold_type:n.manifoldType,manifold_flow_probe:n.manifoldFlowProbe,manifold_return_probe:n.manifoldReturnProbe,motor_profile_default:n.motorProfileDefault,simple_preheat_enabled:n.simplePreheatEnabled},ar={close_threshold_multiplier:n.closeThresholdMultiplier,close_slope_threshold:n.closeSlopeThreshold,close_slope_current_factor:n.closeSlopeCurrentFactor,open_threshold_multiplier:n.openThresholdMultiplier,open_slope_threshold:n.openSlopeThreshold,open_slope_current_factor:n.openSlopeCurrentFactor,open_ripple_limit_factor:n.openRippleLimitFactor,generic_runtime_limit_seconds:n.genericRuntimeLimitSeconds,hmip_runtime_limit_seconds:n.hmipRuntimeLimitSeconds,relearn_after_movements:n.relearnAfterMovements,relearn_after_hours:n.relearnAfterHours,learned_factor_min_samples:n.learnedFactorMinSamples,learned_factor_max_deviation_pct:n.learnedFactorMaxDeviationPct};function ge(e,t,o){let r=er[t];return r&&u(r(e),{state:o}),V("/settings/select",{key:t,value:o,zone:e},{key:t,value:o,zone:e})}function he(e,t,o){let r=tr[t];return r&&u(r(e),{state:o}),V("/settings/text",{key:t,value:o,zone:e},{key:t,value:o,zone:e})}function ye(e,t,o){let r=Number(o),s=rr[t];return s&&!Number.isNaN(r)&&u(s(e),{value:r}),V("/settings/number",{key:t,value:r,zone:e},{key:t,value:r,zone:e})}function Y(e,t){let o=or[e];return o&&u(o,{state:t}),V("/settings/select",{key:e,value:t},{key:e,value:t})}function J(e,t){let o=Number(t),r=ar[e];return r&&!Number.isNaN(o)&&u(r,{value:o}),V("/settings/number",{key:e,value:o},{key:e,value:o})}function xt(e,t){return V("/settings/text",{key:e,value:t},{key:e,value:t})}function vt(e,t){let o=Number(t),r=Number.isNaN(o)?0:Math.max(0,Math.min(100,Math.round(o)));return u(l.motorTarget(e),{value:r}),C("Motor "+e+" target set to "+r+"%",e),V(`/motors/${e}/target`,{value:r},{key:"motor_target",value:r,zone:e})}function ht(e,t=1e4){return C("Motor "+e+" open for "+t+"ms",e),V(`/motors/${e}/open_timed`,{},{key:"command",value:"open_motor_timed",zone:e})}function yt(e,t=1e4){return C("Motor "+e+" close for "+t+"ms",e),V(`/motors/${e}/close_timed`,{},{key:"command",value:"close_motor_timed",zone:e})}function Ve(e){return C("Motor "+e+" stopped",e),V(`/motors/${e}/stop`,{},{key:"command",value:"stop_motor",zone:e})}function Ge(e){return le("manualMode",!!e),C(e?"Manual mode enabled \u2014 automatic management paused":"Manual mode disabled \u2014 automatic management resumed"),V("/manual_mode",{enabled:!!e},{key:"manual_mode",value:e?1:0})}function wt(e){return C("Motor "+e+" fault reset",e),ae("motor_reset_fault",e)}function zt(e){return C("Motor "+e+" learned factors reset",e),ae("motor_reset_learned_factors",e)}function _t(e){return C("Motor "+e+" reset and relearn started",e),ae("motor_reset_and_relearn",e)}function Ue(){mt()||fetch(ut+"/history",{cache:"no-store"}).then(e=>e.ok?e.json():null).then(e=>{e&&Me(e)}).catch(()=>{})}var Xe=null,De=null,St=null;async function nr(){De&&De.abort(),De=new AbortController;let e=await fetch("/api/hv6/v1/state",{cache:"no-store",signal:De.signal});if(e.status===503)throw new Error("State fetch busy");if(!e.ok)throw new Error("State fetch failed: "+e.status);return e.json()}function kt(e){if(!(!e||typeof e!="object")&&!lt()){for(let t in e)u(t,e[t]);xe(!1)}}function sr(e){if(e){if(!e.type){kt(e);return}if(e.type==="state"){kt(e.data);return}if(e.type==="log"){let t=e.data&&(e.data.message||e.data.msg||e.data.text||"");if(!t)return;C(t),String(t).indexOf("I2C_SCAN:")!==-1&&pe(String(t))}}}function Et(){Xe||(Xe=setTimeout(()=>{Xe=null,Ye()},1e3))}function Ye(){let e=window.HV6_DASHBOARD_CONFIG;if(e&&e.mock){gt();return}nr().then(t=>{de(!0),sr(t),Ue(),St||(St=setInterval(Ue,300*1e3)),Et()}).catch(()=>{de(!1),Et()})}var Ct=Object.create(null);function S(e,t){if(Ct[e])return;Ct[e]=1;let o=document.createElement("style");o.textContent=t,document.head.appendChild(o)}function W(e){return e!=null&&!isNaN(e)?Math.round(e*10)/10+"\xB0C":"---"}function ue(e){return e!=null&&!isNaN(e)?(e|0)+"%":"---"}function Oe(e){if(!e||isNaN(e))return"---";e=e|0;var t=e/86400|0,o=e%86400/3600|0,r=e%3600/60|0;return t>0?t+"d "+o+"h "+r+"m":o>0?o+"h "+r+"m":r+"m"}function At(e){return e==null||isNaN(e)?"---":(e=e|0,e>-50?e+" dBm \u2590\u2590\u2590\u2590":e>-60?e+" dBm \u2590\u2590\u2590\u2591":e>-70?e+" dBm \u2590\u2590\u2591\u2591":e>-80?e+" dBm \u2590\u2591\u2591\u2591":e+" dBm \u2591\u2591\u2591\u2591")}var ir=`
+I2C_SCAN: ----- end -----`),N("I2C scan complete");return}if(a==="calibrate_all_motors"||a==="restart"){N("Command executed: "+a);return}if(a==="open_motor_timed"&&o>=1&&o<=W){N("Motor "+o+" open timed",o);return}if(a==="close_motor_timed"&&o>=1&&o<=W){N("Motor "+o+" close timed",o);return}if(a==="stop_motor"&&o>=1&&o<=W){N("Motor "+o+" stopped",o);return}if(a==="motor_reset_fault"&&o>=1&&o<=W){N("Motor "+o+" fault reset",o);return}if(a==="motor_reset_learned_factors"&&o>=1&&o<=W){N("Motor "+o+" learned factors reset",o);return}if(a==="motor_reset_and_relearn"&&o>=1&&o<=W){N("Motor "+o+" reset and relearn started",o);return}return}if(t==="zone_probe"&&o>=1){g(p.probe(o),{state:String(r)}),N("Setting updated: "+t+" = "+r,o);return}if(t==="zone_temp_source"&&o>=1){g(p.tempSource(o),{state:String(r)}),N("Setting updated: "+t+" = "+r,o);return}if(t==="zone_sync_to"&&o>=1){g(p.syncTo(o),{state:String(r)}),N("Setting updated: "+t+" = "+r,o);return}if(t==="zone_pipe_type"&&o>=1){g(p.pipeType(o),{state:String(r)}),N("Setting updated: "+t+" = "+r,o);return}if(t==="manifold_type"){g(n.manifoldType,{state:String(r)}),N("Setting updated: "+t+" = "+r);return}if(t==="manifold_flow_probe"){g(n.manifoldFlowProbe,{state:String(r)}),N("Setting updated: "+t+" = "+r);return}if(t==="manifold_return_probe"){g(n.manifoldReturnProbe,{state:String(r)}),N("Setting updated: "+t+" = "+r);return}if(t==="motor_profile_default"){g(n.motorProfileDefault,{state:String(r)}),N("Setting updated: "+t+" = "+r);return}if(t==="simple_preheat_enabled"){g(n.simplePreheatEnabled,{state:String(r)}),N("Setting updated: "+t+" = "+r);return}if(t==="zone_ble_mac"&&o>=1){g(p.ble(o),{state:String(r)}),N("Setting updated: "+t+" = "+r,o);return}if(t==="zone_exterior_walls"&&o>=1){let a=String(r)||"None";g(p.exteriorWalls(o),{state:a});let s=a==="None"?0:a.split(",").filter(Boolean).length,l=[0,.5,.7,.85,1][Math.min(s,4)];g(p.windExposure(o),{value:l}),N("Setting updated: "+t+" = "+r,o);return}if(t==="zone_area_m2"&&o>=1){g(p.area(o),{value:Number(r)}),N("Setting updated: "+t+" = "+r,o);return}if(t==="zone_pipe_spacing_mm"&&o>=1){g(p.spacing(o),{value:Number(r)}),N("Setting updated: "+t+" = "+r,o);return}if(t==="zone_wind_exposure"&&o>=1){g(p.windExposure(o),{value:Number(r)}),N("Setting updated: "+t+" = "+r,o);return}if(t==="zone_solar_gain"&&o>=1){g(p.solarGain(o),{value:Number(r)}),N("Setting updated: "+t+" = "+r,o);return}if(t==="zone_thermal_lead_h"&&o>=1){g(p.thermalLeadH(o),{value:Number(r)}),N("Setting updated: "+t+" = "+r,o);return}let i={close_threshold_multiplier:n.closeThresholdMultiplier,close_slope_threshold:n.closeSlopeThreshold,close_slope_current_factor:n.closeSlopeCurrentFactor,open_threshold_multiplier:n.openThresholdMultiplier,open_slope_threshold:n.openSlopeThreshold,open_slope_current_factor:n.openSlopeCurrentFactor,open_ripple_limit_factor:n.openRippleLimitFactor,generic_runtime_limit_seconds:n.genericRuntimeLimitSeconds,hmip_runtime_limit_seconds:n.hmipRuntimeLimitSeconds,relearn_after_movements:n.relearnAfterMovements,relearn_after_hours:n.relearnAfterHours,learned_factor_min_samples:n.learnedFactorMinSamples,learned_factor_max_deviation_pct:n.learnedFactorMaxDeviationPct};if(i[t]){let a=Number(r);Number.isNaN(a)||(g(i[t],{value:a}),N("Setting updated: "+t+" = "+r));return}}window.__hv6_mock={setSetpoint(e,t){qe({key:"zone_setpoint",value:t,zone:e})},toggleZone(e){let t=!F.enabled[e-1];qe({key:"zone_enabled",value:t?1:0,zone:e})}};var Re="/api/hv6/v1";function He(){return!!(window.HV6_DASHBOARD_CONFIG&&window.HV6_DASHBOARD_CONFIG.mock)}function $(e,t,r){if(_t(),He())try{return qe(r),Promise.resolve({ok:!0})}finally{ot()}let o=new URLSearchParams;for(let[s,l]of Object.entries(t||{}))l!=null&&o.append(s,l);let i=o.toString(),a=Re+e+(i?"?"+i:"");return fetch(a,{method:"POST"}).then(s=>(s.ok||console.warn(`API call failed: POST ${e} status=${s.status}`),s)).catch(s=>{throw console.error(`API call error: POST ${e}:`,s),s}).finally(()=>{ot()})}function rt(e,t){return g(p.setpoint(e),{value:t}),$(`/zones/${e}/setpoint`,{setpoint_c:t},{key:"zone_setpoint",value:t,zone:e})}function Tt(e,t){return g(p.enabled(e),{state:t?"on":"off",value:t}),$(`/zones/${e}/enabled`,{enabled:!!t},{key:"zone_enabled",value:t?1:0,zone:e})}function Be(e){return g(n.drivers,{state:e?"on":"off",value:e}),$("/drivers/enabled",{enabled:!!e},{key:"drivers_enabled",value:e?1:0})}function ce(e,t){return $("/commands",{command:e,zone:t||void 0},{key:"command",value:e,zone:t||void 0})}function Ot(){return ve("Scanning I2C bus..."),N("I2C scan started"),ce("i2c_scan")}var No={zone_probe:e=>p.probe(e),zone_temp_source:e=>p.tempSource(e),zone_sync_to:e=>p.syncTo(e),zone_pipe_type:e=>p.pipeType(e)},Do={zone_ble_mac:e=>p.ble(e),zone_exterior_walls:e=>p.exteriorWalls(e)},To={zone_area_m2:e=>p.area(e),zone_pipe_spacing_mm:e=>p.spacing(e)},Oo={manifold_type:n.manifoldType,manifold_flow_probe:n.manifoldFlowProbe,manifold_return_probe:n.manifoldReturnProbe,motor_profile_default:n.motorProfileDefault,simple_preheat_enabled:n.simplePreheatEnabled},Po={close_threshold_multiplier:n.closeThresholdMultiplier,close_slope_threshold:n.closeSlopeThreshold,close_slope_current_factor:n.closeSlopeCurrentFactor,open_threshold_multiplier:n.openThresholdMultiplier,open_slope_threshold:n.openSlopeThreshold,open_slope_current_factor:n.openSlopeCurrentFactor,open_ripple_limit_factor:n.openRippleLimitFactor,generic_runtime_limit_seconds:n.genericRuntimeLimitSeconds,hmip_runtime_limit_seconds:n.hmipRuntimeLimitSeconds,relearn_after_movements:n.relearnAfterMovements,relearn_after_hours:n.relearnAfterHours,learned_factor_min_samples:n.learnedFactorMinSamples,learned_factor_max_deviation_pct:n.learnedFactorMaxDeviationPct};function xe(e,t,r){let o=No[t];return o&&g(o(e),{state:r}),$("/settings/select",{key:t,value:r,zone:e},{key:t,value:r,zone:e})}function Ie(e,t,r){let o=Do[t];return o&&g(o(e),{state:r}),$("/settings/text",{key:t,value:r,zone:e},{key:t,value:r,zone:e})}function ye(e,t,r){let o=Number(r),i=To[t];return i&&!Number.isNaN(o)&&g(i(e),{value:o}),$("/settings/number",{key:t,value:o,zone:e},{key:t,value:o,zone:e})}function J(e,t){let r=Oo[e];return r&&g(r,{state:t}),$("/settings/select",{key:e,value:t},{key:e,value:t})}function Q(e,t){let r=Number(t),o=Po[e];return o&&!Number.isNaN(r)&&g(o,{value:r}),$("/settings/number",{key:e,value:r},{key:e,value:r})}function Pt(e,t){return $("/settings/text",{key:e,value:t},{key:e,value:t})}function qt(e,t){let r=Number(t),o=Number.isNaN(r)?0:Math.max(0,Math.min(100,Math.round(r)));return g(p.motorTarget(e),{value:o}),N("Motor "+e+" target set to "+o+"%",e),$(`/motors/${e}/target`,{value:o},{key:"motor_target",value:o,zone:e})}function Rt(e,t=1e4){return N("Motor "+e+" open for "+t+"ms",e),$(`/motors/${e}/open_timed`,{},{key:"command",value:"open_motor_timed",zone:e})}function Ht(e,t=1e4){return N("Motor "+e+" close for "+t+"ms",e),$(`/motors/${e}/close_timed`,{},{key:"command",value:"close_motor_timed",zone:e})}function at(e){return N("Motor "+e+" stopped",e),$(`/motors/${e}/stop`,{},{key:"command",value:"stop_motor",zone:e})}function nt(e){return fe("manualMode",!!e),N(e?"Manual mode enabled \u2014 automatic management paused":"Manual mode disabled \u2014 automatic management resumed"),$("/manual_mode",{enabled:!!e},{key:"manual_mode",value:e?1:0})}function Bt(e){return N("Motor "+e+" fault reset",e),ce("motor_reset_fault",e)}function It(e){return N("Motor "+e+" learned factors reset",e),ce("motor_reset_learned_factors",e)}function Zt(e){return N("Motor "+e+" reset and relearn started",e),ce("motor_reset_and_relearn",e)}function st(){He()||fetch(Re+"/history",{cache:"no-store"}).then(e=>e.ok?e.json():null).then(e=>{e&&De(e)}).catch(()=>{})}function it(){if(He())return;let e=Et();fetch(Re+"/logs?since="+e,{cache:"no-store"}).then(t=>t.ok?t.json():null).then(t=>{t&&Te(t.lines,t.next_seq)}).catch(()=>{})}function lt(){He()||fetch(Re+"/forecast",{cache:"no-store"}).then(e=>e.ok?e.json():null).then(e=>{e&&Oe(e)}).catch(()=>{})}var dt=null,Ze=null,Wt=null,jt=null,Vt=null;async function qo(){Ze&&Ze.abort(),Ze=new AbortController;let e=await fetch("/api/hv6/v1/state",{cache:"no-store",signal:Ze.signal});if(e.status===503)throw new Error("State fetch busy");if(!e.ok)throw new Error("State fetch failed: "+e.status);return e.json()}function Gt(e){if(!(!e||typeof e!="object")&&!zt()){for(let t in e)g(t,e[t]);ze(!1)}}function Ro(e){if(e){if(!e.type){Gt(e);return}if(e.type==="state"){Gt(e.data);return}if(e.type==="log"){let t=e.data&&(e.data.message||e.data.msg||e.data.text||"");if(!t)return;N(t),String(t).indexOf("I2C_SCAN:")!==-1&&ve(String(t))}}}function $t(){dt||(dt=setTimeout(()=>{dt=null,ct()},1e3))}function ct(){let e=window.HV6_DASHBOARD_CONFIG;if(e&&e.mock){Dt();return}qo().then(t=>{be(!0),Ro(t),st(),Wt||(Wt=setInterval(st,300*1e3)),it(),jt||(jt=setInterval(it,3e3)),lt(),Vt||(Vt=setInterval(lt,300*1e3)),$t()}).catch(()=>{be(!1),$t()})}var Ut=Object.create(null);function z(e,t){if(Ut[e])return;Ut[e]=1;let r=document.createElement("style");r.textContent=t,document.head.appendChild(r)}var Ho=`
+/* ---- Card panel ---- */
+.ui-card {
+  background: var(--panel-bg-vibrant);
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  padding: 18px 20px;
+  box-shadow: var(--panel-shadow);
+  box-sizing: border-box;
+}
+
+/* ---- Titles & section headers ---- */
+.ui-card-title {
+  font-size: .84rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.1px;
+  color: var(--accent);
+  margin: 0 0 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--panel-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ui-section {
+  color: var(--text-secondary);
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  margin: 16px 0 2px;
+}
+
+/* ---- Row: label left, control right, divider below ---- */
+.ui-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 0;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+}
+.ui-row:last-child { border-bottom: none; }
+
+.ui-label {
+  color: var(--text);
+  font-size: .9rem;
+  font-weight: 600;
+  line-height: 1.25;
+  min-width: 0;
+}
+.ui-sublabel {
+  display: block;
+  color: var(--text-faint);
+  font-size: .72rem;
+  font-weight: 500;
+  font-style: italic;
+  margin-top: 2px;
+}
+
+.ui-field {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---- Controls ---- */
+.ui-input {
+  width: 96px;
+  box-sizing: border-box;
+  text-align: right;
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: .88rem;
+  font-family: var(--mono);
+  transition: border-color .15s ease;
+}
+.ui-input.wide { width: 180px; text-align: left; font-family: inherit; }
+
+.ui-select {
+  min-width: 160px;
+  max-width: 240px;
+  box-sizing: border-box;
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: .88rem;
+  transition: border-color .15s ease;
+}
+
+.ui-input:focus,
+.ui-select:focus {
+  outline: 2px solid rgba(83,168,255,.6);
+  outline-offset: 1px;
+  border-color: rgba(83,168,255,.55);
+}
+
+.ui-unit { color: var(--text-faint); font-size: .72rem; font-weight: 600; }
+
+/* ---- Numeric stepper (\u2212 value +) ----
+   The value reads as plain text (flat, no input chrome) between the buttons;
+   double-clicking it reveals the editable input. */
+.ui-stepper { display: inline-flex; align-items: center; gap: 6px; }
+.ui-stepper .ui-input {
+  width: 74px;
+  text-align: center;
+  border-color: transparent;
+  background: transparent;
+  color: var(--accent);
+  font-weight: 700;
+  cursor: default;
+  -moz-appearance: textfield;
+}
+.ui-stepper .ui-input.editing {
+  border-color: var(--control-border);
+  background: var(--control-bg);
+  color: var(--text);
+  cursor: text;
+}
+.ui-stepper .ui-input::-webkit-outer-spin-button,
+.ui-stepper .ui-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.ui-step-btn {
+  width: 32px;
+  height: 34px;
+  flex-shrink: 0;
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  color: var(--text);
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 1.15rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.ui-step-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--control-bg-hover); }
+.ui-step-btn:active { transform: translateY(1px); }
+
+/* ---- Unsaved-changes banner (sits under the card title) ---- */
+.ui-form-banner {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 6px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(238,161,17,.12);
+  border: 1px solid rgba(238,161,17,.4);
+}
+.ui-form-banner.show { display: flex; }
+.ui-form-banner-msg { color: var(--state-warn); font-size: .76rem; font-weight: 700; }
+.ui-form-banner-btns { display: flex; gap: 8px; flex-shrink: 0; }
+.ui-form-discard,
+.ui-form-apply {
+  border-radius: 8px;
+  padding: 5px 14px;
+  font-size: .76rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid var(--control-border);
+  transition: .15s ease;
+}
+.ui-form-discard { background: transparent; color: var(--text-secondary); }
+.ui-form-discard:hover { color: var(--text); border-color: var(--text-secondary); }
+.ui-form-apply { background: var(--accent); color: #0f213c; border-color: var(--accent); }
+.ui-form-apply:hover { filter: brightness(1.08); }
+
+/* ---- Green pill toggle (canonical) ---- */
+.ui-toggle {
+  width: 48px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--control-bg-hover);
+  position: relative;
+  cursor: pointer;
+  border: 1px solid var(--control-border);
+  transition: background .2s ease, border-color .2s ease;
+  flex-shrink: 0;
+}
+.ui-toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  background: #dbe8ff;
+  border-radius: 999px;
+  transition: transform .2s ease;
+}
+.ui-toggle.on { background: rgba(121,209,126,.25); border-color: rgba(121,209,126,.5); }
+.ui-toggle.on::after { transform: translateX(22px); background: #0f213c; }
+
+/* ---- Notes & dividers ---- */
+.ui-note {
+  color: var(--text-secondary);
+  font-size: .75rem;
+  line-height: 1.4;
+  margin-top: 8px;
+}
+.ui-divider {
+  border: 0;
+  border-top: 1px dashed var(--panel-border);
+  margin: 14px 0 2px;
+}
+
+/* ---- Buttons (device actions / recovery) ---- */
+.ui-btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.ui-btn {
+  flex: 1;
+  min-width: 120px;
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  color: var(--text-strong);
+  border-radius: 10px;
+  padding: 9px 14px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: .82rem;
+  transition: .18s ease;
+}
+.ui-btn:hover { background: var(--control-bg-hover); border-color: rgba(120,168,255,.52); }
+.ui-btn.warn { border-color: rgba(255,118,118,.5); background: rgba(255,118,118,.2); color: #FFD9D9; }
+.ui-btn.warn:hover { background: rgba(255,100,100,.3); border-color: rgba(255,100,100,.6); }
+
+@media (max-width: 520px) {
+  .ui-row { align-items: flex-start; flex-direction: column; gap: 6px; }
+  .ui-field { align-self: stretch; }
+  .ui-input, .ui-select { width: 100%; max-width: none; }
+  .ui-stepper { width: 100%; }
+  .ui-stepper .ui-input { flex: 1; width: auto; }
+}
+`;z("ui-kit",Ho);function Bo(e,t){let r=Math.abs(Number(e));return!Number.isFinite(r)||r<1e3?t:Math.pow(10,Math.floor(Math.log10(r))-1)}function Io(e){let t=String(e),r=t.indexOf(".");return r<0?0:t.length-r-1}function X(e,t={}){let r=e.querySelector(t.title||".ui-card-title"),o=document.createElement("div");o.className="ui-form-banner",o.innerHTML='<span class="ui-form-banner-msg">Unsaved changes</span><span class="ui-form-banner-btns"><button type="button" class="ui-form-discard">Discard</button><button type="button" class="ui-form-apply">Apply</button></span>',r?r.insertAdjacentElement("afterend",o):e.insertAdjacentElement("afterbegin",o);let i=[],a=()=>o.classList.toggle("show",i.some(c=>c.dirty)),s=(c,d)=>{c.dirty=d,a()};function l(c){return c.markDirty=()=>s(c,!0),i.push(c),c}function m(c,d){let x={dirty:!1,input:c},T=d.baseStep!=null?d.baseStep:parseFloat(c.step)||1,O=Io(T),Z=d.min!=null?d.min:c.min!==""?parseFloat(c.min):-1/0,P=d.max!=null?d.max:c.max!==""?parseFloat(c.max):1/0,C=k=>O>0?Number(k).toFixed(O):String(Math.round(Number(k)));if(!d.nostep){let k=document.createElement("div");k.className="ui-stepper",c.parentNode.insertBefore(k,c);let R=document.createElement("button");R.type="button",R.className="ui-step-btn",R.textContent="\u2212",R.tabIndex=-1,R.setAttribute("aria-label","decrease");let H=document.createElement("button");H.type="button",H.className="ui-step-btn",H.textContent="+",H.tabIndex=-1,H.setAttribute("aria-label","increase"),k.appendChild(R),k.appendChild(c),k.appendChild(H),c.readOnly=!0;let G=U=>{if(c.disabled)return;let B=parseFloat(c.value);Number.isFinite(B)||(B=parseFloat(c.placeholder)),Number.isFinite(B)||(B=0);let le=Math.min(P,Math.max(Z,B+U*Bo(B,T)));c.value=C(le),s(x,!0)};R.addEventListener("click",()=>G(-1)),H.addEventListener("click",()=>G(1)),c.addEventListener("dblclick",()=>{c.disabled||(c.readOnly=!1,c.classList.add("editing"),c.focus(),c.select())}),c.addEventListener("blur",()=>{c.readOnly=!0,c.classList.remove("editing")}),c.addEventListener("keydown",U=>{U.key==="Enter"&&c.blur()})}return c.addEventListener("input",()=>s(x,!0)),x.sync=()=>{let k=d.read();c.value=k!=null&&Number.isFinite(Number(k))?C(k):""},x.commit=()=>{let k=parseFloat(c.value);Number.isFinite(k)&&d.commit(Math.min(P,Math.max(Z,k)))},l(x)}function u(c,d){let x={dirty:!1,input:c};return c.addEventListener("input",()=>s(x,!0)),x.sync=()=>{let T=d.read();c.value=T!=null?T:""},x.commit=()=>d.commit(c.value.trim()),l(x)}function v(c,d){let x={dirty:!1,input:c};return c.addEventListener("change",()=>s(x,!0)),x.sync=()=>{let T=d.read();T!=null&&(c.value=T)},x.commit=()=>d.commit(c.value),l(x)}function w(c,d){let x={dirty:!1,input:c,staged:!1},T=c.closest(".ui-row"),O=()=>{c.classList.toggle("on",x.staged),T&&T.classList.toggle("is-on",x.staged),c.setAttribute("aria-checked",x.staged?"true":"false"),d.onChange&&d.onChange(x.staged)};return c.addEventListener("click",()=>{x.staged=!x.staged,s(x,!0),O()}),x.sync=()=>{x.staged=!!d.read(),O()},x.commit=()=>d.commit(x.staged),l(x)}function y(c){let d={dirty:!1,sync:c.sync,commit:c.commit};return l(d)}let S=()=>i.forEach(c=>{!c.dirty&&c.sync&&c.sync()}),h=()=>{i.forEach(c=>{c.dirty&&(c.commit&&c.commit(),c.dirty=!1)}),a(),t.onApply&&t.onApply()},b=()=>{i.forEach(c=>{c.dirty=!1,c.sync&&c.sync()}),a(),t.onDiscard&&t.onDiscard()};return o.querySelector(".ui-form-apply").addEventListener("click",h),o.querySelector(".ui-form-discard").addEventListener("click",b),{num:m,text:u,select:v,toggle:w,custom:y,refresh:S,apply:h,discard:b,isDirty:()=>i.some(c=>c.dirty)}}function Y(e){return e!=null&&!isNaN(e)?Math.round(e*10)/10+"\xB0C":"---"}function We(e){return e!=null&&!isNaN(e)?(e|0)+"%":"---"}function je(e){if(!e||isNaN(e))return"---";e=e|0;var t=e/86400|0,r=e%86400/3600|0,o=e%3600/60|0;return t>0?t+"d "+r+"h "+o+"m":r>0?r+"h "+o+"m":o+"m"}function Xt(e){return e==null||isNaN(e)?"---":(e=e|0,e>-50?e+" dBm \u2590\u2590\u2590\u2590":e>-60?e+" dBm \u2590\u2590\u2590\u2591":e>-70?e+" dBm \u2590\u2590\u2591\u2591":e>-80?e+" dBm \u2590\u2591\u2591\u2591":e+" dBm \u2591\u2591\u2591\u2591")}var Zo=`
 .topbar {
   position: static;
   margin-bottom: 14px;
@@ -186,7 +430,7 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
   .meta-row { justify-content: center; flex-wrap: wrap; }
   .top-menu { justify-content: center; }
 }
-`;S("hv6-header",ir);var lr=()=>`
+`;z("hv6-header",Zo);var Wo=()=>`
   <header class="topbar">
     <div class="topbar-head">
       <div class="top-brand">
@@ -197,11 +441,10 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
         <span class="brand-fw" id="hdr-fw"></span>
       </div>
       <nav class="top-menu">
-        <a href="#" class="menu-link active" data-section="overview">Dashboard</a>
+        <a href="#" class="menu-link active" data-section="overview">Monitor</a>
         <a href="#" class="menu-link" data-section="zones">Zones</a>
-        <a href="#" class="menu-link" data-section="smart-heating">Smart Heating</a>
-        <a href="#" class="menu-link" data-section="diagnostics">Diagnostics</a>
         <a href="#" class="menu-link" data-section="settings">Settings</a>
+        <a href="#" class="menu-link" data-section="logs">Logs</a>
       </nav>
       <div class="top-meta">
         <div class="meta-row">
@@ -209,11 +452,12 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
           <span id="hdr-sync" class="meta-chip meta-chip-state synced">Synced</span>
           <span class="meta-chip"><span class="meta-chip-label">Uptime</span><span class="meta-chip-value" id="hdr-up">---</span></span>
           <span class="meta-chip"><span class="meta-chip-label">WiFi</span><span class="meta-chip-value" id="hdr-wifi">---</span></span>
+          <span class="meta-chip" id="hdr-asgard" hidden><span class="meta-chip-label">Asgard</span><span class="meta-chip-value" id="hdr-asgard-val">---</span></span>
         </div>
       </div>
     </div>
   </header>
-`,ca=_({tag:"hv6-header",render:lr,onMount(e,t){let o=t.querySelector("#hdr-mode"),r=t.querySelector("#hdr-dot"),s=t.querySelector("#hdr-sync"),a=t.querySelector("#hdr-up"),i=t.querySelector("#hdr-wifi"),c=t.querySelector("#hdr-fw"),p=t.querySelectorAll(".menu-link");function m(){let v=E("section");p.forEach(w=>{w.classList.toggle("active",w.getAttribute("data-section")===v)})}function b(){let v=E("live"),w=E("pendingWrites"),d=window.HV6_DASHBOARD_CONFIG&&window.HV6_DASHBOARD_CONFIG.mock?window.HV6_DASHBOARD_CONFIG.mockLabel||"Mock":v?"Live":"Offline";o.textContent=d,r.classList.toggle("on",!!v),s.textContent=w>0?"Saving...":v?"Synced":"Offline";let f=w>0?"saving":v?"synced":"offline";s.className="meta-chip meta-chip-state "+f,a.textContent=Oe(h(n.uptime)),i.textContent=At(h(n.wifi));let x=E("firmwareVersion")||z(n.firmware);c.textContent=x?"FW "+x:""}p.forEach(v=>{v.addEventListener("click",w=>{w.preventDefault(),nt(v.getAttribute("data-section"))})}),F("section",m),F("live",b),F("pendingWrites",b),F("firmwareVersion",b),g(n.uptime,b),g(n.wifi,b),g(n.firmware,b),m(),b()}});var dr=`
+`,dn=E({tag:"hv6-header",render:Wo,onMount(e,t){let r=t.querySelector("#hdr-mode"),o=t.querySelector("#hdr-dot"),i=t.querySelector("#hdr-sync"),a=t.querySelector("#hdr-up"),s=t.querySelector("#hdr-wifi"),l=t.querySelector("#hdr-asgard"),m=t.querySelector("#hdr-asgard-val"),u=t.querySelector("#hdr-fw"),v=t.querySelectorAll(".menu-link");function w(){let S=M("section");v.forEach(h=>{h.classList.toggle("active",h.getAttribute("data-section")===S)})}function y(){let S=M("live"),h=M("pendingWrites"),b=window.HV6_DASHBOARD_CONFIG&&window.HV6_DASHBOARD_CONFIG.mock?window.HV6_DASHBOARD_CONFIG.mockLabel||"Mock":S?"Live":"Offline";r.textContent=b,o.classList.toggle("on",!!S),i.textContent=h>0?"Saving...":S?"Synced":"Offline";let c=h>0?"saving":S?"synced":"offline";i.className="meta-chip meta-chip-state "+c,a.textContent=je(_(n.uptime)),s.textContent=Xt(_(n.wifi));let d=_(n.asgardLastPushC),x=I(n.asgardEnabled)&&d!=null&&Number.isFinite(d);l.hidden=!x,x&&(m.textContent=d.toFixed(2)+"\xB0C");let T=M("firmwareVersion")||A(n.firmware);u.textContent=T?"FW "+T:""}v.forEach(S=>{S.addEventListener("click",h=>{h.preventDefault(),yt(S.getAttribute("data-section"))})}),L("section",w),L("live",y),L("pendingWrites",y),L("firmwareVersion",y),f(n.uptime,y),f(n.wifi,y),f(n.asgardLastPushC,y),f(n.asgardEnabled,y),f(n.firmware,y),w(),y()}});var jo=`
 .status-card {
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
@@ -297,7 +541,7 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
   background: var(--blue);
   box-shadow: 0 0 12px rgba(83,168,255,.55);
 }
-`;S("status-card",dr);var cr=e=>`
+`;z("status-card",jo);var Vo=e=>`
   <div class="card status-card">
     <div class="card-title">Status</div>
     <table class="st">
@@ -320,34 +564,34 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
       </tr>
     </table>
   </div>
-`,xa=_({tag:"status-card",state:()=>({motorDrivers:"---",motorDriversOn:!1,motorFault:"---",connOn:!1}),render:cr,methods:{update(e){this.motorDriversOn=H(n.drivers),this.motorDrivers=this.motorDriversOn?"ON":"OFF",this.motorFault=H(n.fault)?"FAULT":"OK",this.connOn=E("live")===!0,e.drv.textContent=this.motorDrivers,e.drv.style.color=this.motorDriversOn?"var(--blue)":"var(--state-danger)";let t=this.motorFault==="FAULT";e.fault.textContent=this.motorFault,e.fault.style.color=t?"var(--state-danger)":"var(--state-ok)",e.dot.classList.toggle("on",this.connOn),e.sw.className="sw "+(this.motorDriversOn?"on":"off")}},onMount(e,t){let o={drv:t.querySelector("#sys-drv"),fault:t.querySelector("#sys-fault"),dot:t.querySelector("#sys-dot"),sw:t.querySelector("#sw-drv")},r=()=>e.update(o);g(n.drivers,r),g(n.fault,r),F("live",r),o.sw.onclick=()=>{Te(!e.motorDriversOn)},r()}});var pr=`
+`,bn=E({tag:"status-card",state:()=>({motorDrivers:"---",motorDriversOn:!1,motorFault:"---",connOn:!1}),render:Vo,methods:{update(e){this.motorDriversOn=I(n.drivers),this.motorDrivers=this.motorDriversOn?"ON":"OFF",this.motorFault=I(n.fault)?"FAULT":"OK",this.connOn=M("live")===!0,e.drv.textContent=this.motorDrivers,e.drv.style.color=this.motorDriversOn?"var(--blue)":"var(--state-danger)";let t=this.motorFault==="FAULT";e.fault.textContent=this.motorFault,e.fault.style.color=t?"var(--state-danger)":"var(--state-ok)",e.dot.classList.toggle("on",this.connOn),e.sw.className="sw "+(this.motorDriversOn?"on":"off")}},onMount(e,t){let r={drv:t.querySelector("#sys-drv"),fault:t.querySelector("#sys-fault"),dot:t.querySelector("#sys-dot"),sw:t.querySelector("#sw-drv")},o=()=>e.update(r);f(n.drivers,o),f(n.fault,o),L("live",o),r.sw.onclick=()=>{Be(!e.motorDriversOn)},o()}});var Go=`
 .connectivity-card {
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  padding: 20px;
+  border-radius: 14px;
+  padding: 12px 14px;
   box-shadow: var(--panel-shadow);
   height: 100%;
   box-sizing: border-box;
 }
 
 .connectivity-card .card-title {
-  font-size: .84rem;
+  font-size: .72rem;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 1.1px;
+  letter-spacing: 1px;
   color: var(--accent);
-  margin-bottom: 12px;
-  padding-bottom: 10px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
   border-bottom: 1px solid var(--panel-border);
 }
 
 .connectivity-card .st { width: 100%; border-collapse: collapse; }
-.connectivity-card .st td { padding: 10px 0; font-size: .88rem; }
-.connectivity-card .st td:first-child { color: var(--text-secondary); width: 48%; }
-.connectivity-card .st td:last-child { text-align: right; font-weight: 700; color: var(--text-strong); }
+.connectivity-card .st td { padding: 5px 0; font-size: .72rem; }
+.connectivity-card .st td:first-child { color: var(--text-secondary); width: 42%; }
+.connectivity-card .st td:last-child { text-align: right; font-weight: 700; color: var(--text-strong); font-family: var(--mono); }
 .connectivity-card .st tr:not(:last-child) td { border-bottom: 1px solid rgba(255,255,255,.07); }
-`;S("connectivity-card",pr);var gr=()=>`
+`;z("connectivity-card",Go);var $o=()=>`
   <div class="connectivity-card">
     <div class="card-title">Connectivity</div>
     <table class="st">
@@ -357,7 +601,7 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
       <tr><td>Uptime</td><td class="cc-up">---</td></tr>
     </table>
   </div>
-`,Sa=_({tag:"connectivity-card",render:gr,onMount(e,t){let o=t.querySelector(".cc-ip"),r=t.querySelector(".cc-ssid"),s=t.querySelector(".cc-mac"),a=t.querySelector(".cc-up");function i(){o.textContent=z(n.ip)||"---",r.textContent=z(n.ssid)||"---",s.textContent=z(n.mac)||"---",a.textContent=Oe(h(n.uptime))}g(n.ip,i),g(n.ssid,i),g(n.mac,i),g(n.uptime,i),i()}});var Je="http://www.w3.org/2000/svg",Mt=220,Qe=132,ee=10,ur=10,mr=24,Q=34,we=Mt-Q-ur,se=Qe-ee-mr,br=360,fr=`
+`,zn=E({tag:"connectivity-card",render:$o,onMount(e,t){let r=t.querySelector(".cc-ip"),o=t.querySelector(".cc-ssid"),i=t.querySelector(".cc-mac"),a=t.querySelector(".cc-up");function s(){r.textContent=A(n.ip)||"---",o.textContent=A(n.ssid)||"---",i.textContent=A(n.mac)||"---",a.textContent=je(_(n.uptime))}f(n.ip,s),f(n.ssid,s),f(n.mac,s),f(n.uptime,s),s()}});var pt="http://www.w3.org/2000/svg",Qt=220,ut=132,ae=10,Uo=10,Xo=24,K=34,Se=Qt-K-Uo,me=ut-ae-Xo,Yo=360,Jo=`
 .graph-widgets {
   display: grid;
   gap: 12px;
@@ -445,7 +689,7 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
   text-transform: uppercase;
   opacity: .7;
 }
-`;S("graph-widgets",fr);var xr=e=>e.variant==="flow-return"?'<div class="graph-widgets"><div class="graph-card"><div class="graph-head"><span>Flow / Return</span><strong class="gw-dt">---</strong></div><div class="graph-legend"><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--accent)"></span>Flow</span><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--blue)"></span>Return</span></div><svg class="gw-flow"></svg></div></div>':e.variant==="demand"?'<div class="graph-widgets"><div class="graph-card"><div class="graph-head"><span>Demand Index</span><strong class="gw-demand-text">---</strong></div><svg class="gw-demand"></svg></div></div>':'<div class="graph-widgets"><div class="graph-card"><div class="graph-head"><span>Flow / Return</span><strong class="gw-dt">---</strong></div><div class="graph-legend"><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--accent)"></span>Flow</span><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--blue)"></span>Return</span></div><svg class="gw-flow"></svg></div><div class="graph-card"><div class="graph-head"><span>Demand Index</span><strong class="gw-demand-text">---</strong></div><svg class="gw-demand"></svg></div></div>';function Lt(e,t,o){if(!e.length)return"";let r=Math.max(.001,o-t),s=e.length>1?we/(e.length-1):0,a="";for(let i=0;i<e.length;i++){let c=Q+s*i,p=ee+(1-(e[i]-t)/r)*se;a+=(i?" L ":"M ")+c.toFixed(2)+" "+p.toFixed(2)}return a}function me(e,t,o){let r=document.createElementNS(Je,e);return t&&Object.keys(t).forEach(s=>{r.setAttribute(s,t[s])}),o!=null&&(r.textContent=o),r}function vr(e,t){return Number.isFinite(e)?t==="%"?Math.round(e)+"%":e.toFixed(1)+"C":"---"}function hr(e){return e<=0?"now":e>=60?"-"+Math.round(e/60)+"h":"-"+Math.round(e)+"m"}function yr(e,t,o,r){let s="rgba(143, 176, 230, 0.42)",a="rgba(143, 176, 230, 0.16)",c=[{x:Q,ratio:0},{x:Q+we/2,ratio:.5},{x:Q+we,ratio:1}];e.appendChild(me("line",{x1:Q,y1:ee,x2:Q,y2:ee+se,stroke:s,"stroke-width":"1",class:"graph-axis"})),e.appendChild(me("line",{x1:Q,y1:ee+se,x2:Q+we,y2:ee+se,stroke:s,"stroke-width":"1",class:"graph-axis"}));for(let p=0;p<3;p++){let m=p/2,b=ee+m*se,v=o-(o-t)*m;e.appendChild(me("line",{x1:Q,y1:b,x2:Q+we,y2:b,stroke:a,"stroke-width":"1",class:"graph-grid"})),e.appendChild(me("text",{x:Q-5,y:b+3,"text-anchor":"end",class:"graph-tick-label"},vr(v,r)))}c.forEach(p=>{let m=br*(1-p.ratio);e.appendChild(me("text",{x:p.x,y:Qe-6,"text-anchor":p.ratio===0?"start":p.ratio===1?"end":"middle",class:"graph-tick-label"},hr(m)))}),e.appendChild(me("text",{x:5,y:ee+se/2,transform:"rotate(-90 5 "+(ee+se/2).toFixed(2)+")","text-anchor":"middle",class:"graph-axis-label"},r==="%"?"Demand":"Temp"))}function wr(e,t,o){let r=e.concat(t||[]).filter(c=>Number.isFinite(c));if(!r.length)return o==="%"?{min:0,max:100}:{min:0,max:10};let s=Math.min.apply(null,r),a=Math.max.apply(null,r);if(o==="%"&&(s=Math.max(0,s),a=Math.min(100,a)),s===a){let c=o==="%"?5:.5;s-=c,a+=c}let i=(a-s)*.08;return s-=i,a+=i,o==="%"&&(s=Math.max(0,s),a=Math.min(100,a)),{min:s,max:a}}function Ft(e,t,o,r,s,a){e.innerHTML="",e.setAttribute("viewBox","0 0 "+Mt+" "+Qe),e.setAttribute("preserveAspectRatio","none");let i=wr(t,r,a);yr(e,i.min,i.max,a);let c=Lt(t,i.min,i.max);if(c){let m=document.createElementNS(Je,"path");m.setAttribute("d",c),m.setAttribute("fill","none"),m.setAttribute("stroke",o),m.setAttribute("stroke-width","2.2"),m.setAttribute("stroke-linecap","round"),m.setAttribute("stroke-linejoin","round"),e.appendChild(m)}let p=r&&r.length?Lt(r,i.min,i.max):"";if(p){let m=document.createElementNS(Je,"path");m.setAttribute("d",p),m.setAttribute("fill","none"),m.setAttribute("stroke",s),m.setAttribute("stroke-width","2"),m.setAttribute("stroke-linecap","round"),m.setAttribute("stroke-linejoin","round"),e.appendChild(m)}}var zr="var(--accent)",_r="var(--blue)",Sr="var(--blue)",La=_({tag:"graph-widgets",state:e=>({variant:e&&e.variant||"both"}),render:xr,onMount(e,t){let o=t.querySelector(".gw-dt"),r=t.querySelector(".gw-demand-text"),s=t.querySelector(".gw-flow"),a=t.querySelector(".gw-demand");function i(){let c=E("historyFlow"),p=E("historyReturn"),m=E("historyDemand"),b=c.length?c[c.length-1]:null,v=p.length?p[p.length-1]:null,w=m.length?m[m.length-1]:null;o&&s&&(o.textContent=b!=null&&v!=null?(b-v).toFixed(1)+" C":"---",Ft(s,c,zr,p,_r,"C")),r&&a&&(r.textContent=w!=null?Math.round(w)+"%":"---",Ft(a,m,Sr,null,null,"%"))}F("historyFlow",i),F("historyReturn",i),F("historyDemand",i),i()}});var ne={0:{label:"Off",color:"#2e3f5c"},1:{label:"Manual",color:"#4ecdc4"},2:{label:"Calibrating",color:"#f2c77b"},3:{label:"Wait Cal.",color:"#8ab0d4"},4:{label:"Wait Temp",color:"#8ab0d4"},5:{label:"Heating",color:"#EEA111"},6:{label:"Idle",color:"#53A8FF"},7:{label:"Overheated",color:"#ff6464"},255:{label:"",color:"transparent"}},Nt=24*3600,_e=18,Ke=4,ze=54,Pe=20,Se=4,qe=K*(_e+Ke)-Ke+Se+Pe,kr=`
+`;z("graph-widgets",Jo);var Qo=e=>e.variant==="flow-return"?'<div class="graph-widgets"><div class="graph-card"><div class="graph-head"><span>Flow / Return</span><strong class="gw-dt">---</strong></div><div class="graph-legend"><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--accent)"></span>Flow</span><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--blue)"></span>Return</span></div><svg class="gw-flow"></svg></div></div>':e.variant==="demand"?'<div class="graph-widgets"><div class="graph-card"><div class="graph-head"><span>Demand Index</span><strong class="gw-demand-text">---</strong></div><svg class="gw-demand"></svg></div></div>':'<div class="graph-widgets"><div class="graph-card"><div class="graph-head"><span>Flow / Return</span><strong class="gw-dt">---</strong></div><div class="graph-legend"><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--accent)"></span>Flow</span><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--blue)"></span>Return</span></div><svg class="gw-flow"></svg></div><div class="graph-card"><div class="graph-head"><span>Demand Index</span><strong class="gw-demand-text">---</strong></div><svg class="gw-demand"></svg></div></div>';function Yt(e,t,r){if(!e.length)return"";let o=Math.max(.001,r-t),i=e.length>1?Se/(e.length-1):0,a="";for(let s=0;s<e.length;s++){let l=K+i*s,m=ae+(1-(e[s]-t)/o)*me;a+=(s?" L ":"M ")+l.toFixed(2)+" "+m.toFixed(2)}return a}function we(e,t,r){let o=document.createElementNS(pt,e);return t&&Object.keys(t).forEach(i=>{o.setAttribute(i,t[i])}),r!=null&&(o.textContent=r),o}function Ko(e,t){return Number.isFinite(e)?t==="%"?Math.round(e)+"%":e.toFixed(1)+"C":"---"}function er(e){return e<=0?"now":e>=60?"-"+Math.round(e/60)+"h":"-"+Math.round(e)+"m"}function tr(e,t,r,o){let i="rgba(143, 176, 230, 0.42)",a="rgba(143, 176, 230, 0.16)",l=[{x:K,ratio:0},{x:K+Se/2,ratio:.5},{x:K+Se,ratio:1}];e.appendChild(we("line",{x1:K,y1:ae,x2:K,y2:ae+me,stroke:i,"stroke-width":"1",class:"graph-axis"})),e.appendChild(we("line",{x1:K,y1:ae+me,x2:K+Se,y2:ae+me,stroke:i,"stroke-width":"1",class:"graph-axis"}));for(let m=0;m<3;m++){let u=m/2,v=ae+u*me,w=r-(r-t)*u;e.appendChild(we("line",{x1:K,y1:v,x2:K+Se,y2:v,stroke:a,"stroke-width":"1",class:"graph-grid"})),e.appendChild(we("text",{x:K-5,y:v+3,"text-anchor":"end",class:"graph-tick-label"},Ko(w,o)))}l.forEach(m=>{let u=Yo*(1-m.ratio);e.appendChild(we("text",{x:m.x,y:ut-6,"text-anchor":m.ratio===0?"start":m.ratio===1?"end":"middle",class:"graph-tick-label"},er(u)))}),e.appendChild(we("text",{x:5,y:ae+me/2,transform:"rotate(-90 5 "+(ae+me/2).toFixed(2)+")","text-anchor":"middle",class:"graph-axis-label"},o==="%"?"Demand":"Temp"))}function or(e,t,r){let o=e.concat(t||[]).filter(l=>Number.isFinite(l));if(!o.length)return r==="%"?{min:0,max:100}:{min:0,max:10};let i=Math.min.apply(null,o),a=Math.max.apply(null,o);if(r==="%"&&(i=Math.max(0,i),a=Math.min(100,a)),i===a){let l=r==="%"?5:.5;i-=l,a+=l}let s=(a-i)*.08;return i-=s,a+=s,r==="%"&&(i=Math.max(0,i),a=Math.min(100,a)),{min:i,max:a}}function Jt(e,t,r,o,i,a){e.innerHTML="",e.setAttribute("viewBox","0 0 "+Qt+" "+ut),e.setAttribute("preserveAspectRatio","none");let s=or(t,o,a);tr(e,s.min,s.max,a);let l=Yt(t,s.min,s.max);if(l){let u=document.createElementNS(pt,"path");u.setAttribute("d",l),u.setAttribute("fill","none"),u.setAttribute("stroke",r),u.setAttribute("stroke-width","2.2"),u.setAttribute("stroke-linecap","round"),u.setAttribute("stroke-linejoin","round"),e.appendChild(u)}let m=o&&o.length?Yt(o,s.min,s.max):"";if(m){let u=document.createElementNS(pt,"path");u.setAttribute("d",m),u.setAttribute("fill","none"),u.setAttribute("stroke",i),u.setAttribute("stroke-width","2"),u.setAttribute("stroke-linecap","round"),u.setAttribute("stroke-linejoin","round"),e.appendChild(u)}}var rr="var(--accent)",ar="var(--blue)",nr="var(--blue)",An=E({tag:"graph-widgets",state:e=>({variant:e&&e.variant||"both"}),render:Qo,onMount(e,t){let r=t.querySelector(".gw-dt"),o=t.querySelector(".gw-demand-text"),i=t.querySelector(".gw-flow"),a=t.querySelector(".gw-demand");function s(){let l=M("historyFlow"),m=M("historyReturn"),u=M("historyDemand"),v=l.length?l[l.length-1]:null,w=m.length?m[m.length-1]:null,y=u.length?u[u.length-1]:null;r&&i&&(r.textContent=v!=null&&w!=null?(v-w).toFixed(1)+" C":"---",Jt(i,l,rr,m,ar,"C")),o&&a&&(o.textContent=y!=null?Math.round(y)+"%":"---",Jt(a,u,nr,null,null,"%"))}L("historyFlow",s),L("historyReturn",s),L("historyDemand",s),s()}});var pe={0:{label:"Off",color:"#2e3f5c"},1:{label:"Manual",color:"#4ecdc4"},2:{label:"Calibrating",color:"#f2c77b"},3:{label:"Wait Cal.",color:"#8ab0d4"},4:{label:"Wait Temp",color:"#8ab0d4"},5:{label:"Heating",color:"#EEA111"},6:{label:"Idle",color:"#53A8FF"},7:{label:"Overheated",color:"#ff6464"},255:{label:"",color:"transparent"}},Kt=24*3600,ke=18,gt=4,ge=54,Ge=20,Ee=4,$e=10,to=6,oo="#b07bd1",eo=ee+1,ro=Ee+ee*(ke+gt)-gt,mt=ro+to,Ve=ro+to+$e+Ge,sr=`
 .timeline-card {
   border: 1px solid var(--panel-border);
   border-radius: 16px;
@@ -511,7 +755,7 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
   border-radius: 2px;
   flex-shrink: 0;
 }
-`;S("zone-state-timeline",kr);var Er=()=>`
+`;z("zone-state-timeline",sr);var ir=()=>`
   <div class="timeline-card">
     <div class="timeline-head">
       <span>Zone State History</span>
@@ -520,7 +764,7 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
     <div class="tl-body"></div>
     <div class="timeline-legend"></div>
   </div>
-`;function Cr(e,t){if(!e||!e.entries||e.entries.length===0)return null;let o=e.entries,r=e.uptime_s||t||0,s=r-Nt,a=1e3,i=a-ze;function c(f){let x=(f-s)/Nt;return ze+Math.max(0,Math.min(1,x))*i}let p="http://www.w3.org/2000/svg",m=document.createElementNS(p,"svg");m.setAttribute("viewBox","0 0 "+a+" "+qe),m.classList.add("timeline-svg");let b=document.createElementNS(p,"rect");b.setAttribute("x",ze),b.setAttribute("y",Se),b.setAttribute("width",i),b.setAttribute("height",qe-Se-Pe),b.setAttribute("fill","rgba(10,24,46,0.55)"),b.setAttribute("rx","4"),m.appendChild(b);let v=[6,12,18,24];for(let f of v){let x=r-f*3600,A=c(x),y=document.createElementNS(p,"line");y.setAttribute("x1",A),y.setAttribute("y1",Se),y.setAttribute("x2",A),y.setAttribute("y2",qe-Pe),y.setAttribute("stroke","rgba(120,168,255,.12)"),y.setAttribute("stroke-width","1"),m.appendChild(y)}for(let f=0;f<K;f++){let x=Se+f*(_e+Ke),A=document.createElementNS(p,"rect");A.setAttribute("x",ze),A.setAttribute("y",x),A.setAttribute("width",i),A.setAttribute("height",_e),A.setAttribute("fill",f%2===0?"rgba(83,168,255,0.03)":"rgba(83,168,255,0.00)"),m.appendChild(A);let y=document.createElementNS(p,"text");y.setAttribute("x",ze-4),y.setAttribute("y",x+_e/2+1),y.setAttribute("text-anchor","end"),y.setAttribute("dominant-baseline","middle"),y.setAttribute("fill","rgba(191,211,245,.65)"),y.setAttribute("font-size","9.5"),y.setAttribute("font-family","Montserrat, sans-serif"),y.setAttribute("font-weight","600"),y.textContent="Z"+(f+1),m.appendChild(y);let R=o.filter(q=>q[0]>=s).map(q=>({t:q[0],state:q[f+1]}));if(R.length===0)continue;let Z=R[0].t,N=R[0].state,T=(q,L,M)=>{if(M===255)return;let P=ne[M]||ne[255];if(P.color==="transparent")return;let I=c(q),$=c(L),U=Math.max(1,$-I),j=document.createElementNS(p,"rect");j.setAttribute("x",I),j.setAttribute("y",x+1),j.setAttribute("width",U),j.setAttribute("height",_e-2),j.setAttribute("fill",P.color),j.setAttribute("rx","2"),j.setAttribute("opacity","0.88"),m.appendChild(j)};for(let q=1;q<R.length;q++){let L=R[q];L.state!==N&&(T(Z,L.t,N),Z=L.t,N=L.state)}T(Z,r,N)}let w=qe-Pe+14,d=[{label:"24h",hoursAgo:24},{label:"18h",hoursAgo:18},{label:"12h",hoursAgo:12},{label:"6h",hoursAgo:6},{label:"now",hoursAgo:0}];for(let f of d){let x=r-f.hoursAgo*3600,A=c(x),y=document.createElementNS(p,"text");y.setAttribute("x",A),y.setAttribute("y",w),y.setAttribute("text-anchor",f.hoursAgo===0?"end":"middle"),y.setAttribute("fill","rgba(191,211,245,.45)"),y.setAttribute("font-size","9"),y.setAttribute("font-family","Montserrat, sans-serif"),y.textContent=f.label,m.appendChild(y)}return m}function Ar(e){e.innerHTML="";let t=[{code:5,...ne[5]},{code:6,...ne[6]},{code:0,...ne[0]},{code:1,...ne[1]},{code:7,...ne[7]},{code:2,...ne[2]}];for(let o of t){let r=document.createElement("div");r.className="tl-legend-item",r.innerHTML='<span class="tl-legend-dot" style="background:'+o.color+'"></span>'+o.label,e.appendChild(r)}}var Oa=_({tag:"zone-state-timeline",render:Er,onMount(e,t){let o=t.querySelector(".tl-body"),r=t.querySelector(".timeline-legend");Ar(r);function s(){let a=E("zoneStateHistory"),i=(()=>{let p=E&&E("zoneStateHistory");return p&&p.uptime_s||Number(Date.now()/1e3)|0})();if(o.innerHTML="",!a||!a.entries||a.entries.length===0){let p=document.createElement("div");p.className="timeline-empty",p.textContent="No history yet \u2014 data accumulates every 5 minutes.",o.appendChild(p);return}let c=Cr(a,i);c&&o.appendChild(c)}F("zoneStateHistory",s),F("zoneNames",s),s()}});var Lr=`
+`;function lr(e,t){if(!e||!e.entries||e.entries.length===0)return null;let r=e.entries,o=e.uptime_s||t||0,i=o-Kt,a=1e3,s=a-ge;function l(h){let b=(h-i)/Kt;return ge+Math.max(0,Math.min(1,b))*s}let m="http://www.w3.org/2000/svg",u=document.createElementNS(m,"svg");u.setAttribute("viewBox","0 0 "+a+" "+Ve),u.classList.add("timeline-svg");let v=document.createElementNS(m,"rect");v.setAttribute("x",ge),v.setAttribute("y",Ee),v.setAttribute("width",s),v.setAttribute("height",Ve-Ee-Ge),v.setAttribute("fill","rgba(10,24,46,0.55)"),v.setAttribute("rx","4"),u.appendChild(v);let w=[6,12,18,24];for(let h of w){let b=o-h*3600,c=l(b),d=document.createElementNS(m,"line");d.setAttribute("x1",c),d.setAttribute("y1",Ee),d.setAttribute("x2",c),d.setAttribute("y2",Ve-Ge),d.setAttribute("stroke","rgba(120,168,255,.12)"),d.setAttribute("stroke-width","1"),u.appendChild(d)}for(let h=0;h<ee;h++){let b=Ee+h*(ke+gt),c=document.createElementNS(m,"rect");c.setAttribute("x",ge),c.setAttribute("y",b),c.setAttribute("width",s),c.setAttribute("height",ke),c.setAttribute("fill",h%2===0?"rgba(83,168,255,0.03)":"rgba(83,168,255,0.00)"),u.appendChild(c);let d=document.createElementNS(m,"text");d.setAttribute("x",ge-4),d.setAttribute("y",b+ke/2+1),d.setAttribute("text-anchor","end"),d.setAttribute("dominant-baseline","middle"),d.setAttribute("fill","rgba(191,211,245,.65)"),d.setAttribute("font-size","9.5"),d.setAttribute("font-family","Montserrat, sans-serif"),d.setAttribute("font-weight","600"),d.textContent="Z"+(h+1),u.appendChild(d);let x=r.filter(P=>P[0]>=i).map(P=>({t:P[0],state:P[h+1]}));if(x.length===0)continue;let T=x[0].t,O=x[0].state,Z=(P,C,k)=>{if(k===255)return;let R=pe[k]||pe[255];if(R.color==="transparent")return;let H=l(P),G=l(C),U=Math.max(1,G-H),B=document.createElementNS(m,"rect");B.setAttribute("x",H),B.setAttribute("y",b+1),B.setAttribute("width",U),B.setAttribute("height",ke-2),B.setAttribute("fill",R.color),B.setAttribute("rx","2"),B.setAttribute("opacity","0.88"),u.appendChild(B)};for(let P=1;P<x.length;P++){let C=x[P];C.state!==O&&(Z(T,C.t,O),T=C.t,O=C.state)}Z(T,o,O)}{let h=document.createElementNS(m,"rect");h.setAttribute("x",ge),h.setAttribute("y",mt),h.setAttribute("width",s),h.setAttribute("height",$e),h.setAttribute("fill","rgba(176,123,209,0.08)"),h.setAttribute("rx","2"),u.appendChild(h);let b=document.createElementNS(m,"text");b.setAttribute("x",ge-4),b.setAttribute("y",mt+$e/2+1),b.setAttribute("text-anchor","end"),b.setAttribute("dominant-baseline","middle"),b.setAttribute("fill","rgba(191,211,245,.65)"),b.setAttribute("font-size","8.5"),b.setAttribute("font-family","Montserrat, sans-serif"),b.setAttribute("font-weight","600"),b.textContent="Absorb",u.appendChild(b);let c=r.filter(d=>d[0]>=i).map(d=>({t:d[0],on:d.length>eo?d[eo]:0}));if(c.length){let d=(O,Z)=>{let P=l(O),C=Math.max(1,l(Z)-P),k=document.createElementNS(m,"rect");k.setAttribute("x",P),k.setAttribute("y",mt),k.setAttribute("width",C),k.setAttribute("height",$e),k.setAttribute("fill",oo),k.setAttribute("rx","2"),k.setAttribute("opacity","0.9"),u.appendChild(k)},x=c[0].t,T=c[0].on;for(let O=1;O<c.length;O++)c[O].on!==T&&(T&&d(x,c[O].t),x=c[O].t,T=c[O].on);T&&d(x,o)}}let y=Ve-Ge+14,S=[{label:"24h",hoursAgo:24},{label:"18h",hoursAgo:18},{label:"12h",hoursAgo:12},{label:"6h",hoursAgo:6},{label:"now",hoursAgo:0}];for(let h of S){let b=o-h.hoursAgo*3600,c=l(b),d=document.createElementNS(m,"text");d.setAttribute("x",c),d.setAttribute("y",y),d.setAttribute("text-anchor",h.hoursAgo===0?"end":"middle"),d.setAttribute("fill","rgba(191,211,245,.45)"),d.setAttribute("font-size","9"),d.setAttribute("font-family","Montserrat, sans-serif"),d.textContent=h.label,u.appendChild(d)}return u}function dr(e){e.innerHTML="";let t=[{code:5,...pe[5]},{code:6,...pe[6]},{code:0,...pe[0]},{code:1,...pe[1]},{code:7,...pe[7]},{code:2,...pe[2]}];for(let o of t){let i=document.createElement("div");i.className="tl-legend-item",i.innerHTML='<span class="tl-legend-dot" style="background:'+o.color+'"></span>'+o.label,e.appendChild(i)}let r=document.createElement("div");r.className="tl-legend-item",r.innerHTML='<span class="tl-legend-dot" style="background:'+oo+'"></span>Preheat absorption',e.appendChild(r)}var Tn=E({tag:"zone-state-timeline",render:ir,onMount(e,t){let r=t.querySelector(".tl-body"),o=t.querySelector(".timeline-legend");dr(o);function i(){let a=M("zoneStateHistory"),s=(()=>{let m=M&&M("zoneStateHistory");return m&&m.uptime_s||Number(Date.now()/1e3)|0})();if(r.innerHTML="",!a||!a.entries||a.entries.length===0){let m=document.createElement("div");m.className="timeline-empty",m.textContent="No history yet \u2014 data accumulates every 5 minutes.",r.appendChild(m);return}let l=lr(a,s);l&&r.appendChild(l)}L("zoneStateHistory",i),L("zoneNames",i),i()}});var cr=`
 .zone-grid {
     display: grid;
     grid-template-columns: repeat(6, 1fr);
@@ -535,7 +779,7 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
 @media (max-width: 560px) {
     .zone-grid { grid-template-columns: repeat(2, 1fr); }
 }
-`;S("zone-grid",Lr);var Fr=()=>'<div class="zone-grid"></div>',Ha=_({tag:"zone-grid",render:Fr,onMount(e,t){for(let o=1;o<=6;o++)t.appendChild(O("zone-card",{zone:o}))}});var Mr=`
+`;z("zone-grid",cr);var pr=()=>'<div class="zone-grid"></div>',Rn=E({tag:"zone-grid",render:pr,onMount(e,t){for(let r=1;r<=6;r++)t.appendChild(q("zone-card",{zone:r}))}});var ur=`
 .zone-card {
 	display: grid;
 	grid-template-rows: auto auto auto;
@@ -612,13 +856,13 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
-`;S("zone-card",Mr);var Nr=e=>`
+`;z("zone-card",ur);var mr=e=>`
 	<div class="zone-card" data-zone="${e.zone}">
 		<div class="zc-state-row"><span class="zc-dot"></span><span class="zc-state-label">---</span></div>
-		<div class="zc-zone-name">${ce(e.zone)}</div>
-		<div class="zc-friendly">${oe(e.zone)||"---"}</div>
+		<div class="zc-zone-name">${re(e.zone)}</div>
+		<div class="zc-friendly">${de(e.zone)||"---"}</div>
 	</div>
-`,Va=_({tag:"zone-card",state:e=>({zone:e.zone}),render:Nr,onMount(e,t){let o=e.zone,r=l.temp(o),s=l.state(o),a=l.enabled(o),i=t.querySelector(".zc-state-label"),c=t.querySelector(".zc-dot"),p=t.querySelector(".zc-zone-name"),m=t.querySelector(".zc-friendly");function b(){let v=H(a),w=String(z(s)||"").toUpperCase()||"OFF",d=E("selectedZone")===o,f=oe(o);p.textContent=ce(o),m.textContent=f||W(h(r)),i.textContent=v?w:"OFF";let x=v?w:"OFF",A=x==="HEATING"?"#f2c77b":x==="IDLE"?"#79d17e":x==="FAULT"?"#ff7676":"#7D8BA7",y=x==="HEATING"?"#EEA111":x==="IDLE"?"#79d17e":x==="FAULT"?"#ff6464":"rgba(120,168,255,.35)";i.style.color=A,c.style.background=y,c.style.boxShadow=x==="HEATING"?"0 0 5px rgba(238,161,17,.6)":x==="FAULT"?"0 0 5px rgba(255,100,100,.6)":"",t.classList.toggle("active",d),t.classList.toggle("disabled",!v),t.classList.toggle("zs-heating",v&&w==="HEATING"),t.classList.toggle("zs-idle",v&&w!=="HEATING"),t.classList.toggle("zs-off",!v)}t.addEventListener("click",()=>{st(o)}),g(r,b),g(s,b),g(a,b),F("selectedZone",b),F("zoneNames",b),b()}});var Tr=`
+`,Vn=E({tag:"zone-card",state:e=>({zone:e.zone}),render:mr,onMount(e,t){let r=e.zone,o=p.temp(r),i=p.state(r),a=p.enabled(r),s=t.querySelector(".zc-state-label"),l=t.querySelector(".zc-dot"),m=t.querySelector(".zc-zone-name"),u=t.querySelector(".zc-friendly");function v(){let w=I(a),y=String(A(i)||"").toUpperCase()||"OFF",S=M("selectedZone")===r,h=de(r);m.textContent=re(r),u.textContent=h||Y(_(o)),s.textContent=w?y:"OFF";let b=w?y:"OFF",c=b==="HEATING"?"#f2c77b":b==="IDLE"?"#79d17e":b==="FAULT"?"#ff7676":"#7D8BA7",d=b==="HEATING"?"#EEA111":b==="IDLE"?"#79d17e":b==="FAULT"?"#ff6464":"rgba(120,168,255,.35)";s.style.color=c,l.style.background=d,l.style.boxShadow=b==="HEATING"?"0 0 5px rgba(238,161,17,.6)":b==="FAULT"?"0 0 5px rgba(255,100,100,.6)":"",t.classList.toggle("active",S),t.classList.toggle("disabled",!w),t.classList.toggle("zs-heating",w&&y==="HEATING"),t.classList.toggle("zs-idle",w&&y!=="HEATING"),t.classList.toggle("zs-off",!w)}t.addEventListener("click",()=>{wt(r)}),f(o,v),f(i,v),f(a,v),L("selectedZone",v),L("zoneNames",v),v()}});var gr=`
 .zone-detail {
   background: linear-gradient(180deg, rgba(20,44,79,.30), rgba(13,31,58,.24));
   border: 1px solid rgba(120,168,255,.30);
@@ -759,78 +1003,69 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
   color: var(--text);
 }
 
-.zone-detail .zd-toggle-row.is-on {
-  border-color: rgba(100,255,100,.4);
-  background: rgba(45,110,45,.2);
-}
+/* Toggle uses the canonical .ui-toggle from the shared ui-kit. */
 
-.zone-detail .sw {
-  width: 48px;
-  height: 26px;
-  border-radius: 999px;
-  background: var(--control-bg-hover);
-  position: relative;
-  cursor: pointer;
-  flex-shrink: 0;
-  border: 1px solid var(--control-border);
-  transition: background .2s ease, border-color .2s ease;
-}
-
-.zone-detail .sw::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  background: #dbe8ff;
-  border-radius: 999px;
-  transition: transform .2s ease;
-}
-
-.zone-detail .sw.on {
-  background: rgba(121, 209, 126, 0.25);
-  border-color: rgba(121, 209, 126, 0.5);
-}
-
-.zone-detail .sw.on::after {
-  transform: translateX(22px);
-  background: #0f213c;
-}
-
+/* Temperatures on a single row: small uppercase label above a large value. */
 .zone-detail .zd-stats {
   display: flex;
-  flex-direction: column;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 12px 28px;
 }
 
 .zone-detail .zd-stat {
-  padding: 2px 0 6px;
-  border-bottom: 1px solid rgba(120,168,255,.22);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .zone-detail .zd-stat-label {
-  font-size: .62rem;
+  font-size: .64rem;
   color: var(--text-secondary);
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .5px;
+  letter-spacing: 1px;
 }
 
 .zone-detail .zd-stat-value {
   font-family: var(--mono);
-  font-size: 1.3rem;
+  font-size: 1.5rem;
   font-weight: 800;
   color: var(--text-strong);
   line-height: 1;
 }
-`;S("zone-detail",Tr);var Dr=e=>`
+
+.zone-detail .zd-motor {
+  border-top: 1px solid var(--panel-border);
+  padding-top: 12px;
+  margin-top: 2px;
+}
+.zone-detail .zd-motor-title {
+  font-size: .64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .7px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+.zone-detail .zd-motor .zd-stats { margin-top: 2px; }
+.zone-detail .zd-fault {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: rgba(255,118,118,.1);
+  border: 1px solid rgba(255,100,100,.25);
+  font-size: .76rem;
+}
+.zone-detail .zd-fault-label { color: var(--text-secondary); }
+.zone-detail .zd-fault-val { color: var(--state-danger); font-weight: 700; font-family: var(--mono); }
+`;z("zone-detail",gr);var fr=e=>`
   <div class="zone-detail" data-zone="${e.zone}">
     <div class="zd-head">
-      <div class="zd-title">${ce(e.zone)}</div>
+      <div class="zd-title">${re(e.zone)}</div>
       <span class="zd-badge">---</span>
     </div>
     <div class="zd-body">
@@ -842,84 +1077,50 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
           <button class="spb btn-inc">+</button>
         </div>
       </div>
-      <div class="zd-toggle-row"><span class="zd-toggle-label">Zone Enabled</span><div class="sw btn-toggle"></div></div>
+      <div class="zd-toggle-row"><span class="zd-toggle-label">Zone Enabled</span><div class="ui-toggle btn-toggle"></div></div>
       <div class="zd-stats">
         <div class="zd-stat"><div class="zd-stat-label">Current Temp</div><div class="zd-stat-value zd-temp">---</div></div>
         <div class="zd-stat"><div class="zd-stat-label">Return Temp</div><div class="zd-stat-value zd-ret">---</div></div>
         <div class="zd-stat"><div class="zd-stat-label">Flow %</div><div class="zd-stat-value zd-valve">---</div></div>
       </div>
+      <div class="zd-motor">
+        <div class="zd-motor-title">Motor learned parameters</div>
+        <div class="zd-stats">
+          <div class="zd-stat"><div class="zd-stat-label">Open Ripples</div><div class="zd-stat-value zd-orip">---</div></div>
+          <div class="zd-stat"><div class="zd-stat-label">Close Ripples</div><div class="zd-stat-value zd-crip">---</div></div>
+          <div class="zd-stat"><div class="zd-stat-label">Open Factor</div><div class="zd-stat-value zd-ofac">---</div></div>
+          <div class="zd-stat"><div class="zd-stat-label">Close Factor</div><div class="zd-stat-value zd-cfac">---</div></div>
+          <div class="zd-stat"><div class="zd-stat-label">Preheat Adv.</div><div class="zd-stat-value zd-ph">---</div></div>
+        </div>
+        <div class="zd-fault" hidden><span class="zd-fault-label">Last fault</span><span class="zd-fault-val">NONE</span></div>
+      </div>
     </div>
   </div>
-`,en=_({tag:"zone-detail",state:e=>({zone:e.zone,temp:"---",setpoint:"---",valve:"---",state:"---"}),render:Dr,methods:{update(e,t){let o=E("selectedZone"),r=String(z(l.state(o))||"").toUpperCase(),s=H(l.enabled(o));this.zone=o,e.dataset.zone=String(o),t.title.textContent=ce(o),t.setpoint.textContent=W(h(l.setpoint(o))),t.temp.textContent=W(h(l.temp(o))),t.ret.textContent=W(h("sensor-manifold_return_temperature")),t.valve.textContent=ue(h(l.valve(o)));let a=t.badge;a.textContent=s?r||"IDLE":"DISABLED";let i=s?r==="HEATING"?"badge-heating":r==="IDLE"?"badge-idle":r==="FAULT"?"badge-fault":"":"badge-disabled";a.className="zd-badge"+(i?" "+i:""),t.toggleRow.classList.toggle("is-on",s),t.toggle.classList.toggle("on",s)},incSetpoint(){let e=this.zone,t=h(l.setpoint(e))||20;je(e,Number((t+.5).toFixed(1)))},decSetpoint(){let e=this.zone,t=h(l.setpoint(e))||20;je(e,Number((t-.5).toFixed(1)))},toggleEnabled(){let e=this.zone,t=H(l.enabled(e));bt(e,!t)}},onMount(e,t){let o={title:t.querySelector(".zd-title"),setpoint:t.querySelector(".zd-setpoint"),temp:t.querySelector(".zd-temp"),ret:t.querySelector(".zd-ret"),valve:t.querySelector(".zd-valve"),badge:t.querySelector(".zd-badge"),toggleRow:t.querySelector(".zd-toggle-row"),toggle:t.querySelector(".btn-toggle"),inc:t.querySelector(".btn-inc"),dec:t.querySelector(".btn-dec")};o.inc.onclick=()=>e.incSetpoint(),o.dec.onclick=()=>e.decSetpoint(),o.toggle.onclick=()=>e.toggleEnabled();let r=()=>e.update(t,o),s=a=>{let i=E("selectedZone");(a===l.temp(i)||a===l.setpoint(i)||a===l.valve(i)||a===l.state(i)||a===l.enabled(i))&&r()};for(let a=1;a<=6;a++)g(l.temp(a),s),g(l.setpoint(a),s),g(l.valve(a),s),g(l.state(a),s),g(l.enabled(a),s);g("sensor-manifold_return_temperature",r),F("selectedZone",r),r()}});var Or=`
-.zone-sensor-card {
-  background: var(--panel-bg-vibrant);
-  border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  padding: 20px;
-  box-shadow: var(--panel-shadow);
-  height: 100%;
-  box-sizing: border-box;
-}
+`;function ao(e){return e!=null?Number(e).toFixed(2)+"x":"---"}function no(e){return e!=null?Number(e).toFixed(0):"---"}function br(e){return e!=null?Number(e).toFixed(2)+"C":"---"}var Kn=E({tag:"zone-detail",state:e=>({zone:e.zone,temp:"---",setpoint:"---",valve:"---",state:"---"}),render:fr,methods:{update(e,t){let r=M("selectedZone"),o=String(A(p.state(r))||"").toUpperCase(),i=I(p.enabled(r));this.zone=r,e.dataset.zone=String(r),t.title.textContent=re(r),t.setpoint.textContent=Y(_(p.setpoint(r))),t.temp.textContent=Y(_(p.temp(r))),t.ret.textContent=Y(_("sensor-manifold_return_temperature")),t.valve.textContent=We(_(p.valve(r)));let a=t.badge;a.textContent=i?o||"IDLE":"DISABLED";let s=i?o==="HEATING"?"badge-heating":o==="IDLE"?"badge-idle":o==="FAULT"?"badge-fault":"":"badge-disabled";a.className="zd-badge"+(s?" "+s:""),t.toggleRow.classList.toggle("is-on",i),t.toggle.classList.toggle("on",i),t.orip.textContent=no(_(p.motorOpenRipples(r))),t.crip.textContent=no(_(p.motorCloseRipples(r))),t.ofac.textContent=ao(_(p.motorOpenFactor(r))),t.cfac.textContent=ao(_(p.motorCloseFactor(r))),t.ph.textContent=br(_(p.preheatAdvance(r)));let l=String(A(p.motorLastFault(r))||"").toUpperCase(),m=l&&l!=="NONE"&&l!=="OK";t.fault.hidden=!m,m&&(t.faultVal.textContent=l)},incSetpoint(){let e=this.zone,t=_(p.setpoint(e))||20;rt(e,Number((t+.5).toFixed(1)))},decSetpoint(){let e=this.zone,t=_(p.setpoint(e))||20;rt(e,Number((t-.5).toFixed(1)))},toggleEnabled(){let e=this.zone,t=I(p.enabled(e));Tt(e,!t)}},onMount(e,t){let r={title:t.querySelector(".zd-title"),setpoint:t.querySelector(".zd-setpoint"),temp:t.querySelector(".zd-temp"),ret:t.querySelector(".zd-ret"),valve:t.querySelector(".zd-valve"),badge:t.querySelector(".zd-badge"),toggleRow:t.querySelector(".zd-toggle-row"),toggle:t.querySelector(".btn-toggle"),inc:t.querySelector(".btn-inc"),dec:t.querySelector(".btn-dec"),orip:t.querySelector(".zd-orip"),crip:t.querySelector(".zd-crip"),ofac:t.querySelector(".zd-ofac"),cfac:t.querySelector(".zd-cfac"),ph:t.querySelector(".zd-ph"),fault:t.querySelector(".zd-fault"),faultVal:t.querySelector(".zd-fault-val")};r.inc.onclick=()=>e.incSetpoint(),r.dec.onclick=()=>e.decSetpoint(),r.toggle.onclick=()=>e.toggleEnabled();let o=()=>e.update(t,r),i=a=>{let s=M("selectedZone");(a===p.temp(s)||a===p.setpoint(s)||a===p.valve(s)||a===p.state(s)||a===p.enabled(s))&&o()};for(let a=1;a<=6;a++)f(p.temp(a),i),f(p.setpoint(a),i),f(p.valve(a),i),f(p.state(a),i),f(p.enabled(a),i),f(p.motorOpenRipples(a),o),f(p.motorCloseRipples(a),o),f(p.motorOpenFactor(a),o),f(p.motorCloseFactor(a),o),f(p.preheatAdvance(a),o),f(p.motorLastFault(a),o);f("sensor-manifold_return_temperature",o),L("selectedZone",o),o()}});var vr=`
+.zone-sensor-card { height: 100%; }
 
-.zone-sensor-card .card-title {
-  font-size: .84rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 1.1px;
-  color: var(--accent);
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--panel-border);
-}
-
-.zone-sensor-card .cfg-row {
-  display: grid;
-  grid-template-columns: 1fr;
+.zone-sensor-card .ble-row {
+  display: flex;
   gap: 6px;
-  margin-bottom: 10px;
+  align-items: center;
+  margin-top: 8px;
 }
-
-.zone-sensor-card .lbl {
-  color: var(--text-secondary);
-  font-size: .78rem;
-  font-weight: 700;
-  letter-spacing: .45px;
-  text-transform: uppercase;
-}
-
-.zone-sensor-card .lbl-help {
-  margin-top: -2px;
-  color: var(--text-faint);
-  font-size: .74rem;
-  font-style: italic;
-}
-
-.zone-sensor-card .sel,
-.zone-sensor-card .txt {
-  width: 100%;
+.zone-sensor-card .ble-row .ble-input {
+  flex: 1;
+  min-width: 0;
   border: 1px solid var(--control-border);
   background: var(--control-bg);
   color: var(--text);
   border-radius: 10px;
   padding: 9px 10px;
   font-size: .88rem;
+  font-family: var(--mono);
   transition: border-color .15s ease;
 }
-
-.zone-sensor-card .sel:focus,
-.zone-sensor-card .txt:focus {
+.zone-sensor-card .ble-row .ble-input:focus {
   outline: 2px solid rgba(83,168,255,.6);
   outline-offset: 1px;
   border-color: rgba(83,168,255,.55);
-}
-
-.zone-sensor-card .ble-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-.zone-sensor-card .ble-row .txt {
-  flex: 1;
 }
 .zone-sensor-card .btn-scan {
   flex-shrink: 0;
@@ -987,132 +1188,49 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
   color: var(--text-secondary);
   font-style: italic;
 }
-`;S("zone-sensor-card",Or);var qr=()=>{let e="<option>None</option>";for(let t=1;t<=8;t++)e+="<option>Probe "+t+"</option>";return`
-    <div class="zone-sensor-card">
-      <div class="card-title">Temperature Sensors / Connectivity</div>
-      <div class="cfg-row">
-        <span class="lbl">Zone Return Temperature Sensor</span>
-        <select class="sel zs-probe">${e}</select>
+`;z("zone-sensor-card",vr);var hr=()=>{let e="<option>None</option>";for(let t=1;t<=8;t++)e+="<option>Probe "+t+"</option>";return`
+    <div class="ui-card zone-sensor-card">
+      <div class="ui-card-title">Temperature Sensors / Connectivity</div>
+      <div class="ui-row">
+        <span class="ui-label">Zone Return Temperature Sensor</span>
+        <span class="ui-field"><select class="ui-select zs-probe">${e}</select></span>
       </div>
-      <div class="cfg-row">
-        <span class="lbl">Temperature Source</span>
-        <select class="sel zs-source"></select>
+      <div class="ui-row">
+        <span class="ui-label">Temperature Source</span>
+        <span class="ui-field"><select class="ui-select zs-source"></select></span>
       </div>
-      <div class="cfg-row zs-row-ble">
-        <span class="lbl">BLE Sensor</span>
-        <span class="lbl-help">Pair a nearby BTHome sensor (Shelly BLU H&T) or enter MAC manually.</span>
+      <div class="zs-row-ble">
+        <div class="ui-section">BLE Sensor</div>
+        <div class="ui-note">Pair a nearby BTHome sensor (Shelly BLU H&T) or enter MAC manually.</div>
         <div class="ble-row">
-          <input class="txt zs-ble" maxlength="17" placeholder="AA:BB:CC:DD:EE:FF">
+          <input class="ble-input zs-ble" maxlength="17" placeholder="AA:BB:CC:DD:EE:FF">
           <button class="btn-scan zs-scan">Scan</button>
         </div>
         <div class="ble-scan-list zs-scan-list" style="display:none"></div>
       </div>
-      <div class="cfg-row">
-        <span class="lbl">Sync To Zone</span>
-        <span class="lbl-help">Mirror target and control state from another zone.</span>
-        <select class="sel zs-sync"></select>
+      <div class="ui-divider"></div>
+      <div class="ui-row">
+        <span class="ui-label">Sync To Zone <span class="ui-sublabel">mirror target &amp; control from another zone</span></span>
+        <span class="ui-field"><select class="ui-select zs-sync"></select></span>
       </div>
     </div>
-  `};function Pr(e,t){let o=e.value,r="<option>None</option>";for(let s=1;s<=6;s++)s!==t&&(r+="<option>Zone "+s+"</option>");e.innerHTML=r,e.value=o||"None"}function Rr(e){return e==="BLE"||e==="BLE Sensor"?"BLE Sensor":"Local Probe"}function Hr(e){return e==="BLE Sensor"?"BLE":"Local Probe"}function Ir(e,t){let o="<option>Local Probe</option><option>BLE Sensor</option>";e.innerHTML!==o&&(e.innerHTML=o),e.value=t}var ln=_({tag:"zone-sensor-card",render:qr,onMount(e,t){let o=t.querySelector(".zs-probe"),r=t.querySelector(".zs-source"),s=t.querySelector(".zs-ble"),a=t.querySelector(".zs-sync"),i=t.querySelector(".zs-row-ble"),c=t.querySelector(".zs-scan"),p=t.querySelector(".zs-scan-list"),m=0;function b(){return E("selectedZone")}function v(){let d=b();m!==d&&(Pr(a,d),m=d,p.style.display="none");let f=z(l.probe(d)),x=String(z(l.tempSource(d))||""),A=Rr(x),y=z(l.syncTo(d))||"None",R=z(l.ble(d))||"";f&&(o.value=f),Ir(r,A),a.value=y,document.activeElement!==s&&(s.value=R),i.style.display=A==="BLE Sensor"?"":"none"}function w(d){let f=b();(d===l.probe(f)||d===l.tempSource(f)||d===l.syncTo(f)||d===l.ble(f))&&v()}c.addEventListener("click",()=>{if(c.disabled)return;c.disabled=!0,c.textContent="\u2026",p.style.display="",p.innerHTML='<div class="scan-msg">Scanning\u2026</div>';let d=new AbortController,f=setTimeout(()=>d.abort(),8e3);fetch("/api/hv6/v1/ble-scan",{cache:"no-store",signal:d.signal}).then(x=>{if(!x.ok)throw new Error("HTTP "+x.status);return x.json()}).then(x=>{if(clearTimeout(f),c.disabled=!1,c.textContent="Scan",!x.ok||!x.sensors||x.sensors.length===0){p.innerHTML='<div class="scan-msg">No BTHome sensors found nearby. Make sure sensors have fresh batteries and are within range.</div>';return}let A=b(),y=(z(l.ble(A))||"").toUpperCase(),R=N=>String(N).replace(/[&<>"']/g,T=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[T]),Z="";for(let N of x.sensors){let T=N.mac.toUpperCase(),q=N.name?R(N.name):"",L=N.temp_c!=null?N.temp_c.toFixed(1)+"\xB0C":"\u2014",M=N.rssi!=null?N.rssi+" dBm":"",P=N.age_s<60?N.age_s+"s ago":Math.round(N.age_s/60)+"m ago",I="";T===y?I='<span class="ble-badge">assigned to this zone</span>':N.zone>0&&(I='<span class="ble-badge">zone '+N.zone+"</span>");let $=q?`<div class="ble-mac">${q}</div><div class="ble-meta">${T}</div>`:`<div class="ble-mac">${T}</div>`;Z+=`<div class="ble-scan-item">
+  `};function xr(e,t){let r=e.value,o="<option>None</option>";for(let i=1;i<=6;i++)i!==t&&(o+="<option>Zone "+i+"</option>");e.innerHTML=o,e.value=r||"None"}function yr(e){return e==="BLE"||e==="BLE Sensor"?"BLE Sensor":"Local Probe"}function wr(e){return e==="BLE Sensor"?"BLE":"Local Probe"}function _r(e,t){let r="<option>Local Probe</option><option>BLE Sensor</option>";e.innerHTML!==r&&(e.innerHTML=r),e.value=t}var is=E({tag:"zone-sensor-card",render:hr,onMount(e,t){let r=t.querySelector(".zs-probe"),o=t.querySelector(".zs-source"),i=t.querySelector(".zs-ble"),a=t.querySelector(".zs-sync"),s=t.querySelector(".zs-row-ble"),l=t.querySelector(".zs-scan"),m=t.querySelector(".zs-scan-list"),u=0;function v(){return M("selectedZone")}function w(){s.style.display=o.value==="BLE Sensor"?"":"none"}let y=X(t);_r(o,"Local Probe"),y.select(r,{read:()=>A(p.probe(v()))||void 0,commit:c=>xe(v(),"zone_probe",c)}),y.select(o,{read:()=>yr(String(A(p.tempSource(v()))||"")),commit:c=>xe(v(),"zone_temp_source",wr(c))}),y.select(a,{read:()=>A(p.syncTo(v()))||"None",commit:c=>xe(v(),"zone_sync_to",c)});let S=y.text(i,{read:()=>A(p.ble(v()))||"",commit:c=>Ie(v(),"zone_ble_mac",c)});o.addEventListener("change",w);function h(){let c=v();u!==c?(xr(a,c),u=c,m.style.display="none",y.discard()):y.refresh(),w()}function b(c){let d=v();(c===p.probe(d)||c===p.tempSource(d)||c===p.syncTo(d)||c===p.ble(d))&&(y.refresh(),w())}l.addEventListener("click",()=>{if(l.disabled)return;l.disabled=!0,l.textContent="\u2026",m.style.display="",m.innerHTML='<div class="scan-msg">Scanning\u2026</div>';let c=new AbortController,d=setTimeout(()=>c.abort(),8e3);fetch("/api/hv6/v1/ble-scan",{cache:"no-store",signal:c.signal}).then(x=>{if(!x.ok)throw new Error("HTTP "+x.status);return x.json()}).then(x=>{if(clearTimeout(d),l.disabled=!1,l.textContent="Scan",!x.ok||!x.sensors||x.sensors.length===0){m.innerHTML='<div class="scan-msg">No BTHome sensors found nearby. Make sure sensors have fresh batteries and are within range.</div>';return}let T=v(),O=(A(p.ble(T))||"").toUpperCase(),Z=C=>String(C).replace(/[&<>"']/g,k=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[k]),P="";for(let C of x.sensors){let k=C.mac.toUpperCase(),R=C.name?Z(C.name):"",H=C.temp_c!=null?C.temp_c.toFixed(1)+"\xB0C":"\u2014",G=C.rssi!=null?C.rssi+" dBm":"",U=C.age_s<60?C.age_s+"s ago":Math.round(C.age_s/60)+"m ago",B="";k===O?B='<span class="ble-badge">assigned to this zone</span>':C.zone>0&&(B='<span class="ble-badge">zone '+C.zone+"</span>");let le=R?`<div class="ble-mac">${R}</div><div class="ble-meta">${k}</div>`:`<div class="ble-mac">${k}</div>`;P+=`<div class="ble-scan-item">
               <div>
-                ${$}
-                <div class="ble-meta">${L} &nbsp;${M} &nbsp;${P}</div>
-                ${I}
+                ${le}
+                <div class="ble-meta">${H} &nbsp;${G} &nbsp;${U}</div>
+                ${B}
               </div>
-              <button class="btn-assign" data-mac="${T}">Assign</button>
-            </div>`}p.innerHTML=Z,p.querySelectorAll(".btn-assign").forEach(N=>{N.addEventListener("click",()=>{let T=N.dataset.mac;s.value=T,he(A,"zone_ble_mac",T),p.style.display="none"})})}).catch(x=>{clearTimeout(f),c.disabled=!1,c.textContent="Scan";let A=x&&x.name==="AbortError"?"Scan timed out \u2014 device busy or BLE not responding. Try again.":"Scan failed. Check device connectivity.";p.innerHTML='<div class="scan-msg">'+A+"</div>"})}),o.addEventListener("change",()=>{ge(b(),"zone_probe",o.value)}),r.addEventListener("change",()=>{ge(b(),"zone_temp_source",Hr(r.value))}),a.addEventListener("change",()=>{ge(b(),"zone_sync_to",a.value)}),s.addEventListener("change",()=>{he(b(),"zone_ble_mac",s.value)}),F("selectedZone",v);for(let d=1;d<=6;d++)g(l.probe(d),w),g(l.tempSource(d),w),g(l.syncTo(d),w),g(l.ble(d),w);v()}});var Zr=`
-.zone-room-card {
-  background: var(--panel-bg-vibrant);
-  border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  padding: 18px;
-  box-shadow: var(--panel-shadow);
-  height: 100%;
-  box-sizing: border-box;
-}
-
-.zone-room-card .card-title {
-  font-size: .84rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 1.1px;
-  color: var(--accent);
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--panel-border);
-}
-
-.zone-room-card .cfg-row {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.zone-room-card .cfg-row.two-col {
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  align-items: start;
-}
-
-.zone-room-card .cfg-row > div:not(.wall-btn-group) {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.zone-room-card .cfg-row.two-col > div {
-  margin-bottom: 0;
-}
-
-@media (max-width: 480px) {
-  .zone-room-card .cfg-row.two-col {
-    grid-template-columns: 1fr;
-  }
-}
-
-.zone-room-card .lbl {
-  color: var(--text-secondary);
-  font-size: .78rem;
-  font-weight: 700;
-  letter-spacing: .45px;
-  text-transform: uppercase;
-  line-height: 1.2;
-}
-
-.zone-room-card .txt,
-.zone-room-card .sel {
-  width: 100%;
-  border: 1px solid var(--control-border);
-  background: var(--control-bg);
-  color: var(--text);
-  border-radius: 10px;
-  padding: 9px 10px;
-  font-size: .88rem;
-  transition: border-color .15s ease;
-}
-
-.zone-room-card .txt:focus,
-.zone-room-card .sel:focus {
-  outline: 2px solid rgba(83,168,255,.6);
-  outline-offset: 1px;
-  border-color: rgba(83,168,255,.55);
-}
+              <button class="btn-assign" data-mac="${k}">Assign</button>
+            </div>`}m.innerHTML=P,m.querySelectorAll(".btn-assign").forEach(C=>{C.addEventListener("click",()=>{i.value=C.dataset.mac,S.markDirty(),m.style.display="none"})})}).catch(x=>{clearTimeout(d),l.disabled=!1,l.textContent="Scan";let T=x&&x.name==="AbortError"?"Scan timed out \u2014 device busy or BLE not responding. Try again.":"Scan failed. Check device connectivity.";m.innerHTML='<div class="scan-msg">'+T+"</div>"})}),L("selectedZone",h);for(let c=1;c<=6;c++)f(p.probe(c),b),f(p.tempSource(c),b),f(p.syncTo(c),b),f(p.ble(c),b);h()}});var zr=[0,.5,.7,.85,1];function Sr(e){return zr[Math.min(e,4)]}var kr=`
+.zone-room-card { height: 100%; }
 
 .zone-room-card .wall-lbl-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: .75rem;
-  color: var(--text-secondary);
-  margin-top: 0;
-  margin-bottom: 8px;
-}
-
-.zone-room-card .wall-lbl-hint::after {
-  content: 'Select all that apply';
+  font-size: .72rem;
+  color: var(--text-faint);
   font-style: italic;
+  margin: 2px 0 8px;
 }
+.zone-room-card .wall-lbl-hint::after { content: 'Select all that apply'; }
 
 .zone-room-card .wall-btn-group {
   display: grid;
@@ -1143,38 +1261,55 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
   color: #fff;
   border-color: var(--accent);
 }
-
-@media (max-width: 680px) {
-  .zone-room-card .wall-btn-group {
-    grid-template-columns: repeat(5, 1fr);
-  }
-}
-`;S("zone-room-card",Zr);var Br=()=>`
-  <div class="zone-room-card">
-    <div class="card-title">Zone Settings</div>
-    <div class="cfg-row"><span class="lbl">Friendly Name</span><input class="txt zr-friendly" maxlength="24" placeholder="e.g. Living Room"></div>
-    <div class="cfg-row two-col">
-      <div><span class="lbl">Zone Area</span><input class="txt zr-area" type="number" min="1" step="0.1" placeholder="m2"></div>
-      <div><span class="lbl">Pipe Spacing C-C</span><input class="txt zr-spacing" type="number" min="50" step="5" placeholder="200"></div>
+`;z("zone-room-card",kr);var Er=()=>`
+  <div class="ui-card zone-room-card">
+    <div class="ui-card-title">Zone Settings</div>
+    <div class="ui-row">
+      <span class="ui-label">Friendly Name</span>
+      <span class="ui-field"><input class="ui-input wide zr-friendly" maxlength="24" placeholder="e.g. Living Room"></span>
     </div>
-    <div class="cfg-row"><span class="lbl">Pipe Type</span>
-      <select class="sel zr-pipe">
+    <div class="ui-row">
+      <span class="ui-label">Zone Area (m\xB2)</span>
+      <span class="ui-field"><input class="ui-input zr-area" type="number" min="1" step="0.1" placeholder="m2"></span>
+    </div>
+    <div class="ui-row">
+      <span class="ui-label">Pipe Spacing C-C (mm)</span>
+      <span class="ui-field"><input class="ui-input zr-spacing" type="number" min="50" step="5" placeholder="200"></span>
+    </div>
+    <div class="ui-row">
+      <span class="ui-label">Pipe Type</span>
+      <span class="ui-field"><select class="ui-select zr-pipe">
         <option>PEX 16mm</option><option>PEX 12mm</option><option>PEX 14mm</option><option>PEX 17mm</option><option>PEX 18mm</option><option>PEX 20mm</option><option>ALUPEX 16mm</option><option>ALUPEX 20mm</option><option>Unknown</option>
-      </select>
+      </select></span>
     </div>
-    <div class="cfg-row">
-      <span class="lbl">Exterior Walls</span>
-      <div class="wall-lbl-hint"></div>
-      <div class="wall-btn-group">
-        <button class="wall-btn" data-wall="None">None</button>
-        <button class="wall-btn" data-wall="N">N</button>
-        <button class="wall-btn" data-wall="S">S</button>
-        <button class="wall-btn" data-wall="E">E</button>
-        <button class="wall-btn" data-wall="W">W</button>
-      </div>
+
+    <div class="ui-section">Exterior Walls</div>
+    <div class="wall-lbl-hint"></div>
+    <div class="wall-btn-group">
+      <button class="wall-btn" data-wall="None">None</button>
+      <button class="wall-btn" data-wall="N">N</button>
+      <button class="wall-btn" data-wall="S">S</button>
+      <button class="wall-btn" data-wall="E">E</button>
+      <button class="wall-btn" data-wall="W">W</button>
     </div>
+
+    <div class="ui-divider"></div>
+    <div class="ui-section">Forecast Preload</div>
+    <div class="ui-row">
+      <span class="ui-label">Wind Exposure</span>
+      <span class="ui-field"><input class="ui-input zr-wind" type="number" min="0" max="1" step="0.05" placeholder="0.5"></span>
+    </div>
+    <div class="ui-row">
+      <span class="ui-label">Solar Gain</span>
+      <span class="ui-field"><input class="ui-input zr-solar" type="number" min="0" max="1" step="0.05" placeholder="0.3"></span>
+    </div>
+    <div class="ui-row">
+      <span class="ui-label">Thermal Lead (h)</span>
+      <span class="ui-field"><input class="ui-input zr-lead" type="number" min="0" max="48" step="1" placeholder="4"></span>
+    </div>
+    <div class="ui-note">Wind exposure (0\u20131) is auto-seeded from the exterior walls above \u2014 edit it for a sheltered or extra-exposed site. Solar (0\u20131) is the passive sun gain that reduces preload; Lead h is how far ahead to start charging the slab before a forecast cold/wind peak.</div>
   </div>
-`,bn=_({tag:"zone-room-card",render:Br,onMount(e,t){let o=t.querySelector(".zr-friendly"),r=t.querySelector(".zr-area"),s=t.querySelector(".zr-spacing"),a=t.querySelector(".zr-pipe"),i=t.querySelectorAll(".wall-btn");function c(){return E("selectedZone")}function p(){let b=c();document.activeElement!==o&&(o.value=oe(b)||""),document.activeElement!==r&&(r.value=h(l.area(b))!=null?String(h(l.area(b))):""),document.activeElement!==s&&(s.value=h(l.spacing(b))!=null?String(h(l.spacing(b))):""),a.value=z(l.pipeType(b))||"Unknown";let v=z(l.exteriorWalls(b))||"None",w=v==="None"?[]:v.split(",").filter(Boolean);i.forEach(d=>{let f=d.dataset.wall;d.classList.toggle("active",f==="None"?w.length===0:w.includes(f))})}function m(b){let v=c();(b===l.area(v)||b===l.spacing(v)||b===l.pipeType(v)||b===l.exteriorWalls(v))&&p()}o.addEventListener("change",()=>{dt(c(),o.value)}),r.addEventListener("change",()=>{ye(c(),"zone_area_m2",r.value)}),s.addEventListener("change",()=>{ye(c(),"zone_pipe_spacing_mm",s.value||"200")}),a.addEventListener("change",()=>{ge(c(),"zone_pipe_type",a.value)}),i.forEach(b=>{b.addEventListener("click",()=>{let v=b.dataset.wall,w=z(l.exteriorWalls(c()))||"None",d=w==="None"?[]:w.split(",").filter(Boolean);if(v==="None")d=[];else{let x=d.indexOf(v);x>=0?d.splice(x,1):d.push(v)}let f=["N","S","E","W"].filter(x=>d.includes(x));he(c(),"zone_exterior_walls",f.length?f.join(","):"None")})}),F("selectedZone",p),F("zoneNames",p);for(let b=1;b<=6;b++)g(l.area(b),m),g(l.spacing(b),m),g(l.pipeType(b),m),g(l.exteriorWalls(b),m);p()}});var Wr=`
+`,fs=E({tag:"zone-room-card",render:Er,onMount(e,t){let r=t.querySelector(".zr-friendly"),o=t.querySelector(".zr-area"),i=t.querySelector(".zr-spacing"),a=t.querySelector(".zr-pipe"),s=t.querySelector(".wall-btn-group").querySelectorAll(".wall-btn"),l=t.querySelector(".zr-wind"),m=t.querySelector(".zr-solar"),u=t.querySelector(".zr-lead");function v(){return M("selectedZone")}let w=X(t);w.text(r,{read:()=>de(v())||"",commit:d=>St(v(),d)}),w.num(o,{read:()=>_(p.area(v())),commit:d=>ye(v(),"zone_area_m2",d)}),w.num(i,{read:()=>_(p.spacing(v())),commit:d=>ye(v(),"zone_pipe_spacing_mm",d||200)}),w.select(a,{read:()=>A(p.pipeType(v()))||"Unknown",commit:d=>xe(v(),"zone_pipe_type",d)});let y=w.num(l,{read:()=>_(p.windExposure(v())),commit:d=>ye(v(),"zone_wind_exposure",d)});w.num(m,{read:()=>_(p.solarGain(v())),commit:d=>ye(v(),"zone_solar_gain",d)}),w.num(u,{read:()=>_(p.thermalLeadH(v())),commit:d=>ye(v(),"zone_thermal_lead_h",d)});let S=[];function h(){s.forEach(d=>{let x=d.dataset.wall;d.classList.toggle("active",x==="None"?S.length===0:S.includes(x))})}let b=w.custom({sync:()=>{let d=A(p.exteriorWalls(v()))||"None";S=d==="None"?[]:d.split(",").filter(Boolean),h()},commit:()=>Ie(v(),"zone_exterior_walls",S.length?S.join(","):"None")});s.forEach(d=>{d.addEventListener("click",()=>{let x=d.dataset.wall,T=S.slice();if(x==="None")T=[];else{let O=T.indexOf(x);O>=0?T.splice(O,1):T.push(x)}S=["N","S","E","W"].filter(O=>T.includes(O)),h(),b.markDirty(),l.value=String(Sr(S.length)),y.markDirty()})});function c(d){let x=v();(d===p.area(x)||d===p.spacing(x)||d===p.pipeType(x)||d===p.exteriorWalls(x)||d===p.windExposure(x)||d===p.solarGain(x)||d===p.thermalLeadH(x))&&w.refresh()}L("selectedZone",w.discard),L("zoneNames",w.refresh);for(let d=1;d<=6;d++)f(p.area(d),c),f(p.spacing(d),c),f(p.pipeType(d),c),f(p.exteriorWalls(d),c),f(p.windExposure(d),c),f(p.solarGain(d),c),f(p.thermalLeadH(d),c);w.refresh()}});var Cr=`
 .flow-wrap {
   width: 100%;
   border-radius: 18px;
@@ -1217,7 +1352,151 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
   font-size: 10px;
   fill: #ccc;
 }
-`;S("flow-diagram",Wr);var te=6,Pt=[60,126,192,258,324,390],Ie=225,be=36,Ee=160,Re=90,ke=be+Ee,re=640,$r=11,et=6,tt=24,Ce=re+20,Tt=re+200,Dt=re+360,Ot=re+420,Rt="#7D8BA7",Ht="#6C7892",jr="#8FCBFF",Vr="#BCDFFF",Gr="#E4D092",Ur="#F2B74C",Xr="#8FCBFF",Yr="#D8E7FF",Jr="#7D8BA7",qt="#B7CBF0",rt="#6C7892",He="#A3B6D9",Qr="#8EA4CD",Kr="#42A5F5",eo="#66BB6A",to="#EF5350";function Ze(e,t,o){var r=Ie+(e-2.5)*$r,s=Pt[e],a=re-ke,i=ke+a*.33,c=ke+a*.67;return"M"+ke+" "+(r-t).toFixed(1)+" C"+i+" "+(r-t).toFixed(1)+" "+c+" "+(s-o).toFixed(1)+" "+re+" "+(s-o).toFixed(1)+" L"+re+" "+(s+o).toFixed(1)+" C"+c+" "+(s+o).toFixed(1)+" "+i+" "+(r+t).toFixed(1)+" "+ke+" "+(r+t).toFixed(1)+"Z"}function ro(e){if(!e)return null;let t=String(e).match(/(\d+)/);if(!t)return null;let o=Number(t[1]);return Number.isFinite(o)&&o>=1&&o<=8?o:null}function oo(e){let t=String(oe(e)||"").trim();if(!t)return"";let o=t.toUpperCase();return o.length>18?o.slice(0,17)+"\u2026":o}function ao(e,t){return t?e==null||Number.isNaN(e)?Ht:e<.15?jr:e<.4?Vr:e<.7?Gr:Ur:Rt}function no(){var e=1160,t=460,o=Ie-Re/2,r=[];r.push('<svg viewBox="0 0 '+e+" "+t+'" preserveAspectRatio="xMidYMid meet">'),r.push("<defs>"),r.push('<pattern id="fdots" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="10" cy="10" r="1" fill="rgba(92,138,196,0.26)"/></pattern>'),r.push('<radialGradient id="fglow" cx="22%" cy="34%" r="72%"><stop offset="0%" stop-color="rgba(83,168,255,0.2)"/><stop offset="48%" stop-color="rgba(238,161,17,0.1)"/><stop offset="100%" stop-color="transparent"/></radialGradient>'),r.push('<linearGradient id="lbgrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#A06808"/><stop offset="100%" stop-color="#EEA111"/></linearGradient>');for(var s=1;s<=te;s++)r.push('<linearGradient id="rg'+s+'" x1="0" y1="0" x2="1" y2="0">'),r.push('<stop id="rgs'+s+'" offset="0%" stop-color="#EEA111"/>'),r.push('<stop id="rga'+s+'" offset="100%" stop-color="#53A8FF"/>'),r.push("</linearGradient>");r.push("</defs>"),r.push('<rect width="'+e+'" height="'+t+'" rx="22" fill="#0F213C"/>'),r.push('<rect width="'+e+'" height="'+t+'" rx="22" fill="url(#fdots)" opacity="0.5"/>'),r.push('<rect width="'+e+'" height="'+t+'" rx="22" fill="url(#fglow)"/>');for(var a=1;a<=te;a++){var i=Ze(a-1,et,tt);r.push('<path d="'+i+'" fill="#1E2233" opacity="0.9"/>')}for(a=1;a<=te;a++){var c=Ze(a-1,et,tt);r.push('<path id="fd-path-'+a+'" d="'+c+'" fill="url(#rg'+a+')" opacity="1" style="transition:d .6s ease,opacity .4s ease"/>')}r.push('<line x1="'+re+'" y1="36" x2="'+re+'" y2="'+(t-36)+'" stroke="#EEA111" stroke-width="3" opacity="0.55"/>');var p=5,m=be-p;for(r.push('<rect x="0" y="'+o+'" width="'+m+'" height="'+Re+'" fill="url(#lbgrad)" rx="4"/>'),r.push('<rect x="'+be+'" y="'+o+'" width="'+Ee+'" height="'+Re+'" rx="6" fill="#EEA111"/>'),r.push('<text x="'+(be+Ee/2)+'" y="'+(Ie-10)+'" text-anchor="middle" font-size="20" font-weight="800" fill="#141A27" letter-spacing="2">FLOW</text>'),r.push('<text id="fd-flow-temp" x="'+(be+Ee/2)+'" y="'+(Ie+22)+'" text-anchor="middle" font-size="26" font-weight="800" fill="#141A27" font-family="var(--mono)">---</text>'),r.push('<text id="fd-ret-temp" x="'+(be+Ee/2)+'" y="'+(o+Re+28)+'" text-anchor="middle" font-size="17" font-weight="700" fill="#53A8FF" font-family="var(--mono)">RET ---</text>'),r.push('<text x="'+Ce+'" y="34" font-size="11" fill="'+He+'" font-weight="700" letter-spacing="2">ZONE</text>'),r.push('<text x="'+Tt+'" y="34" font-size="11" fill="'+He+'" font-weight="700" letter-spacing="2">TEMP</text>'),r.push('<text x="'+Dt+'" y="34" font-size="11" fill="'+He+'" font-weight="700" letter-spacing="2">FLOW</text>'),r.push('<text x="'+Ot+'" y="34" font-size="11" fill="'+He+'" font-weight="700" letter-spacing="2">RET</text>'),a=1;a<=te;a++){var b=Pt[a-1];r.push('<text id="fd-zn'+a+'" x="'+Ce+'" y="'+(b+2)+'" font-size="14" fill="#CFE0FF" font-weight="700" letter-spacing="2">ZONE '+a+"</text>"),r.push('<text id="fd-zf'+a+'" x="'+Ce+'" y="'+(b+18)+'" font-size="11" fill="#A8BCE3" font-weight="700" letter-spacing="1">---</text>'),r.push('<text id="fd-zsp'+a+'" x="'+(Ce+82)+'" y="'+(b+18)+'" font-size="11" fill="'+rt+'" font-weight="600" font-family="var(--mono)"></text>'),r.push('<text id="fd-zt'+a+'" x="'+Tt+'" y="'+(b+10)+'" font-size="16" fill="#ECECEC" font-weight="700" font-family="var(--mono)">---\xB0C</text>'),r.push('<text id="fd-zv'+a+'" x="'+Dt+'" y="'+(b+10)+'" font-size="16" fill="#AEC0E6" font-weight="700" font-family="var(--mono)">---%</text>'),r.push('<text id="fd-zr'+a+'" x="'+Ot+'" y="'+(b+10)+'" font-size="16" fill="#AEC0E6" font-weight="700" font-family="var(--mono)">---</text>')}return r.push('<text x="36" y="'+(t-52)+'" font-size="16" font-weight="700" fill="'+Qr+'" letter-spacing="3">\u0394T Flow-Return</text>'),r.push('<text id="fd-dt" x="36" y="'+(t-16)+'" font-size="36" font-weight="800" fill="#EEA111" font-family="var(--mono)">---</text>'),r.push('<text x="'+(e-36)+'" y="'+(t-14)+'" text-anchor="end" font-size="15" fill="#2B3243" font-weight="700" letter-spacing="6">UFH - '+te+" ZONES - HEATVALVE</text>"),r.push("</svg>"),'<div class="flow-wrap">'+r.join("")+"</div>"}var so=()=>`<div class="flow-wrap">${no()}</div>`;_({tag:"flow-diagram",render:so,onMount(e,t){let o={flowEl:t.querySelector("#fd-flow-temp"),retEl:t.querySelector("#fd-ret-temp"),dtEl:t.querySelector("#fd-dt"),zones:new Array(te+1)};for(let s=1;s<=te;s++)o.zones[s]={textTemp:t.querySelector("#fd-zt"+s),textSetpoint:t.querySelector("#fd-zsp"+s),textFlow:t.querySelector("#fd-zv"+s),textRet:t.querySelector("#fd-zr"+s),label:t.querySelector("#fd-zn"+s),friendly:t.querySelector("#fd-zf"+s),path:t.querySelector("#fd-path-"+s)};function r(){let s=h(n.flow),a=h(n.ret),i=o.flowEl,c=o.retEl,p=o.dtEl;if(i.textContent=W(s),c.textContent="RET "+W(a),s!=null&&a!=null){let m=Number(s)-Number(a);p.textContent=m.toFixed(1)+"\xB0C",p.setAttribute("fill",m<3?Kr:m>8?to:eo)}else p.textContent="---";for(let m=1;m<=te;m++){let b=h(l.temp(m)),v=h(l.setpoint(m)),w=h(l.valve(m)),d=H(l.enabled(m)),f=String(z(l.tempSource(m))||"Local Probe"),x=ro(z(l.probe(m))||""),A=x?h(l.probeTemp(x)):null,y=o.zones[m],R=y.textTemp,Z=y.textSetpoint,N=y.textFlow,T=y.textRet,q=y.label,L=y.friendly,M=y.path,P=w!=null?Math.max(0,Math.min(100,Number(w)))/100:0;q.textContent="ZONE "+m;let I=oo(m);L.textContent=I||"---",q.setAttribute("fill",d?Yr:Jr),L.setAttribute("fill",d?qt:rt),Z.setAttribute("fill",d?qt:rt);let $=L.getComputedTextLength?L.getComputedTextLength():0;Z.setAttribute("x",String(Ce+$+8));let U=W(b),j=v!=null?W(v):null;if(R.textContent=U,Z.textContent=j?"("+j+")":"",N.textContent=ue(w),N.setAttribute("fill",ao(P,d)),f!=="Local Probe"&&A!=null&&!Number.isNaN(Number(A))?(T.textContent=W(A),T.setAttribute("fill",d?Xr:Rt)):(T.textContent="---",T.setAttribute("fill",Ht)),!d)M.setAttribute("d",Ze(m-1,1,2)),M.setAttribute("fill","#2A2D38"),M.setAttribute("opacity","0.4");else{let ie=Math.max(3,P*tt),Be=Math.max(1.5,P*et);M.setAttribute("d",Ze(m-1,Be,ie)),M.setAttribute("fill","url(#rg"+m+")"),M.setAttribute("opacity","1")}}}g(n.flow,r),g(n.ret,r),F("zoneNames",r);for(let s=1;s<=te;s++)g(l.temp(s),r),g(l.setpoint(s),r),g(l.valve(s),r),g(l.enabled(s),r),g(l.probe(s),r),g(l.tempSource(s),r);for(let s=1;s<=8;s++)g(l.probeTemp(s),r);r()}});var io=`
+`;z("flow-diagram",Cr);var ne=6,po=[60,126,192,258,324,390],Ye=225,_e=36,Ae=160,Ue=90,Ce=_e+Ae,se=640,Ar=11,ft=6,bt=24,Fe=se+20,so=se+200,io=se+360,lo=se+420,uo="#7D8BA7",mo="#6C7892",Fr="#8FCBFF",Lr="#BCDFFF",Mr="#E4D092",Nr="#F2B74C",Dr="#8FCBFF",Tr="#D8E7FF",Or="#7D8BA7",co="#B7CBF0",vt="#6C7892",Xe="#A3B6D9",Pr="#8EA4CD",qr="#42A5F5",Rr="#66BB6A",Hr="#EF5350";function Je(e,t,r){var o=Ye+(e-2.5)*Ar,i=po[e],a=se-Ce,s=Ce+a*.33,l=Ce+a*.67;return"M"+Ce+" "+(o-t).toFixed(1)+" C"+s+" "+(o-t).toFixed(1)+" "+l+" "+(i-r).toFixed(1)+" "+se+" "+(i-r).toFixed(1)+" L"+se+" "+(i+r).toFixed(1)+" C"+l+" "+(i+r).toFixed(1)+" "+s+" "+(o+t).toFixed(1)+" "+Ce+" "+(o+t).toFixed(1)+"Z"}function Br(e){if(!e)return null;let t=String(e).match(/(\d+)/);if(!t)return null;let r=Number(t[1]);return Number.isFinite(r)&&r>=1&&r<=8?r:null}function Ir(e){let t=String(de(e)||"").trim();if(!t)return"";let r=t.toUpperCase();return r.length>18?r.slice(0,17)+"\u2026":r}function Zr(e,t){return t?e==null||Number.isNaN(e)?mo:e<.15?Fr:e<.4?Lr:e<.7?Mr:Nr:uo}function Wr(){var e=1160,t=460,r=Ye-Ue/2,o=[];o.push('<svg viewBox="0 0 '+e+" "+t+'" preserveAspectRatio="xMidYMid meet">'),o.push("<defs>"),o.push('<pattern id="fdots" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="10" cy="10" r="1" fill="rgba(92,138,196,0.26)"/></pattern>'),o.push('<radialGradient id="fglow" cx="22%" cy="34%" r="72%"><stop offset="0%" stop-color="rgba(83,168,255,0.2)"/><stop offset="48%" stop-color="rgba(238,161,17,0.1)"/><stop offset="100%" stop-color="transparent"/></radialGradient>'),o.push('<linearGradient id="lbgrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#A06808"/><stop offset="100%" stop-color="#EEA111"/></linearGradient>');for(var i=1;i<=ne;i++)o.push('<linearGradient id="rg'+i+'" x1="0" y1="0" x2="1" y2="0">'),o.push('<stop id="rgs'+i+'" offset="0%" stop-color="#EEA111"/>'),o.push('<stop id="rga'+i+'" offset="100%" stop-color="#53A8FF"/>'),o.push("</linearGradient>");o.push("</defs>"),o.push('<rect width="'+e+'" height="'+t+'" rx="22" fill="#0F213C"/>'),o.push('<rect width="'+e+'" height="'+t+'" rx="22" fill="url(#fdots)" opacity="0.5"/>'),o.push('<rect width="'+e+'" height="'+t+'" rx="22" fill="url(#fglow)"/>');for(var a=1;a<=ne;a++){var s=Je(a-1,ft,bt);o.push('<path d="'+s+'" fill="#1E2233" opacity="0.9"/>')}for(a=1;a<=ne;a++){var l=Je(a-1,ft,bt);o.push('<path id="fd-path-'+a+'" d="'+l+'" fill="url(#rg'+a+')" opacity="1" style="transition:d .6s ease,opacity .4s ease"/>')}o.push('<line x1="'+se+'" y1="36" x2="'+se+'" y2="'+(t-36)+'" stroke="#EEA111" stroke-width="3" opacity="0.55"/>');var m=5,u=_e-m;for(o.push('<rect x="0" y="'+r+'" width="'+u+'" height="'+Ue+'" fill="url(#lbgrad)" rx="4"/>'),o.push('<rect x="'+_e+'" y="'+r+'" width="'+Ae+'" height="'+Ue+'" rx="6" fill="#EEA111"/>'),o.push('<text x="'+(_e+Ae/2)+'" y="'+(Ye-10)+'" text-anchor="middle" font-size="20" font-weight="800" fill="#141A27" letter-spacing="2">FLOW</text>'),o.push('<text id="fd-flow-temp" x="'+(_e+Ae/2)+'" y="'+(Ye+22)+'" text-anchor="middle" font-size="26" font-weight="800" fill="#141A27" font-family="var(--mono)">---</text>'),o.push('<text id="fd-ret-temp" x="'+(_e+Ae/2)+'" y="'+(r+Ue+28)+'" text-anchor="middle" font-size="17" font-weight="700" fill="#53A8FF" font-family="var(--mono)">RET ---</text>'),o.push('<text x="'+Fe+'" y="34" font-size="11" fill="'+Xe+'" font-weight="700" letter-spacing="2">ZONE</text>'),o.push('<text x="'+so+'" y="34" font-size="11" fill="'+Xe+'" font-weight="700" letter-spacing="2">TEMP</text>'),o.push('<text x="'+io+'" y="34" font-size="11" fill="'+Xe+'" font-weight="700" letter-spacing="2">FLOW</text>'),o.push('<text x="'+lo+'" y="34" font-size="11" fill="'+Xe+'" font-weight="700" letter-spacing="2">RET</text>'),a=1;a<=ne;a++){var v=po[a-1];o.push('<text id="fd-zn'+a+'" x="'+Fe+'" y="'+(v+2)+'" font-size="14" fill="#CFE0FF" font-weight="700" letter-spacing="2">ZONE '+a+"</text>"),o.push('<text id="fd-zf'+a+'" x="'+Fe+'" y="'+(v+18)+'" font-size="11" fill="#A8BCE3" font-weight="700" letter-spacing="1">---</text>'),o.push('<text id="fd-zsp'+a+'" x="'+(Fe+82)+'" y="'+(v+18)+'" font-size="11" fill="'+vt+'" font-weight="600" font-family="var(--mono)"></text>'),o.push('<text id="fd-zt'+a+'" x="'+so+'" y="'+(v+10)+'" font-size="16" fill="#ECECEC" font-weight="700" font-family="var(--mono)">---\xB0C</text>'),o.push('<text id="fd-zv'+a+'" x="'+io+'" y="'+(v+10)+'" font-size="16" fill="#AEC0E6" font-weight="700" font-family="var(--mono)">---%</text>'),o.push('<text id="fd-zr'+a+'" x="'+lo+'" y="'+(v+10)+'" font-size="16" fill="#AEC0E6" font-weight="700" font-family="var(--mono)">---</text>')}return o.push('<text x="36" y="'+(t-52)+'" font-size="16" font-weight="700" fill="'+Pr+'" letter-spacing="3">\u0394T Flow-Return</text>'),o.push('<text id="fd-dt" x="36" y="'+(t-16)+'" font-size="36" font-weight="800" fill="#EEA111" font-family="var(--mono)">---</text>'),o.push('<text x="'+(e-36)+'" y="'+(t-14)+'" text-anchor="end" font-size="15" fill="#2B3243" font-weight="700" letter-spacing="6">UFH - '+ne+" ZONES - HEATVALVE</text>"),o.push("</svg>"),'<div class="flow-wrap">'+o.join("")+"</div>"}var jr=()=>`<div class="flow-wrap">${Wr()}</div>`;E({tag:"flow-diagram",render:jr,onMount(e,t){let r={flowEl:t.querySelector("#fd-flow-temp"),retEl:t.querySelector("#fd-ret-temp"),dtEl:t.querySelector("#fd-dt"),zones:new Array(ne+1)};for(let i=1;i<=ne;i++)r.zones[i]={textTemp:t.querySelector("#fd-zt"+i),textSetpoint:t.querySelector("#fd-zsp"+i),textFlow:t.querySelector("#fd-zv"+i),textRet:t.querySelector("#fd-zr"+i),label:t.querySelector("#fd-zn"+i),friendly:t.querySelector("#fd-zf"+i),path:t.querySelector("#fd-path-"+i)};function o(){let i=_(n.flow),a=_(n.ret),s=r.flowEl,l=r.retEl,m=r.dtEl;if(s.textContent=Y(i),l.textContent="RET "+Y(a),i!=null&&a!=null){let u=Number(i)-Number(a);m.textContent=u.toFixed(1)+"\xB0C",m.setAttribute("fill",u<3?qr:u>8?Hr:Rr)}else m.textContent="---";for(let u=1;u<=ne;u++){let v=_(p.temp(u)),w=_(p.setpoint(u)),y=_(p.valve(u)),S=I(p.enabled(u)),h=String(A(p.tempSource(u))||"Local Probe"),b=Br(A(p.probe(u))||""),c=b?_(p.probeTemp(b)):null,d=r.zones[u],x=d.textTemp,T=d.textSetpoint,O=d.textFlow,Z=d.textRet,P=d.label,C=d.friendly,k=d.path,R=y!=null?Math.max(0,Math.min(100,Number(y)))/100:0;P.textContent="ZONE "+u;let H=Ir(u);C.textContent=H||"---",P.setAttribute("fill",S?Tr:Or),C.setAttribute("fill",S?co:vt),T.setAttribute("fill",S?co:vt);let G=C.getComputedTextLength?C.getComputedTextLength():0;T.setAttribute("x",String(Fe+G+8));let U=Y(v),B=w!=null?Y(w):null;if(x.textContent=U,T.textContent=B?"("+B+")":"",O.textContent=We(y),O.setAttribute("fill",Zr(R,S)),h!=="Local Probe"&&c!=null&&!Number.isNaN(Number(c))?(Z.textContent=Y(c),Z.setAttribute("fill",S?Dr:uo)):(Z.textContent="---",Z.setAttribute("fill",mo)),!S)k.setAttribute("d",Je(u-1,1,2)),k.setAttribute("fill","#2A2D38"),k.setAttribute("opacity","0.4");else{let le=Math.max(3,R*bt),et=Math.max(1.5,R*ft);k.setAttribute("d",Je(u-1,et,le)),k.setAttribute("fill","url(#rg"+u+")"),k.setAttribute("opacity","1")}}}f(n.flow,o),f(n.ret,o),L("zoneNames",o);for(let i=1;i<=ne;i++)f(p.temp(i),o),f(p.setpoint(i),o),f(p.valve(i),o),f(p.enabled(i),o),f(p.probe(i),o),f(p.tempSource(i),o);for(let i=1;i<=8;i++)f(p.probeTemp(i),o);o()}});var Vr="http://www.w3.org/2000/svg",Gr=24,$r=["N","NE","E","SE","S","SW","W","NW"],fo=1e3,bo=260,ue=44,Ur=46,oe=16,Xr=52,Qe=fo-ue-Ur,ie=bo-oe-Xr,vo="var(--accent)",ho="var(--blue)",Yr=`
+.forecast-preview {
+  background: var(--panel-bg-vibrant);
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: var(--panel-shadow);
+}
+
+.forecast-preview .card-title {
+  font-size: .84rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.1px;
+  color: var(--accent);
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--panel-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.forecast-preview .fc-head-right { display: flex; align-items: center; gap: 12px; }
+.forecast-preview .fc-legend { display: flex; gap: 10px; }
+.forecast-preview .fc-legend-item {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: .62rem; letter-spacing: .5px; text-transform: uppercase; font-weight: 700;
+  color: var(--text-faint);
+}
+.forecast-preview .fc-legend-dot { width: 8px; height: 8px; border-radius: 999px; }
+
+.forecast-preview .fc-badge {
+  font-size: .68rem; font-weight: 800; letter-spacing: .8px; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 8px; flex-shrink: 0;
+  background: rgba(70,70,70,.28); color: #ADADAD; border: 1px solid rgba(150,150,150,.25);
+}
+.forecast-preview .fc-badge.ok { background: rgba(45,110,45,.36); color: #CBFFD0; border-color: rgba(100,255,100,.35); }
+.forecast-preview .fc-badge.stale { background: rgba(110,90,20,.36); color: #FFE9A0; border-color: rgba(255,200,50,.35); }
+
+.forecast-preview .fc-empty { color: var(--text-secondary); font-size: .8rem; text-align: center; padding: 30px; }
+
+.forecast-preview svg { width: 100%; height: auto; display: block; }
+.forecast-preview .fc-grid { stroke: rgba(143,176,230,.16); stroke-width: 1; }
+.forecast-preview .fc-axis { stroke: rgba(143,176,230,.42); stroke-width: 1; }
+.forecast-preview .fc-tick { font-size: 11px; fill: var(--text-faint); }
+.forecast-preview .fc-hour { font-size: 12px; fill: var(--text-secondary); font-weight: 700; }
+.forecast-preview .fc-dir  { font-size: 10px; fill: var(--accent); font-family: var(--mono); }
+`;z("forecast-preview",Yr);var Jr=()=>`
+  <div class="forecast-preview">
+    <div class="card-title">
+      <span>Forecast (fetched)</span>
+      <div class="fc-head-right">
+        <div class="fc-legend">
+          <span class="fc-legend-item"><span class="fc-legend-dot" style="background:${vo}"></span>Temp</span>
+          <span class="fc-legend-item"><span class="fc-legend-dot" style="background:${ho}"></span>Wind</span>
+        </div>
+        <span class="fc-badge">no data</span>
+      </div>
+    </div>
+    <div class="fc-body"></div>
+  </div>
+`;function Qr(e){return e==null||Number.isNaN(e)?"":$r[Math.round(e/45)%8]}function Kr(e){return String(new Date(e*1e3).getHours()).padStart(2,"0")}function ea(e){return e==null?"":e<5400?Math.round(e/60)+" min old":Math.round(e/3600)+" h old"}function te(e,t,r){let o=document.createElementNS(Vr,e);if(t)for(let i in t)o.setAttribute(i,t[i]);return r!=null&&(o.textContent=r),o}function go(e,t,r){let o=e.filter(l=>Number.isFinite(l));if(!o.length)return{min:t,max:r};let i=Math.min(...o),a=Math.max(...o);i===a&&(i-=1,a+=1);let s=(a-i)*.12;return{min:i-s,max:a+s}}function ta(e){let t=e.hours.slice(0,Gr),r=t.map(b=>b[0]),o=t.map(b=>b[1]),i=go(r,0,10),a=go(o.concat([0]),0,10);a.min=0;let s=t.length,l=b=>ue+(s<=1?0:b/(s-1)*Qe),m=b=>oe+(1-(b-i.min)/(i.max-i.min))*ie,u=b=>oe+(1-(b-a.min)/(a.max-a.min))*ie,v=te("svg",{viewBox:"0 0 "+fo+" "+bo,preserveAspectRatio:"xMidYMid meet"});for(let b=0;b<3;b++){let c=b/2,d=oe+c*ie;v.appendChild(te("line",{x1:ue,y1:d,x2:ue+Qe,y2:d,class:"fc-grid"})),v.appendChild(te("text",{x:ue-6,y:d+4,"text-anchor":"end",class:"fc-tick"},(i.max-(i.max-i.min)*c).toFixed(0)+"\xB0")),v.appendChild(te("text",{x:ue+Qe+6,y:d+4,"text-anchor":"start",class:"fc-tick"},(a.max-(a.max-a.min)*c).toFixed(0)))}v.appendChild(te("line",{x1:ue,y1:oe+ie,x2:ue+Qe,y2:oe+ie,class:"fc-axis"}));let w="";for(let b=0;b<s;b++)w+=(b?" L ":"M ")+l(b).toFixed(1)+" "+u(o[b]).toFixed(1);let y=w+" L "+l(s-1).toFixed(1)+" "+(oe+ie)+" L "+l(0).toFixed(1)+" "+(oe+ie)+" Z";v.appendChild(te("path",{d:y,fill:"rgba(83,168,255,.12)"})),v.appendChild(te("path",{d:w,fill:"none",stroke:ho,"stroke-width":"2.4","stroke-linejoin":"round","stroke-linecap":"round"}));let S="";for(let b=0;b<s;b++)S+=(b?" L ":"M ")+l(b).toFixed(1)+" "+m(r[b]).toFixed(1);v.appendChild(te("path",{d:S,fill:"none",stroke:vo,"stroke-width":"2.4","stroke-linejoin":"round","stroke-linecap":"round"}));let h=s>16?3:2;for(let b=0;b<s;b+=h){let c=l(b),d=e.base_epoch+b*3600;v.appendChild(te("text",{x:c,y:oe+ie+18,"text-anchor":"middle",class:"fc-hour"},Kr(d))),v.appendChild(te("text",{x:c,y:oe+ie+34,"text-anchor":"middle",class:"fc-dir"},Qr(t[b][2])))}return v}var ks=E({tag:"monitor-forecast-preview",render:Jr,onMount(e,t){let r=t.querySelector(".fc-badge"),o=t.querySelector(".fc-body");function i(){let a=Ft(),s=a&&Array.isArray(a.hours)?a.hours:[];if(!(a?a.count||s.length:0)||!s.length||!a.base_epoch){r.textContent="no data",r.className="fc-badge",o.innerHTML='<div class="fc-empty">No forecast data fetched yet. Enable Forecast Preload in Settings and check the location.</div>';return}let m=(a.age_s||0)>3*3600;r.textContent=ea(a.age_s),r.className="fc-badge "+(m?"stale":"ok"),o.innerHTML="",o.appendChild(ta(a))}L("forecastHours",i),i()}});var oa={1:{label:"E",color:"#ff6464"},2:{label:"W",color:"#f2c77b"},3:{label:"I",color:"#79d17e"},4:{label:"C",color:"#53A8FF"},5:{label:"D",color:"rgba(214,228,255,.7)"},6:{label:"V",color:"rgba(214,228,255,.5)"},7:{label:"VV",color:"rgba(214,228,255,.4)"}},ra=`
+.logs-view {
+  background: var(--panel-bg-vibrant);
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: var(--panel-shadow);
+}
+
+.logs-view .card-title {
+  font-size: .84rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.1px;
+  color: var(--accent);
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--panel-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.logs-view .actions { display: flex; gap: 6px; }
+.logs-view .btn {
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  color: var(--text-secondary);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  cursor: pointer;
+}
+.logs-view .btn:hover { color: var(--text-strong); background: var(--control-bg-hover); }
+.logs-view .btn.on { color: var(--text-on-accent); border-color: var(--accent); background: var(--accent); }
+
+.logs-stream {
+  margin-top: 4px;
+  height: 420px;
+  overflow-y: auto;
+  border-radius: 10px;
+  background: rgba(8,18,34,.55);
+  border: 1px solid var(--control-border);
+  padding: 6px 0;
+  font-family: var(--mono);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(83,168,255,.25) transparent;
+}
+.logs-stream::-webkit-scrollbar { width: 6px; }
+.logs-stream::-webkit-scrollbar-thumb { background: rgba(83,168,255,.25); border-radius: 999px; }
+
+.logs-empty { color: var(--text-secondary); font-size: .78rem; text-align: center; padding: 24px; }
+
+.log-line {
+  display: grid;
+  grid-template-columns: 18px 96px 1fr;
+  gap: 8px;
+  padding: 2px 12px;
+  font-size: .72rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.log-line .lv { font-weight: 800; text-align: center; }
+.log-line .tag { color: var(--accent); opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.log-line .msg { color: var(--text-strong); opacity: .92; }
+`;z("logs-view",ra);var aa=()=>`
+  <div class="logs-view">
+    <div class="card-title">
+      <span>Device Logs</span>
+      <div class="actions">
+        <button class="btn pause-btn" type="button">Pause</button>
+        <button class="btn clear-btn" type="button">Clear</button>
+      </div>
+    </div>
+    <div class="logs-stream"></div>
+  </div>
+`;function na(e){let t=oa[e.level]||{label:"?",color:"var(--text-secondary)"},r=xo(e.tag||""),o=xo(e.msg||"");return'<div class="log-line"><span class="lv" style="color:'+t.color+'">'+t.label+'</span><span class="tag">'+r+'</span><span class="msg">'+o+"</span></div>"}function xo(e){return String(e).replace(/[&<>]/g,t=>({"&":"&amp;","<":"&lt;",">":"&gt;"})[t])}var Ls=E({tag:"logs-view",render:aa,onMount(e,t){let r=t.querySelector(".logs-stream"),o=t.querySelector(".pause-btn"),i=t.querySelector(".clear-btn"),a=!1;function s(){if(a)return;let l=Ct();if(!l||!l.length){r.innerHTML='<div class="logs-empty">Waiting for device logs\u2026</div>';return}let m=r.scrollHeight-r.scrollTop-r.clientHeight<40;r.innerHTML=l.map(na).join(""),m&&(r.scrollTop=r.scrollHeight)}o.addEventListener("click",()=>{a=!a,o.textContent=a?"Resume":"Pause",o.classList.toggle("on",a),a||s()}),i.addEventListener("click",()=>{At()}),L("deviceLog",s),s()}});var sa=`
 .diag-i2c {
   background: var(--panel-bg-vibrant);
   border: 1px solid var(--panel-border);
@@ -1252,7 +1531,7 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
 .diag-i2c .fault {
     color: var(--red);
     font-weight: bold;
-}`;S("diag-i2c",io);var lo=()=>`
+}`;z("diag-i2c",sa);var ia=()=>`
   <div class="diag-i2c">
     <div class="card-title">I2C Diagnostics</div>
     <div class="btn-row">
@@ -1260,257 +1539,7 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
     </div>
     <pre id="i2c-result">No scan has been run yet.</pre>
   </div>
-`,En=_({tag:"diag-i2c",render:lo,onMount(e,t){let o=t.querySelector("#i2c-result");function r(){o.textContent=E("i2cResult")||"No scan has been run yet."}t.querySelector("#btn-i2c-scan").addEventListener("click",()=>{ft()}),F("i2cResult",r),r()}});var co=`
-.diag-zone {
-  background: var(--panel-bg-vibrant);
-  border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  padding: 18px;
-  margin-bottom: 18px;
-  box-shadow: var(--panel-shadow);
-}
-.diag-zone .card-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: .84rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 1.1px;
-  color: var(--accent);
-  margin-bottom: 14px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--panel-border);
-}
-
-.card-title-preheat {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 5px;
-  font-size: .72rem;
-  font-weight: 800;
-  letter-spacing: .4px;
-  text-transform: uppercase;
-  border: 1.5px solid;
-}
-
-.card-title-preheat.on {
-  border-color: rgba(100,255,100,.6);
-  background: rgba(60,120,60,.4);
-  color: #80FF80;
-  box-shadow: 0 0 12px rgba(100,255,100,.2);
-}
-
-.card-title-preheat.off {
-  border-color: rgba(120,120,120,.4);
-  background: rgba(40,40,40,.3);
-  color: #999999;
-}
-
-.card-title-preheat-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  box-shadow: 0 0 5px currentColor;
-  flex-shrink: 0;
-}
-
-.card-title-preheat-dot.on {
-  background: #60FF60;
-  box-shadow: 0 0 8px rgba(96,255,96,.8);
-}
-
-.card-title-preheat-dot.off {
-  background: #666666;
-  box-shadow: 0 0 3px rgba(102,102,102,.4);
-}
-.dz-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-}
-@media (max-width: 900px) { .dz-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 560px) { .dz-grid { grid-template-columns: 1fr; } }
-
-.dz-zone-card {
-  background: linear-gradient(180deg, rgba(20,44,79,.30), rgba(13,31,58,.24));
-  border: 1px solid rgba(120,168,255,.30);
-  border-radius: 14px;
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.dz-zone-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.dz-zone-name {
-  font-size: .88rem;
-  font-weight: 800;
-  color: var(--text-strong);
-  text-transform: uppercase;
-  letter-spacing: .6px;
-}
-.dz-state-badge {
-  font-size: .62rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: .7px;
-  border-radius: 999px;
-  padding: 3px 9px;
-  border: 1px solid transparent;
-  background: rgba(125,139,167,.12);
-  color: var(--state-disabled);
-}
-.dz-state-badge.s-heating {
-  background: rgba(238,161,17,.15);
-  color: var(--state-warn);
-  border-color: rgba(238,161,17,.3);
-}
-.dz-state-badge.s-idle {
-  background: rgba(121,209,126,.12);
-  color: var(--state-ok);
-  border-color: rgba(121,209,126,.24);
-}
-.dz-state-badge.s-fault {
-  background: rgba(255,118,118,.16);
-  color: var(--state-danger);
-  border-color: rgba(255,100,100,.3);
-}
-
-.dz-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-}
-.dz-stat {
-  border-radius: 0;
-  padding: 2px 0 6px;
-  border-bottom: 1px solid rgba(120,168,255,.22);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.dz-stat-label {
-  font-size: .62rem;
-  color: var(--text-secondary);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: .5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.dz-stat-value {
-  font-size: .88rem;
-  font-weight: 800;
-  color: var(--text-strong);
-  font-family: var(--mono);
-}
-
-.dz-motor-section {
-  border-top: 1px solid var(--panel-border);
-  padding-top: 10px;
-}
-.dz-motor-label {
-  font-size: .64rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .7px;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-}
-.dz-motor-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px 12px;
-}
-.dz-motor-param {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px dashed rgba(120,168,255,.24);
-  padding: 2px 0 5px;
-  font-size: .76rem;
-  gap: 4px;
-}
-.dz-motor-param.preheat-advance {
-  grid-column: 1 / -1;
-}
-.dz-motor-param-name {
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-.dz-motor-param-val {
-  color: var(--text-strong);
-  font-family: var(--mono);
-  font-weight: 700;
-}
-
-.dz-fault-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 8px;
-  border-radius: 7px;
-  background: rgba(255,118,118,.1);
-  border: 1px solid rgba(255,100,100,.25);
-  font-size: .76rem;
-  margin-top: 4px;
-}
-.dz-fault-label {
-  color: var(--text-secondary);
-  flex-shrink: 0;
-}
-.dz-fault-val {
-  color: var(--state-danger);
-  font-weight: 700;
-  font-family: var(--mono);
-}
-`;S("diag-zone",co);function po(e){return e==="HEATING"?"s-heating":e==="IDLE"?"s-idle":e==="FAULT"?"s-fault":""}function It(e){return e!=null?Number(e).toFixed(2)+"x":"---"}function Zt(e){return e!=null?Number(e).toFixed(0):"---"}function go(e){return e!=null?Number(e).toFixed(2)+"C":"---"}var uo=()=>{let e="";for(let t=1;t<=6;t++)e+=`
-      <div class="dz-zone-card" data-zone="${t}">
-        <div class="dz-zone-head">
-          <span class="dz-zone-name">Zone ${t}</span>
-          <span class="dz-state-badge" data-dz-state="${t}">---</span>
-        </div>
-        <div class="dz-stats">
-          <div class="dz-stat"><span class="dz-stat-label">Room Temp</span><span class="dz-stat-value" data-dz-temp="${t}">---</span></div>
-          <div class="dz-stat"><span class="dz-stat-label">Flow %</span><span class="dz-stat-value" data-dz-valve="${t}">---</span></div>
-          <div class="dz-stat"><span class="dz-stat-label">Return</span><span class="dz-stat-value" data-dz-ret="${t}">---</span></div>
-        </div>
-        <div class="dz-motor-section">
-          <div class="dz-motor-label">Motor ${t} learned parameters</div>
-          <div class="dz-motor-grid">
-            <div class="dz-motor-param"><span class="dz-motor-param-name">Open ripples</span><span class="dz-motor-param-val" data-dz-orip="${t}">---</span></div>
-            <div class="dz-motor-param"><span class="dz-motor-param-name">Close ripples</span><span class="dz-motor-param-val" data-dz-crip="${t}">---</span></div>
-            <div class="dz-motor-param"><span class="dz-motor-param-name">Open factor</span><span class="dz-motor-param-val" data-dz-ofac="${t}">---</span></div>
-            <div class="dz-motor-param"><span class="dz-motor-param-name">Close factor</span><span class="dz-motor-param-val" data-dz-cfac="${t}">---</span></div>
-            <div class="dz-motor-param preheat-advance"><span class="dz-motor-param-name">Preheat advance</span><span class="dz-motor-param-val" data-dz-ph="${t}">---</span></div>
-          </div>
-          <div class="dz-fault-row" data-dz-faultrow="${t}" style="display:none">
-            <span class="dz-fault-label">Last fault</span>
-            <span class="dz-fault-val" data-dz-fault="${t}">NONE</span>
-          </div>
-        </div>
-      </div>`;return`
-    <div class="diag-zone">
-      <div class="card-title">
-        <span>Zone Snapshot</span>
-        <div class="card-title-preheat off" role="status" aria-live="polite" data-preheat-badge>
-          <span class="card-title-preheat-dot off"></span>
-          <span>Preheat: Off</span>
-        </div>
-      </div>
-      <div class="dz-grid">${e}</div>
-    </div>
-  `},Tn=_({tag:"diag-zone",render:uo,onMount(e,t){function o(s){let a=String(z(l.state(s))||"").toUpperCase()||"OFF",i=H(l.enabled(s)),c=t.querySelector('[data-dz-state="'+s+'"]');c.textContent=i?a:"OFF",c.className="dz-state-badge"+(i?" "+po(a):""),t.querySelector('[data-dz-temp="'+s+'"]').textContent=W(h(l.temp(s))),t.querySelector('[data-dz-valve="'+s+'"]').textContent=ue(h(l.valve(s))),t.querySelector('[data-dz-ret="'+s+'"]').textContent=W(h(n.ret)),t.querySelector('[data-dz-orip="'+s+'"]').textContent=Zt(h(l.motorOpenRipples(s))),t.querySelector('[data-dz-crip="'+s+'"]').textContent=Zt(h(l.motorCloseRipples(s))),t.querySelector('[data-dz-ofac="'+s+'"]').textContent=It(h(l.motorOpenFactor(s))),t.querySelector('[data-dz-cfac="'+s+'"]').textContent=It(h(l.motorCloseFactor(s))),t.querySelector('[data-dz-ph="'+s+'"]').textContent=go(h(l.preheatAdvance(s)));let p=String(z(l.motorLastFault(s))||"").toUpperCase(),m=p&&p!=="NONE"&&p!=="OK",b=t.querySelector('[data-dz-faultrow="'+s+'"]');b.style.display=m?"flex":"none",m&&(t.querySelector('[data-dz-fault="'+s+'"]').textContent=p)}for(let s=1;s<=6;s++){let a=s,i=()=>o(a);g(l.state(a),i),g(l.enabled(a),i),g(l.temp(a),i),g(l.valve(a),i),g(n.ret,i),g(l.motorOpenRipples(a),i),g(l.motorCloseRipples(a),i),g(l.motorOpenFactor(a),i),g(l.motorCloseFactor(a),i),g(l.preheatAdvance(a),i),g(l.motorLastFault(a),i),o(a)}function r(){let s=t.querySelector("[data-preheat-badge]"),a=s.querySelector(".card-title-preheat-dot"),i=s.querySelector("span:last-child"),p=(z(n.simplePreheatEnabled)||"off").toString().toLowerCase()==="on";s.classList.toggle("on",p),s.classList.toggle("off",!p),a.classList.toggle("on",p),a.classList.toggle("off",!p),i.textContent=p?"Preheat: On":"Preheat: Off"}g(n.simplePreheatEnabled,r),r()}});var mo=`
+`,Ps=E({tag:"diag-i2c",render:ia,onMount(e,t){let r=t.querySelector("#i2c-result");function o(){r.textContent=M("i2cResult")||"No scan has been run yet."}t.querySelector("#btn-i2c-scan").addEventListener("click",()=>{Ot()}),L("i2cResult",o),o()}});var la=`
 .diag-activity {
   background: var(--panel-bg-vibrant);
   border: 1px solid var(--panel-border);
@@ -1550,12 +1579,12 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
 .diag-log-item:last-child { border-bottom: none; }
 .diag-log-time { font-family: var(--mono); color: var(--accent); font-size: .7rem; white-space: nowrap; flex-shrink: 0; }
 .diag-log-msg { color: var(--text-strong); opacity: .9; }
-`;S("diag-activity",mo);var bo=()=>`
+`;z("diag-activity",la);var da=()=>`
   <div class="diag-activity">
     <div class="card-title">General Activity / Log</div>
     <div class="diag-log"></div>
   </div>
-`;function fo(e,t){if(!t||!t.length){e.innerHTML='<div class="diag-log-empty">No activity yet.</div>';return}let o="";for(let r=t.length-1;r>=0;r--)o+='<div class="diag-log-item"><span class="diag-log-time">'+t[r].time+'</span><span class="diag-log-msg">'+t[r].msg+"</span></div>";e.innerHTML=o}var Rn=_({tag:"diag-activity",render:bo,onMount(e,t){let o=t.querySelector(".diag-log");function r(){fo(o,ct())}F("activityLog",r),r()}});var xo=`
+`;function ca(e,t){if(!t||!t.length){e.innerHTML='<div class="diag-log-empty">No activity yet.</div>';return}let r="";for(let o=t.length-1;o>=0;o--)r+='<div class="diag-log-item"><span class="diag-log-time">'+t[o].time+'</span><span class="diag-log-msg">'+t[o].msg+"</span></div>";e.innerHTML=r}var Is=E({tag:"diag-activity",render:da,onMount(e,t){let r=t.querySelector(".diag-log");function o(){ca(r,kt())}L("activityLog",o),o()}});var pa=`
 .diag-manual-badge {
   display: none;
   align-items: center;
@@ -1587,12 +1616,12 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
   letter-spacing: .35px;
   text-transform: uppercase;
 }
-`;S("diag-manual-badge",xo);var vo=()=>`
+`;z("diag-manual-badge",pa);var ua=()=>`
   <div class="diag-manual-badge" role="status" aria-live="polite">
     <span class="diag-manual-dot"></span>
     <span class="diag-manual-text">Manual Mode Active - Automatic Management Suspended</span>
   </div>
-`,Wn=_({tag:"diag-manual-badge",render:vo,onMount(e,t){let o=t.classList.contains("diag-manual-badge")?t:t.querySelector(".diag-manual-badge");function r(){let s=!!E("manualMode");o&&o.classList.toggle("on",s)}F("manualMode",r),r()}});var ho=`
+`,Gs=E({tag:"diag-manual-badge",render:ua,onMount(e,t){let r=t.classList.contains("diag-manual-badge")?t:t.querySelector(".diag-manual-badge");function o(){let i=!!M("manualMode");r&&r.classList.toggle("on",i)}L("manualMode",o),o()}});var ma=`
 .diag-zone-motor {
   background: var(--panel-bg-vibrant);
   border: 1px solid var(--panel-border);
@@ -1751,7 +1780,7 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
 .diag-zone-motor .gated.locked .sel {
   cursor: not-allowed;
 }
-`;S("diag-zone-motor",ho);var yo=e=>{let t=e.zone||E("selectedZone")||1,o="";for(let r=1;r<=6;r++)o+='<option value="'+r+'"'+(r===t?" selected":"")+">Zone "+r+"</option>";return`
+`;z("diag-zone-motor",ma);var ga=e=>{let t=e.zone||M("selectedZone")||1,r="";for(let o=1;o<=6;o++)r+='<option value="'+o+'"'+(o===t?" selected":"")+">Zone "+o+"</option>";return`
     <div class="diag-zone-motor">
       <div class="card-title">Motor Control</div>
       <div class="cfg-row manual-row">
@@ -1761,7 +1790,7 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
       <div class="gated motor-gated locked">
         <div class="cfg-row">
           <span class="lbl">Motor</span>
-          <select class="sel motor-zone-select">${o}</select>
+          <select class="sel motor-zone-select">${r}</select>
         </div>
         <div class="cfg-row">
           <span class="lbl">Motor Target</span>
@@ -1777,7 +1806,7 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
         </div>
       </div>
     </div>
-  `},Yn=_({tag:"diag-zone-motor-card",render:yo,onMount(e,t){let o=Number(e.zone||E("selectedZone")||1),r=!!E("manualMode"),s=t.querySelector(".manual-mode-toggle"),a=t.querySelector(".motor-gated"),i=t.querySelector(".motor-zone-select"),c=t.querySelector(".motor-target-input"),p=t.querySelector(".motor-open-btn"),m=t.querySelector(".motor-close-btn"),b=t.querySelector(".motor-stop-btn");function v(f){r=!!f,s&&(s.classList.toggle("on",r),s.setAttribute("aria-checked",r?"true":"false")),a&&a.classList.toggle("locked",!r),[i,c,p,m,b].forEach(x=>{x&&(x.disabled=!r)})}function w(){let f=!r;if(v(f),f){Ge(!0);for(let x=1;x<=6;x++)Ve(x)}else Ge(!1)}function d(){let f=h(l.motorTarget(o));c&&f!=null?c.value=Number(f).toFixed(0):c&&(c.value="0")}i==null||i.addEventListener("change",()=>{o=Number(i.value||1),d()}),s==null||s.addEventListener("click",w),s==null||s.addEventListener("keydown",f=>{f.key!==" "&&f.key!=="Enter"||(f.preventDefault(),w())});for(let f=1;f<=6;f++)g(l.motorTarget(f),d);d(),v(r),F("manualMode",()=>{v(!!E("manualMode"))}),c==null||c.addEventListener("change",f=>{if(!r)return;let x=f.target.value;vt(o,x)}),p==null||p.addEventListener("click",()=>{r&&ht(o,1e4)}),m==null||m.addEventListener("click",()=>{r&&yt(o,1e4)}),b==null||b.addEventListener("click",()=>{r&&Ve(o)})}});var wo=`
+  `},Ks=E({tag:"diag-zone-motor-card",render:ga,onMount(e,t){let r=Number(e.zone||M("selectedZone")||1),o=!!M("manualMode"),i=t.querySelector(".manual-mode-toggle"),a=t.querySelector(".motor-gated"),s=t.querySelector(".motor-zone-select"),l=t.querySelector(".motor-target-input"),m=t.querySelector(".motor-open-btn"),u=t.querySelector(".motor-close-btn"),v=t.querySelector(".motor-stop-btn");function w(h){o=!!h,i&&(i.classList.toggle("on",o),i.setAttribute("aria-checked",o?"true":"false")),a&&a.classList.toggle("locked",!o),[s,l,m,u,v].forEach(b=>{b&&(b.disabled=!o)})}function y(){let h=!o;if(w(h),h){nt(!0);for(let b=1;b<=6;b++)at(b)}else nt(!1)}function S(){let h=_(p.motorTarget(r));l&&h!=null?l.value=Number(h).toFixed(0):l&&(l.value="0")}s==null||s.addEventListener("change",()=>{r=Number(s.value||1),S()}),i==null||i.addEventListener("click",y),i==null||i.addEventListener("keydown",h=>{h.key!==" "&&h.key!=="Enter"||(h.preventDefault(),y())});for(let h=1;h<=6;h++)f(p.motorTarget(h),S);S(),w(o),L("manualMode",()=>{w(!!M("manualMode"))}),l==null||l.addEventListener("change",h=>{if(!o)return;let b=h.target.value;qt(r,b)}),m==null||m.addEventListener("click",()=>{o&&Rt(r,1e4)}),u==null||u.addEventListener("click",()=>{o&&Ht(r,1e4)}),v==null||v.addEventListener("click",()=>{o&&at(r)})}});var fa=`
 .diag-zone-recovery {
   background: var(--panel-bg-vibrant);
   border: 1px solid var(--panel-border);
@@ -1795,6 +1824,12 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
   margin-bottom: 12px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--panel-border);
+}
+.diag-zone-recovery .recovery-note {
+  color: var(--text-secondary);
+  font-size: .76rem;
+  line-height: 1.4;
+  margin-bottom: 12px;
 }
 .diag-zone-recovery .btn-row {
   display: flex;
@@ -1856,72 +1891,17 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
   background: linear-gradient(135deg, rgba(255,100,100,.3), rgba(255,100,100,.15));
   border-color: rgba(255,100,100,.5);
 }
-`;S("diag-zone-recovery",wo);var zo=e=>{let t=e.zone||E("selectedZone")||1,o="";for(let r=1;r<=6;r++)o+='<option value="'+r+'"'+(r===t?" selected":"")+">Zone "+r+"</option>";return`
+`;z("diag-zone-recovery",fa);var ba=()=>`
     <div class="diag-zone-recovery">
-      <div class="card-title">Motor Recovery</div>
-      <div class="cfg-row">
-        <span class="lbl">Motor</span>
-        <select class="sel recovery-zone-select">${o}</select>
-      </div>
+      <div class="card-title">Faults &amp; Relearn</div>
+      <div class="recovery-note">Recover the selected zone's motor after a fault or bad calibration.</div>
       <div class="btn-row">
         <button class="btn recovery-fault-btn">Reset Fault</button>
         <button class="btn warn recovery-factors-btn">Reset Factors</button>
         <button class="btn accent recovery-relearn-btn">Reset + Relearn</button>
       </div>
     </div>
-  `},rs=_({tag:"diag-zone-recovery-card",render:zo,onMount(e,t){let o=Number(e.zone||E("selectedZone")||1),r=t.querySelector(".recovery-zone-select"),s=t.querySelector(".recovery-fault-btn"),a=t.querySelector(".recovery-factors-btn"),i=t.querySelector(".recovery-relearn-btn");r==null||r.addEventListener("change",()=>{o=Number(r.value||1)}),s==null||s.addEventListener("click",()=>{wt(o)}),a==null||a.addEventListener("click",()=>{confirm("Reset learned factors for Zone "+o+"?")&&zt(o)}),i==null||i.addEventListener("click",()=>{confirm("Reset + relearn motor for Zone "+o+"?")&&_t(o)})}});var _o=`
-.settings-manifold-card {
-  background: var(--panel-bg-vibrant);
-  border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  padding: 20px;
-  box-shadow: var(--panel-shadow);
-}
-
-.settings-manifold-card .card-title {
-  font-size: .84rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 1.1px;
-  color: var(--accent);
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--panel-border);
-}
-
-.settings-manifold-card .cfg-row {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.settings-manifold-card .lbl {
-  color: var(--text-secondary);
-  font-size: .78rem;
-  font-weight: 700;
-  letter-spacing: .45px;
-  text-transform: uppercase;
-  line-height: 1.2;
-}
-
-.settings-manifold-card .sel {
-  width: 100%;
-  border: 1px solid var(--control-border);
-  background: var(--control-bg);
-  color: var(--text);
-  border-radius: 10px;
-  padding: 9px 10px;
-  font-size: .88rem;
-  transition: border-color .15s ease;
-}
-
-.settings-manifold-card .sel:focus {
-  outline: 2px solid rgba(83,168,255,.6);
-  outline-offset: 1px;
-  border-color: rgba(83,168,255,.55);
-}
-
+  `,ni=E({tag:"diag-zone-recovery-card",render:ba,onMount(e,t){let r=Number(M("selectedZone")||1),o=t.querySelector(".recovery-fault-btn"),i=t.querySelector(".recovery-factors-btn"),a=t.querySelector(".recovery-relearn-btn");L("selectedZone",()=>{r=Number(M("selectedZone")||1)}),o==null||o.addEventListener("click",()=>{Bt(r)}),i==null||i.addEventListener("click",()=>{confirm("Reset learned factors for "+re(r)+"?")&&It(r)}),a==null||a.addEventListener("click",()=>{confirm("Reset + relearn motor for "+re(r)+"?")&&Zt(r)})}});var va=`
 .settings-manifold-card .probe-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1947,22 +1927,31 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
   margin-top: 4px;
   font-size: 1rem;
   font-weight: 800;
+  font-family: var(--mono);
 }
 
 @media (max-width: 900px) {
   .settings-manifold-card .probe-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-`;S("settings-manifold-card",_o);var So=()=>{let e="";for(let o=1;o<=8;o++)e+="<option>Probe "+o+"</option>";let t="";for(let o=1;o<=8;o++)t+='<div class="probe-cell"><div class="probe-name">Probe '+o+'</div><div class="probe-temp" data-probe="'+o+'">---</div></div>';return`
-    <div class="settings-manifold-card">
-      <div class="card-title">Manifold Configuration</div>
-      <div class="cfg-row"><span class="lbl">Manifold Type</span>
-        <select class="sel sm-type"><option value="NO (Normally Open)">Normally Open (NO)</option><option value="NC (Normally Closed)">Normally Closed (NC)</option></select>
+`;z("settings-manifold-card",va);var ha=()=>{let e="";for(let r=1;r<=8;r++)e+="<option>Probe "+r+"</option>";let t="";for(let r=1;r<=8;r++)t+='<div class="probe-cell"><div class="probe-name">Probe '+r+'</div><div class="probe-temp" data-probe="'+r+'">---</div></div>';return`
+    <div class="ui-card settings-manifold-card">
+      <div class="ui-card-title">Manifold Configuration</div>
+      <div class="ui-row">
+        <span class="ui-label">Manifold Type</span>
+        <span class="ui-field"><select class="ui-select sm-type"><option value="NO (Normally Open)">Normally Open (NO)</option><option value="NC (Normally Closed)">Normally Closed (NC)</option></select></span>
       </div>
-      <div class="cfg-row"><span class="lbl">Flow Probe</span><select class="sel sm-flow">${e}</select></div>
-      <div class="cfg-row"><span class="lbl">Return Probe</span><select class="sel sm-ret">${e}</select></div>
+      <div class="ui-row">
+        <span class="ui-label">Flow Probe</span>
+        <span class="ui-field"><select class="ui-select sm-flow">${e}</select></span>
+      </div>
+      <div class="ui-row">
+        <span class="ui-label">Return Probe</span>
+        <span class="ui-field"><select class="ui-select sm-ret">${e}</select></span>
+      </div>
+      <div class="ui-section">Probe Temperatures</div>
       <div class="probe-grid">${t}</div>
     </div>
-  `},cs=_({tag:"settings-manifold-card",render:So,onMount(e,t){let o=t.querySelector(".sm-type"),r=t.querySelector(".sm-flow"),s=t.querySelector(".sm-ret");function a(){o.value=z(n.manifoldType)||"NO (Normally Open)",r.value=z(n.manifoldFlowProbe)||"Probe 7",s.value=z(n.manifoldReturnProbe)||"Probe 8";for(let i=1;i<=8;i++){let c=t.querySelector('[data-probe="'+i+'"]'),p=h(l.probeTemp(i));c&&(c.textContent=W(p))}}o.addEventListener("change",()=>Y("manifold_type",o.value)),r.addEventListener("change",()=>Y("manifold_flow_probe",r.value)),s.addEventListener("change",()=>Y("manifold_return_probe",s.value)),g(n.manifoldType,a),g(n.manifoldFlowProbe,a),g(n.manifoldReturnProbe,a);for(let i=1;i<=8;i++)g(l.probeTemp(i),a);a()}});var ko=`
+  `},gi=E({tag:"settings-manifold-card",render:ha,onMount(e,t){let r=t.querySelector(".sm-type"),o=t.querySelector(".sm-flow"),i=t.querySelector(".sm-ret"),a=X(t);a.select(r,{read:()=>A(n.manifoldType)||"NO (Normally Open)",commit:l=>J("manifold_type",l)}),a.select(o,{read:()=>A(n.manifoldFlowProbe)||"Probe 7",commit:l=>J("manifold_flow_probe",l)}),a.select(i,{read:()=>A(n.manifoldReturnProbe)||"Probe 8",commit:l=>J("manifold_return_probe",l)});function s(){for(let l=1;l<=8;l++){let m=t.querySelector('[data-probe="'+l+'"]');m&&(m.textContent=Y(_(p.probeTemp(l))))}}f(n.manifoldType,a.refresh),f(n.manifoldFlowProbe,a.refresh),f(n.manifoldReturnProbe,a.refresh);for(let l=1;l<=8;l++)f(p.probeTemp(l),s);a.refresh(),s()}});var xa=`
 .settings-control-stack {
   display: grid;
   gap: 14px;
@@ -2091,164 +2080,49 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
     grid-column: 1;
   }
 }
-`;S("settings-control-card",ko);var Eo=()=>`
-  <div class="settings-control-stack">
-    <div class="settings-card settings-functionality-card">
-      <div class="card-title">Functionality</div>
-      <div class="toggle-row">
-        <span class="toggle-label">Motor Drivers</span>
-        <div class="ui-toggle drivers-toggle" role="switch" aria-label="Toggle motor drivers"></div>
-      </div>
-    </div>
-
-    <div class="settings-card settings-action-card">
-      <div class="card-title">Control</div>
-      <div class="btn-row">
-        <button class="btn sc-reset-probe-map">Reset 1-Wire Probe Map</button>
-        <button class="btn sc-dump-1wire">Dump 1-Wire Diagnostics</button>
-        <button class="btn warn sc-restart">Restart Device</button>
-      </div>
+`;z("settings-control-card",xa);var ya=()=>`
+  <div class="settings-card settings-action-card">
+    <div class="card-title">Device Control</div>
+    <div class="btn-row">
+      <button class="btn sc-reset-probe-map">Reset 1-Wire Probe Map</button>
+      <button class="btn sc-dump-1wire">Dump 1-Wire Diagnostics</button>
+      <button class="btn warn sc-restart">Restart Device</button>
     </div>
   </div>
-`,xs=_({tag:"settings-control-card",render:Eo,onMount(e,t){let o=t.querySelector(".drivers-toggle"),r=o.closest(".toggle-row");function s(){return H(n.drivers)}function a(){let i=s();o.classList.toggle("on",i),r.classList.toggle("is-on",i),o.setAttribute("aria-checked",i?"true":"false")}o.addEventListener("click",()=>{Te(!s())}),g(n.drivers,a),a(),t.querySelector(".sc-reset-probe-map").addEventListener("click",()=>{ae("reset_1wire_probe_map_reboot")}),t.querySelector(".sc-dump-1wire").addEventListener("click",()=>{ae("dump_1wire_probe_diagnostics")}),t.querySelector(".sc-restart").addEventListener("click",()=>{ae("restart")})}});var Co=`
-.settings-motor-cal-card {
-  background: var(--panel-bg-vibrant);
-  border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  padding: 20px;
-  box-shadow: var(--panel-shadow);
-}
-
-.settings-motor-cal-card .card-title {
-  font-size: .84rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 1.1px;
-  color: var(--accent);
-  margin-bottom: 8px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--panel-border);
-}
-
-.settings-motor-cal-card .hint {
-  color: var(--text-secondary);
-  font-size: .78rem;
-  margin-bottom: 12px;
-}
-
-.settings-motor-cal-card .cfg-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.settings-motor-cal-card .cfg-row {
-  display: grid;
-  gap: 6px;
-}
-
-.settings-motor-cal-card .cfg-row.full {
-  grid-column: 1 / -1;
-}
-
-.settings-motor-cal-card .lbl {
-  color: var(--text-secondary);
-  font-size: .74rem;
-  font-weight: 700;
-  letter-spacing: .45px;
-  text-transform: uppercase;
-}
-
-.settings-motor-cal-card .txt {
-  width: 100%;
-  border: 1px solid var(--control-border);
-  background: var(--control-bg);
-  color: var(--text);
-  border-radius: 10px;
-  padding: 8px 10px;
-  font-size: .86rem;
-}
-
-.settings-motor-cal-card .sel {
-  width: 100%;
-  border: 1px solid var(--control-border);
-  background: var(--control-bg);
-  color: var(--text);
-  border-radius: 10px;
-  padding: 8px 10px;
-  font-size: .86rem;
-}
-
-.settings-motor-cal-card .txt:focus {
-  outline: 2px solid rgba(83,168,255,.6);
-  outline-offset: 1px;
-  border-color: rgba(83,168,255,.55);
-}
-
-.settings-motor-cal-card .sel:focus {
-  outline: 2px solid rgba(83,168,255,.6);
-  outline-offset: 1px;
-  border-color: rgba(83,168,255,.55);
-}
-
-.settings-motor-cal-card .unit {
-  color: var(--text-faint);
-  font-size: .7rem;
-}
-
+`,xi=E({tag:"settings-control-card",render:ya,onMount(e,t){t.querySelector(".sc-reset-probe-map").addEventListener("click",()=>{ce("reset_1wire_probe_map_reboot")}),t.querySelector(".sc-dump-1wire").addEventListener("click",()=>{ce("dump_1wire_probe_diagnostics")}),t.querySelector(".sc-restart").addEventListener("click",()=>{ce("restart")})}});var wa=`
 .settings-motor-cal-card .runtime-note {
-  grid-column: 1 / -1;
   color: var(--state-warn);
   font-size: .74rem;
+  line-height: 1.4;
   border: 1px solid rgba(238,161,17,.35);
   background: rgba(238,161,17,.12);
   border-radius: 10px;
   padding: 8px 10px;
+  margin: 10px 0 2px;
 }
+`;z("settings-motor-calibration-card",wa);var Ke=[{cls:"safe-runtime",key:"generic_runtime_limit_seconds",id:n.genericRuntimeLimitSeconds,label:"Max Safe Runtime",unit:"s"},{cls:"close-threshold",key:"close_threshold_multiplier",id:n.closeThresholdMultiplier,label:"Close Endstop Threshold",unit:"x"},{cls:"close-slope-threshold",key:"close_slope_threshold",id:n.closeSlopeThreshold,label:"Close Endstop Slope",unit:"mA/s"},{cls:"close-slope-floor",key:"close_slope_current_factor",id:n.closeSlopeCurrentFactor,label:"Close Endstop Slope Floor",unit:"x"},{cls:"open-threshold",key:"open_threshold_multiplier",id:n.openThresholdMultiplier,label:"Open Endstop Threshold",unit:"x"},{cls:"open-slope-threshold",key:"open_slope_threshold",id:n.openSlopeThreshold,label:"Open Endstop Slope",unit:"mA/s"},{cls:"open-slope-floor",key:"open_slope_current_factor",id:n.openSlopeCurrentFactor,label:"Open Endstop Slope Floor",unit:"x"},{cls:"open-ripple-limit",key:"open_ripple_limit_factor",id:n.openRippleLimitFactor,label:"Open Ripple Limit",unit:"x"},{cls:"relearn-movements",key:"relearn_after_movements",id:n.relearnAfterMovements,label:"Relearn After Movements",unit:"count"},{cls:"relearn-hours",key:"relearn_after_hours",id:n.relearnAfterHours,label:"Relearn After Hours",unit:"h"},{cls:"learn-min-samples",key:"learned_factor_min_samples",id:n.learnedFactorMinSamples,label:"Learned Factor Min Samples",unit:"count"},{cls:"learn-max-deviation",key:"learned_factor_max_deviation_pct",id:n.learnedFactorMaxDeviationPct,label:"Learned Factor Max Deviation",unit:"%"}],_a=()=>{let e="";for(let t=0;t<Ke.length;t++){let r=Ke[t],o=za(r.key)?"1":"0.1";e+='<div class="ui-row"><span class="ui-label">'+r.label+" ("+r.unit+')</span><span class="ui-field"><input type="number" class="ui-input smc-'+r.cls+'" value="0" step="'+o+'"></span></div>'}return`
+    <div class="ui-card settings-motor-cal-card">
+      <div class="ui-card-title">Motor Calibration & Learning</div>
+      <div class="ui-row">
+        <span class="ui-label">Motor Drivers</span>
+        <span class="ui-field"><div class="ui-toggle mc-drivers-toggle" role="switch" aria-label="Toggle motor drivers"></div></span>
+      </div>
+      <div class="ui-note">Default starting thresholds and learning bounds used by the motor controller.</div>
 
-@media (max-width: 960px) {
-  .settings-motor-cal-card .cfg-grid { grid-template-columns: 1fr; }
-}
-`;S("settings-motor-calibration-card",Co);var fe=[{cls:"safe-runtime",key:"generic_runtime_limit_seconds",id:n.genericRuntimeLimitSeconds,label:"Max Safe Runtime",unit:"s"},{cls:"close-threshold",key:"close_threshold_multiplier",id:n.closeThresholdMultiplier,label:"Close Endstop Threshold",unit:"x"},{cls:"close-slope-threshold",key:"close_slope_threshold",id:n.closeSlopeThreshold,label:"Close Endstop Slope",unit:"mA/s"},{cls:"close-slope-floor",key:"close_slope_current_factor",id:n.closeSlopeCurrentFactor,label:"Close Endstop Slope Floor",unit:"x"},{cls:"open-threshold",key:"open_threshold_multiplier",id:n.openThresholdMultiplier,label:"Open Endstop Threshold",unit:"x"},{cls:"open-slope-threshold",key:"open_slope_threshold",id:n.openSlopeThreshold,label:"Open Endstop Slope",unit:"mA/s"},{cls:"open-slope-floor",key:"open_slope_current_factor",id:n.openSlopeCurrentFactor,label:"Open Endstop Slope Floor",unit:"x"},{cls:"open-ripple-limit",key:"open_ripple_limit_factor",id:n.openRippleLimitFactor,label:"Open Ripple Limit",unit:"x"},{cls:"relearn-movements",key:"relearn_after_movements",id:n.relearnAfterMovements,label:"Relearn After Movements",unit:"count"},{cls:"relearn-hours",key:"relearn_after_hours",id:n.relearnAfterHours,label:"Relearn After Hours",unit:"h"},{cls:"learn-min-samples",key:"learned_factor_min_samples",id:n.learnedFactorMinSamples,label:"Learned Factor Min Samples",unit:"count"},{cls:"learn-max-deviation",key:"learned_factor_max_deviation_pct",id:n.learnedFactorMaxDeviationPct,label:"Learned Factor Max Deviation",unit:"%"}],Ao=()=>{let e=`
-    <div class="cfg-row full">
-      <span class="lbl">Motor Type (Default Profile)</span>
-      <select class="sel smc-profile">
-        <option value="Generic">Generic</option>
-        <option value="HmIP VdMot">HmIP VdMot</option>
-      </select>
-      <span class="unit">Applied as default motor profile</span>
+      <div class="ui-section">Profile</div>
+      <div class="ui-row">
+        <span class="ui-label">Motor Type (Default Profile)</span>
+        <span class="ui-field"><select class="ui-select smc-profile">
+          <option value="Generic">Generic</option>
+          <option value="HmIP VdMot">HmIP VdMot</option>
+        </select></span>
+      </div>
+      <div class="runtime-note">HmIP-VDMot safety: runtime is fixed to 40s to prevent piston overtravel. Generic allows editable runtime.</div>
+
+      <div class="ui-section">Thresholds &amp; Learning</div>
+      ${e}
     </div>
-    <div class="runtime-note">HmIP-VDMot safety: runtime is fixed to 40s to prevent piston overtravel. Generic allows editable runtime.</div>
-  `,t="";for(let o=0;o<fe.length;o++){let r=fe[o];t+='<div class="cfg-row"><span class="lbl">'+r.label+'</span><input type="number" class="txt smc-'+r.cls+'" value="0" step="0.1"><span class="unit">'+r.unit+"</span></div>"}return`
-    <div class="settings-motor-cal-card">
-      <div class="card-title">Motor Calibration & Learning</div>
-      <div class="hint">Default starting thresholds and learning bounds used by the motor controller.</div>
-      <div class="cfg-grid">${e}${t}</div>
-    </div>
-  `};function Lo(e){return e==="learned_factor_min_samples"||e==="generic_runtime_limit_seconds"||e==="relearn_after_movements"||e==="relearn_after_hours"}function Bt(e,t){let o=Number(t);return Number.isFinite(o)?Lo(e)?String(Math.round(o)):o.toFixed(2):"0"}var Ss=_({tag:"settings-motor-calibration-card",render:Ao,onMount(e,t){let o=t.querySelector(".smc-profile"),r=t.querySelector(".smc-safe-runtime");function s(i){if(i==="HmIP VdMot"&&J("hmip_runtime_limit_seconds",40),i==="Generic"){let c=Number(h(n.genericRuntimeLimitSeconds));(!Number.isFinite(c)||c<=0)&&J("generic_runtime_limit_seconds",45)}}function a(){let i=z(n.motorProfileDefault)||"HmIP VdMot";o&&(o.value=i),r&&(i==="HmIP VdMot"?(r.value="40",r.disabled=!0):(r.value=Bt("generic_runtime_limit_seconds",h(n.genericRuntimeLimitSeconds)),r.disabled=!1));for(let c=0;c<fe.length;c++){let p=fe[c],m=t.querySelector(".smc-"+p.cls);m&&p.key!=="generic_runtime_limit_seconds"&&(m.value=Bt(p.key,h(p.id)))}}o&&(o.addEventListener("change",()=>{Y("motor_profile_default",o.value),s(o.value)}),g(n.motorProfileDefault,a));for(let i=0;i<fe.length;i++){let c=fe[i],p=t.querySelector(".smc-"+c.cls);p&&(p.addEventListener("change",()=>{if(c.key==="generic_runtime_limit_seconds"){if((z(n.motorProfileDefault)||"HmIP VdMot")!=="Generic")return;J("generic_runtime_limit_seconds",p.value);return}J(c.key,p.value)}),g(c.id,a))}g(n.genericRuntimeLimitSeconds,a),g(n.hmipRuntimeLimitSeconds,a),s(z(n.motorProfileDefault)||"HmIP VdMot"),a()}});var Fo=`
-.settings-asgard-card {
-  background: var(--panel-bg-vibrant);
-  border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  padding: 20px;
-  box-shadow: var(--panel-shadow);
-}
-
-.settings-asgard-card .card-title {
-  font-size: .84rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 1.1px;
-  color: var(--accent);
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--panel-border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
+  `};function za(e){return e==="learned_factor_min_samples"||e==="generic_runtime_limit_seconds"||e==="relearn_after_movements"||e==="relearn_after_hours"}var Ci=E({tag:"settings-motor-calibration-card",render:_a,onMount(e,t){let r=t.querySelector(".smc-profile"),o=t.querySelector(".smc-safe-runtime"),i=t.querySelector(".mc-drivers-toggle"),a=X(t);function s(m){if(m==="HmIP VdMot"&&Q("hmip_runtime_limit_seconds",40),m==="Generic"){let u=Number(_(n.genericRuntimeLimitSeconds));(!Number.isFinite(u)||u<=0)&&Q("generic_runtime_limit_seconds",45)}}a.toggle(i,{read:()=>I(n.drivers),commit:m=>Be(m)}),a.select(r,{read:()=>A(n.motorProfileDefault)||"HmIP VdMot",commit:m=>{J("motor_profile_default",m),s(m)}});function l(){let m=A(n.motorProfileDefault)||"HmIP VdMot";o.disabled=m==="HmIP VdMot"}a.num(o,{read:()=>(A(n.motorProfileDefault)||"HmIP VdMot")==="HmIP VdMot"?40:_(n.genericRuntimeLimitSeconds),commit:m=>{r.value==="Generic"&&Q("generic_runtime_limit_seconds",m)}});for(let m=0;m<Ke.length;m++){let u=Ke[m];if(u.key==="generic_runtime_limit_seconds")continue;let v=t.querySelector(".smc-"+u.cls);v&&(a.num(v,{read:()=>_(u.id),commit:w=>Q(u.key,w)}),f(u.id,a.refresh))}f(n.drivers,a.refresh),f(n.motorProfileDefault,()=>{a.refresh(),l()}),f(n.genericRuntimeLimitSeconds,a.refresh),f(n.hmipRuntimeLimitSeconds,a.refresh),s(A(n.motorProfileDefault)||"HmIP VdMot"),a.refresh(),l()}});var Sa=`
 .settings-asgard-card .asgard-role-badge {
   font-size: .72rem;
   font-weight: 800;
@@ -2258,136 +2132,15 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
   border-radius: 8px;
   flex-shrink: 0;
 }
-
 .settings-asgard-card .asgard-role-badge.master {
   background: rgba(45,110,45,.36);
   color: #CBFFD0;
   border: 1px solid rgba(100,255,100,.35);
 }
-
 .settings-asgard-card .asgard-role-badge.slave {
   background: rgba(70,70,70,.28);
   color: #ADADAD;
   border: 1px solid rgba(150,150,150,.25);
-}
-
-.settings-asgard-card .cfg-row {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.settings-asgard-card .lbl {
-  color: var(--text-secondary);
-  font-size: .78rem;
-  font-weight: 700;
-  letter-spacing: .45px;
-  text-transform: uppercase;
-  line-height: 1.2;
-}
-
-.settings-asgard-card .inp {
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid var(--control-border);
-  background: var(--control-bg);
-  color: var(--text);
-  border-radius: 10px;
-  padding: 9px 10px;
-  font-size: .88rem;
-  transition: border-color .15s ease;
-}
-
-.settings-asgard-card .inp:focus {
-  outline: 2px solid rgba(83,168,255,.6);
-  outline-offset: 1px;
-  border-color: rgba(83,168,255,.55);
-}
-
-.settings-asgard-card .row-2col {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-bottom: 12px;
-  align-items: start;
-}
-
-.settings-asgard-card .row-2col .cfg-row {
-  margin-bottom: 0;
-}
-
-.settings-asgard-card .enable-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 14px;
-  padding: 10px 14px;
-  border: 1px solid var(--control-border);
-  border-radius: 12px;
-  background: var(--control-bg);
-}
-
-.settings-asgard-card .enable-label {
-  font-size: .88rem;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.settings-asgard-card .enable-row.is-on {
-  border-color: rgba(100,255,100,.4);
-  background: rgba(45,110,45,.2);
-}
-
-.settings-asgard-card .enable-toggle {
-  width: 48px;
-  height: 26px;
-  border-radius: 999px;
-  background: var(--control-bg-hover);
-  position: relative;
-  cursor: pointer;
-  border: 1px solid var(--control-border);
-  transition: background .2s ease, border-color .2s ease;
-  flex-shrink: 0;
-}
-
-.settings-asgard-card .enable-toggle::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  background: #dbe8ff;
-  border-radius: 999px;
-  transition: transform .2s ease;
-}
-
-.settings-asgard-card .enable-row.is-on .enable-toggle {
-  background: rgba(121, 209, 126, 0.25);
-  border-color: rgba(121, 209, 126, 0.5);
-}
-
-.settings-asgard-card .enable-row.is-on .enable-toggle::after {
-  transform: translateX(22px);
-  background: #0f213c;
-}
-
-.settings-asgard-card .section-title {
-  color: var(--text-secondary);
-  font-size: .76rem;
-  font-weight: 700;
-  letter-spacing: .8px;
-  text-transform: uppercase;
-  margin: 16px 0 10px;
-}
-
-.settings-asgard-card .note {
-  color: var(--text-secondary);
-  font-size: .75rem;
-  margin-top: 4px;
-  line-height: 1.4;
 }
 
 .settings-asgard-card .setpoint-box {
@@ -2398,131 +2151,91 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
   border: 1px solid var(--control-border);
   border-radius: 12px;
   background: var(--control-bg);
+  margin-top: 8px;
 }
-
-.settings-asgard-card .setpoint-box .note {
-  margin-top: 0;
-}
-
 .settings-asgard-card .setpoint-val {
   font-size: 1.6rem;
   font-weight: 800;
   letter-spacing: .3px;
   color: var(--accent);
   line-height: 1;
+  font-family: var(--mono);
 }
 
 .settings-asgard-card .status-grid {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 4px 14px;
+  gap: 6px 14px;
   font-size: .82rem;
   color: var(--text-secondary);
+  margin-top: 8px;
 }
-
-.settings-asgard-card .status-grid .val {
-  color: var(--text);
-  font-weight: 600;
-}
-
-.settings-asgard-card .status-grid .val.warn {
-  color: #FFE9A0;
-}
-
-@media (max-width: 980px) {
-  .settings-asgard-card .row-2col {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .settings-asgard-card .row-2col .cfg-row {
-    margin-bottom: 0;
-  }
-}
-`;S("settings-asgard-card",Fo);var Mo=()=>`
-  <div class="settings-asgard-card">
-    <div class="card-title">
+.settings-asgard-card .status-grid .val { color: var(--text); font-weight: 600; }
+.settings-asgard-card .status-grid .val.warn { color: #FFE9A0; }
+`;z("settings-asgard-card",Sa);var ka=()=>`
+  <div class="ui-card settings-asgard-card">
+    <div class="ui-card-title">
       <span>Asgard / Ecodan Bridge</span>
       <span class="asgard-role-badge slave">slave</span>
     </div>
 
-    <div class="enable-row is-off">
-      <span class="enable-label">Bridge enabled</span>
-      <div class="enable-toggle sa-enable" role="switch" aria-label="Toggle Asgard bridge"></div>
+    <div class="ui-row">
+      <span class="ui-label">Bridge enabled</span>
+      <span class="ui-field"><div class="ui-toggle sa-enable" role="switch" aria-label="Toggle Asgard bridge"></div></span>
     </div>
 
-    <div class="enable-row is-off">
-      <span class="enable-label">Coordinator (pushes to Asgard)</span>
-      <div class="enable-toggle sa-coord" role="switch" aria-label="Toggle coordinator role"></div>
-    </div>
-
-    <div class="section-title">Asgard</div>
-    <div class="row-2col">
-      <div class="cfg-row">
-        <span class="lbl">Host</span>
-        <input class="inp sa-host" type="text" placeholder="ecodan-heatpump.local" maxlength="63" />
+    <div class="gated-body sa-body">
+      <div class="ui-row">
+        <span class="ui-label">Coordinator <span class="ui-sublabel">pushes to Asgard</span></span>
+        <span class="ui-field"><div class="ui-toggle sa-coord" role="switch" aria-label="Toggle coordinator role"></div></span>
       </div>
-      <div class="cfg-row">
-        <span class="lbl">Port</span>
-        <input class="inp sa-port" type="number" min="1" max="65535" step="1" placeholder="80" />
-      </div>
-    </div>
-    <div class="cfg-row">
-      <span class="lbl">Number entity</span>
-      <input class="inp sa-entity" type="text" maxlength="47" placeholder="virtual_thermostat_input_z1" />
-      <span class="note">Asgard REST object_id receiving the weighted house temperature</span>
-    </div>
 
-    <div class="section-title">Peer board</div>
-    <div class="row-2col">
-      <div class="cfg-row">
-        <span class="lbl">Peer host</span>
-        <input class="inp sa-peer" type="text" placeholder="empty = single board" maxlength="63" />
+      <div class="ui-section">Asgard</div>
+      <div class="ui-row">
+        <span class="ui-label">Host</span>
+        <span class="ui-field"><input class="ui-input wide sa-host" type="text" placeholder="ecodan-heatpump.local" maxlength="63" /></span>
       </div>
-      <div class="cfg-row">
-        <span class="lbl">Push interval (s)</span>
-        <input class="inp sa-interval" type="number" min="5" max="3600" step="1" placeholder="30" />
+      <div class="ui-row">
+        <span class="ui-label">Port</span>
+        <span class="ui-field"><input class="ui-input sa-port" type="number" min="1" max="65535" step="1" placeholder="80" /></span>
       </div>
-    </div>
+      <div class="ui-row">
+        <span class="ui-label">Number entity <span class="ui-sublabel">REST object_id for the weighted house temp</span></span>
+        <span class="ui-field"><input class="ui-input wide sa-entity" type="text" maxlength="47" placeholder="virtual_thermostat_input_z1" /></span>
+      </div>
 
-    <div class="section-title">Recommended setpoint</div>
-    <div class="setpoint-box">
-      <span class="setpoint-val sa-st-setpoint">\u2014</span>
-      <span class="note">Fixed value to set as the virtual thermostat setpoint in Asgard \u2014 the area-weighted target of all enabled zones (derived from static zone settings, not live status).</span>
-    </div>
+      <div class="ui-section">Peer board</div>
+      <div class="ui-row">
+        <span class="ui-label">Peer host</span>
+        <span class="ui-field"><input class="ui-input wide sa-peer" type="text" placeholder="empty = single board" maxlength="63" /></span>
+      </div>
+      <div class="ui-row">
+        <span class="ui-label">Push interval (s)</span>
+        <span class="ui-field"><input class="ui-input sa-interval" type="number" min="5" max="3600" step="1" placeholder="30" /></span>
+      </div>
 
-    <div class="section-title">Status</div>
-    <div class="status-grid">
-      <span>Peer</span><span class="val sa-st-peer">n/a</span>
-      <span>Last push</span><span class="val sa-st-push">\u2014</span>
-      <span>Zones weighted</span><span class="val sa-st-zones">\u2014</span>
-      <span>Last error</span><span class="val sa-st-err">\u2014</span>
+      <div class="ui-section">Minimum zone flow</div>
+      <div class="ui-row">
+        <span class="ui-label">Min valve opening (%) <span class="ui-sublabel">floor held on every enabled zone so the heat pump always has flow</span></span>
+        <span class="ui-field"><input class="ui-input sa-minflow" type="number" min="0" max="50" step="1" placeholder="15" /></span>
+      </div>
+
+      <div class="ui-section">Recommended setpoint</div>
+      <div class="setpoint-box">
+        <span class="setpoint-val sa-st-setpoint">\u2014</span>
+        <span class="ui-note">Fixed value to set as the virtual thermostat setpoint in Asgard \u2014 the area-weighted target of all enabled zones (derived from static zone settings, not live status).</span>
+      </div>
+
+      <div class="ui-section">Status</div>
+      <div class="status-grid">
+        <span>Peer</span><span class="val sa-st-peer">n/a</span>
+        <span>Last push</span><span class="val sa-st-push">\u2014</span>
+        <span>Zones weighted</span><span class="val sa-st-zones">\u2014</span>
+        <span>Last error</span><span class="val sa-st-err">\u2014</span>
+      </div>
     </div>
   </div>
-`,Ms=_({tag:"settings-asgard-card",render:Mo,onMount(e,t){let o=t.querySelector(".asgard-role-badge"),r=t.querySelector(".sa-enable").closest(".enable-row"),s=t.querySelector(".sa-coord").closest(".enable-row"),a=t.querySelector(".sa-enable"),i=t.querySelector(".sa-coord"),c=t.querySelector(".sa-host"),p=t.querySelector(".sa-port"),m=t.querySelector(".sa-entity"),b=t.querySelector(".sa-peer"),v=t.querySelector(".sa-interval"),w=t.querySelector(".sa-st-peer"),d=t.querySelector(".sa-st-push"),f=t.querySelector(".sa-st-setpoint"),x=t.querySelector(".sa-st-zones"),A=t.querySelector(".sa-st-err");function y(L,M,P,I,$){return L.addEventListener("click",()=>{let U=H(P),j=U?"off":"on";u(P,{state:j}),Y(I,j).catch(ie=>{console.error(`[Asgard] Failed to update ${$}:`,ie),u(P,{state:U?"on":"off"})})}),()=>{let U=H(P);M.classList.toggle("is-on",U),M.classList.toggle("is-off",!U),L.setAttribute("aria-checked",U?"true":"false")}}let R=y(a,r,n.asgardEnabled,"asgard_enabled","enabled"),Z=y(i,s,n.asgardCoordinator,"asgard_coordinator","coordinator");function N(L,M,P){L.addEventListener("blur",()=>{let I=L.value.trim();u(M,{state:I}),xt(P,I).catch($=>console.error(`[Asgard] Failed to update ${P}:`,$))})}N(c,n.asgardHost,"asgard_host"),N(m,n.asgardEntityName,"asgard_entity_name"),N(b,n.asgardPeerHost,"asgard_peer_host"),p.addEventListener("blur",()=>{let L=parseInt(p.value,10);L>=1&&L<=65535&&(u(n.asgardPort,{value:L}),J("asgard_port",L).catch(M=>console.error("[Asgard] Failed to update port:",M)))}),v.addEventListener("blur",()=>{let L=parseInt(v.value,10);L>=5&&L<=3600&&(u(n.asgardPushIntervalS,{value:L}),J("asgard_push_interval_s",L).catch(M=>console.error("[Asgard] Failed to update push_interval_s:",M)))});function T(){let L=z(n.asgardRole)||"slave";o.textContent=L,o.className="asgard-role-badge "+(L==="master"?"master":"slave");let M=z(n.asgardPeerStatus)||"n/a";w.textContent=M,w.classList.toggle("warn",M==="stale"||M==="unreachable");let P=h(n.asgardLastPushC),I=h(n.asgardLastPushAgeS);if(P!=null&&Number.isFinite(P)&&I!=null){let Be=I<120?`${Math.round(I)}s ago`:`${Math.round(I/60)}m ago`;d.textContent=`${P.toFixed(2)}\xB0C (${Be})`}else d.textContent="\u2014";let $=h(n.asgardSetpointC);f.textContent=$!=null&&Number.isFinite($)?`${$.toFixed(1)}\xB0C`:"\u2014";let U=h(n.asgardLocalZones),j=h(n.asgardPeerZones);x.textContent=U!=null?`${U} local + ${j||0} peer`:"\u2014";let ie=z(n.asgardLastError);A.textContent=ie||"\u2014",A.classList.toggle("warn",!!ie)}function q(){let L=z(n.asgardHost),M=z(n.asgardEntityName),P=z(n.asgardPeerHost),I=h(n.asgardPort),$=h(n.asgardPushIntervalS);document.activeElement!==c&&L!=null&&(c.value=L),document.activeElement!==m&&M!=null&&(m.value=M),document.activeElement!==b&&P!=null&&(b.value=P),document.activeElement!==p&&I!=null&&(p.value=I||80),document.activeElement!==v&&$!=null&&(v.value=$||30)}g(n.asgardEnabled,R),g(n.asgardCoordinator,Z),g(n.asgardRole,T),g(n.asgardPeerStatus,T),g(n.asgardLastPushC,T),g(n.asgardSetpointC,T),g(n.asgardLastPushAgeS,T),g(n.asgardLocalZones,T),g(n.asgardPeerZones,T),g(n.asgardLastError,T),g(n.asgardHost,q),g(n.asgardEntityName,q),g(n.asgardPeerHost,q),g(n.asgardPort,q),g(n.asgardPushIntervalS,q),R(),Z(),T(),q()}});var Wt=[1,2,3,4,5,6],No=`
-.settings-forecast-card {
-  background: var(--panel-bg-vibrant);
-  border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  padding: 20px;
-  box-shadow: var(--panel-shadow);
-}
-
-.settings-forecast-card .card-title {
-  font-size: .84rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 1.1px;
-  color: var(--accent);
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--panel-border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
+`,Oi=E({tag:"settings-asgard-card",render:ka,onMount(e,t){let r=t.querySelector(".asgard-role-badge"),o=t.querySelector(".sa-enable"),i=t.querySelector(".sa-coord"),a=t.querySelector(".sa-host"),s=t.querySelector(".sa-port"),l=t.querySelector(".sa-entity"),m=t.querySelector(".sa-peer"),u=t.querySelector(".sa-interval"),v=t.querySelector(".sa-minflow"),w=t.querySelector(".sa-st-peer"),y=t.querySelector(".sa-st-push"),S=t.querySelector(".sa-st-setpoint"),h=t.querySelector(".sa-st-zones"),b=t.querySelector(".sa-st-err"),c=t.querySelector(".sa-body"),d=X(t);function x(C,k,R){return H=>{let G=H?"on":"off";g(C,{state:G}),J(k,G).catch(U=>{console.error(`[Asgard] Failed to update ${R}:`,U),g(C,{state:H?"off":"on"})})}}let T=C=>c.classList.toggle("is-disabled",!C);d.toggle(o,{read:()=>I(n.asgardEnabled),commit:x(n.asgardEnabled,"asgard_enabled","enabled"),onChange:T}),d.toggle(i,{read:()=>I(n.asgardCoordinator),commit:x(n.asgardCoordinator,"asgard_coordinator","coordinator")});function O(C,k){return R=>{g(C,{state:R}),Pt(k,R).catch(H=>console.error(`[Asgard] Failed to update ${k}:`,H))}}d.text(a,{read:()=>A(n.asgardHost),commit:O(n.asgardHost,"asgard_host")}),d.text(l,{read:()=>A(n.asgardEntityName),commit:O(n.asgardEntityName,"asgard_entity_name")}),d.text(m,{read:()=>A(n.asgardPeerHost),commit:O(n.asgardPeerHost,"asgard_peer_host")});function Z(C,k){return R=>{g(C,{value:R}),Q(k,R).catch(H=>console.error(`[Asgard] Failed to update ${k}:`,H))}}d.num(s,{read:()=>_(n.asgardPort),commit:Z(n.asgardPort,"asgard_port")}),d.num(u,{read:()=>_(n.asgardPushIntervalS),commit:Z(n.asgardPushIntervalS,"asgard_push_interval_s")}),d.num(v,{read:()=>_(n.minZoneFlowPct),commit:Z(n.minZoneFlowPct,"min_zone_flow_pct")});function P(){let C=A(n.asgardRole)||"slave";r.textContent=C,r.className="asgard-role-badge "+(C==="master"?"master":"slave");let k=A(n.asgardPeerStatus)||"n/a";w.textContent=k,w.classList.toggle("warn",k==="stale"||k==="unreachable");let R=_(n.asgardLastPushC),H=_(n.asgardLastPushAgeS);if(R!=null&&Number.isFinite(R)&&H!=null){let et=H<120?`${Math.round(H)}s ago`:`${Math.round(H/60)}m ago`;y.textContent=`${R.toFixed(2)}\xB0C (${et})`}else y.textContent="\u2014";let G=_(n.asgardSetpointC);S.textContent=G!=null&&Number.isFinite(G)?`${G.toFixed(1)}\xB0C`:"\u2014";let U=_(n.asgardLocalZones),B=_(n.asgardPeerZones);h.textContent=U!=null?`${U} local + ${B||0} peer`:"\u2014";let le=A(n.asgardLastError);b.textContent=le||"\u2014",b.classList.toggle("warn",!!le)}f(n.asgardEnabled,d.refresh),f(n.asgardCoordinator,d.refresh),f(n.asgardRole,P),f(n.asgardPeerStatus,P),f(n.asgardLastPushC,P),f(n.asgardSetpointC,P),f(n.asgardLastPushAgeS,P),f(n.asgardLocalZones,P),f(n.asgardPeerZones,P),f(n.asgardLastError,P),f(n.asgardHost,d.refresh),f(n.asgardEntityName,d.refresh),f(n.asgardPeerHost,d.refresh),f(n.asgardPort,d.refresh),f(n.asgardPushIntervalS,d.refresh),f(n.minZoneFlowPct,d.refresh),d.refresh(),P()}});var yo=[1,2,3,4,5,6],Ea=`
 .settings-forecast-card .fc-badge {
   font-size: .72rem;
   font-weight: 800;
@@ -2535,13 +2248,11 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
   color: #ADADAD;
   border: 1px solid rgba(150,150,150,.25);
 }
-
 .settings-forecast-card .fc-badge.ok {
   background: rgba(45,110,45,.36);
   color: #CBFFD0;
   border-color: rgba(100,255,100,.35);
 }
-
 .settings-forecast-card .fc-badge.stale,
 .settings-forecast-card .fc-badge.external {
   background: rgba(110,90,20,.36);
@@ -2549,184 +2260,68 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
   border-color: rgba(255,200,50,.35);
 }
 
-.settings-forecast-card .enable-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 14px;
-  padding: 10px 14px;
-  border: 1px solid var(--control-border);
-  border-radius: 12px;
-  background: var(--control-bg);
-}
-
-.settings-forecast-card .enable-label { font-size: .88rem; font-weight: 700; color: var(--text); }
-.settings-forecast-card .enable-row.is-on { border-color: rgba(100,255,100,.4); background: rgba(45,110,45,.2); }
-
-.settings-forecast-card .enable-toggle {
-  width: 48px; height: 26px; border-radius: 999px;
-  background: var(--control-bg-hover); position: relative; cursor: pointer;
-  border: 1px solid var(--control-border); transition: background .2s ease, border-color .2s ease; flex-shrink: 0;
-}
-.settings-forecast-card .enable-toggle::after {
-  content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
-  background: #dbe8ff; border-radius: 999px; transition: transform .2s ease;
-}
-.settings-forecast-card .enable-row.is-on .enable-toggle { background: rgba(121,209,126,.25); border-color: rgba(121,209,126,.5); }
-.settings-forecast-card .enable-row.is-on .enable-toggle::after { transform: translateX(22px); background: #0f213c; }
-
-.settings-forecast-card .section-title {
-  color: var(--text-secondary); font-size: .76rem; font-weight: 700;
-  letter-spacing: .8px; text-transform: uppercase; margin: 16px 0 10px;
-}
-
-.settings-forecast-card .row-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px; }
-.settings-forecast-card .lbl {
-  display: block; color: var(--text-secondary); font-size: .74rem; font-weight: 700;
-  letter-spacing: .45px; text-transform: uppercase; margin-bottom: 4px;
-}
-.settings-forecast-card .inp {
-  width: 100%; box-sizing: border-box; border: 1px solid var(--control-border);
-  background: var(--control-bg); color: var(--text); border-radius: 10px; padding: 8px 10px; font-size: .88rem;
-}
-
-.settings-forecast-card .zone-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.settings-forecast-card .zone-table { width: 100%; border-collapse: collapse; font-size: .8rem; margin-top: 4px; }
 .settings-forecast-card .zone-table th {
   color: var(--text-secondary); font-size: .68rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .4px; text-align: center; padding: 4px 2px; font-weight: 700;
+  letter-spacing: .4px; text-align: center; padding: 4px 2px;
 }
 .settings-forecast-card .zone-table th:first-child { text-align: left; }
-.settings-forecast-card .zone-table td { padding: 3px 2px; text-align: center; }
+.settings-forecast-card .zone-table td { padding: 4px 2px; text-align: center; }
 .settings-forecast-card .zone-table td:first-child { text-align: left; color: var(--text); font-weight: 600; white-space: nowrap; }
-.settings-forecast-card .zone-table input {
-  width: 100%; box-sizing: border-box; border: 1px solid var(--control-border);
-  background: var(--control-bg); color: var(--text); border-radius: 8px; padding: 5px 4px; font-size: .8rem; text-align: center;
-}
-.settings-forecast-card .zone-table .offset-cell { font-weight: 700; color: var(--text-secondary); }
+.settings-forecast-card .zone-table .offset-cell { font-weight: 700; color: var(--text-secondary); font-family: var(--mono); }
 .settings-forecast-card .zone-table .offset-cell.active { color: #CBFFD0; }
-
-.settings-forecast-card .note { color: var(--text-secondary); font-size: .75rem; margin-top: 6px; line-height: 1.4; }
-`;S("settings-forecast-card",No);var To=e=>`
+`;z("settings-forecast-card",Ea);var Ca=e=>`
   <tr data-zone="${e}">
     <td>Zone ${e}</td>
-    <td><input class="fc-wind" type="number" min="0" max="1" step="0.05" /></td>
-    <td><input class="fc-solar" type="number" min="0" max="1" step="0.05" /></td>
-    <td><input class="fc-lead" type="number" min="0" max="48" step="1" /></td>
     <td class="offset-cell fc-offset">\u2014</td>
   </tr>
-`,Do=()=>`
-  <div class="settings-forecast-card">
-    <div class="card-title">
+`,Aa=()=>`
+  <div class="ui-card settings-forecast-card">
+    <div class="ui-card-title">
       <span>Forecast Preload</span>
       <span class="fc-badge">disabled</span>
     </div>
 
-    <div class="enable-row is-off">
-      <span class="enable-label">Wind preload enabled</span>
-      <div class="enable-toggle fc-enable" role="switch" aria-label="Toggle forecast preload"></div>
+    <div class="ui-row">
+      <span class="ui-label">Wind preload enabled</span>
+      <span class="ui-field"><div class="ui-toggle fc-enable" role="switch" aria-label="Toggle forecast preload"></div></span>
     </div>
+    <div class="ui-note">Charges the slab before an incoming storm: raises a zone's setpoint when forecast wind hitting its exterior walls is about to spike. The fetched forecast is shown on the Monitor page.</div>
 
-    <div class="section-title">Location</div>
-    <div class="row-2col">
-      <div><span class="lbl">Latitude</span><input class="inp fc-lat" type="number" min="-90" max="90" step="0.0001" placeholder="55.6761" /></div>
-      <div><span class="lbl">Longitude</span><input class="inp fc-lon" type="number" min="-180" max="180" step="0.0001" placeholder="12.5683" /></div>
+    <div class="gated-body fc-body">
+      <div class="ui-section">Location</div>
+      <div class="ui-row">
+        <span class="ui-label">Latitude</span>
+        <span class="ui-field"><input class="ui-input wide fc-lat" type="number" min="-90" max="90" step="0.0001" placeholder="55.6761" data-nostep /></span>
+      </div>
+      <div class="ui-row">
+        <span class="ui-label">Longitude</span>
+        <span class="ui-field"><input class="ui-input wide fc-lon" type="number" min="-180" max="180" step="0.0001" placeholder="12.5683" data-nostep /></span>
+      </div>
+
+      <div class="ui-section">Model</div>
+      <div class="ui-row">
+        <span class="ui-label">Load threshold</span>
+        <span class="ui-field"><input class="ui-input fc-threshold" type="number" min="0.1" max="10" step="0.1" placeholder="1.0" /></span>
+      </div>
+      <div class="ui-row">
+        <span class="ui-label">Max offset (\xB0C)</span>
+        <span class="ui-field"><input class="ui-input fc-maxoffset" type="number" min="0" max="3" step="0.1" placeholder="1.5" /></span>
+      </div>
+
+      <div class="ui-section">Per-zone preload (now)</div>
+      <table class="zone-table">
+        <thead>
+          <tr><th>Zone</th><th>Active offset</th></tr>
+        </thead>
+        <tbody class="fc-zone-body">
+          ${yo.map(Ca).join("")}
+        </tbody>
+      </table>
+      <div class="ui-note fc-note">Live forecast preload offset applied to each zone right now (the hours-ahead figure is when the load peak is expected). Per-zone wind exposure, solar gain and thermal lead are configured in the Zone card alongside Exterior Walls.</div>
     </div>
-
-    <div class="section-title">Model</div>
-    <div class="row-2col">
-      <div><span class="lbl">Load threshold</span><input class="inp fc-threshold" type="number" min="0.1" max="10" step="0.1" placeholder="1.0" /></div>
-      <div><span class="lbl">Max offset (\xB0C)</span><input class="inp fc-maxoffset" type="number" min="0" max="3" step="0.1" placeholder="1.5" /></div>
-    </div>
-
-    <div class="section-title">Per-zone exposure</div>
-    <table class="zone-table">
-      <thead>
-        <tr><th>Zone</th><th>Wind</th><th>Solar</th><th>Lead h</th><th>Now</th></tr>
-      </thead>
-      <tbody class="fc-zone-body">
-        ${Wt.map(To).join("")}
-      </tbody>
-    </table>
-    <div class="note fc-note">Wind (0\u20131) = how exposed this room's outside walls are to wind-driven heat loss (0 sheltered/internal, 1 fully exposed). Solar (0\u20131) = how much passive sun this room gains, which reduces its preload (0 none, 1 strong). Lead h = how many hours ahead to start charging the slab before a forecast cold/wind peak (fixed per room, not learned). The live wind speed, direction and sun come from the forecast; the room's exterior walls (set in the zone sensor card) decide which wind directions count.</div>
   </div>
-`,Rs=_({tag:"settings-forecast-card",render:Do,onMount(e,t){let o=t.querySelector(".fc-badge"),r=t.querySelector(".enable-row"),s=t.querySelector(".fc-enable"),a=t.querySelector(".fc-lat"),i=t.querySelector(".fc-lon"),c=t.querySelector(".fc-threshold"),p=t.querySelector(".fc-maxoffset");s.addEventListener("click",()=>{let d=H(n.forecastEnabled),f=d?"off":"on";u(n.forecastEnabled,{state:f}),Y("forecast_enabled",f).catch(x=>{console.error("[Forecast] toggle failed:",x),u(n.forecastEnabled,{state:d?"on":"off"})})});function m(d,f,x,A,y){d.addEventListener("blur",()=>{let R=parseFloat(d.value);!Number.isNaN(R)&&R>=A&&R<=y&&(u(x,{value:R}),J(f,R).catch(Z=>console.error(`[Forecast] ${f} failed:`,Z)))})}m(a,"forecast_latitude",n.forecastLatitude,-90,90),m(i,"forecast_longitude",n.forecastLongitude,-180,180),m(c,"forecast_load_threshold",n.forecastLoadThreshold,.1,10),m(p,"forecast_max_offset_c",n.forecastMaxOffsetC,0,3),t.querySelectorAll(".fc-zone-body tr").forEach(d=>{let f=parseInt(d.getAttribute("data-zone"),10),x=d.querySelector(".fc-wind"),A=d.querySelector(".fc-solar"),y=d.querySelector(".fc-lead"),R=(Z,N,T,q,L)=>{Z.addEventListener("blur",()=>{let M=parseFloat(Z.value);!Number.isNaN(M)&&M>=q&&M<=L&&(u(T(f),{value:M}),ye(f,N,M).catch(P=>console.error(`[Forecast] z${f} ${N} failed:`,P)))})};R(x,"zone_wind_exposure",l.windExposure,0,1),R(A,"zone_solar_gain",l.solarGain,0,1),R(y,"zone_thermal_lead_h",l.thermalLeadH,0,48)});function b(){let d=z(n.forecastStatus)||"disabled";o.textContent=d,o.className="fc-badge",d==="ok"?o.classList.add("ok"):(d==="stale"||d.indexOf("external")>=0)&&o.classList.add("external");let f=H(n.forecastEnabled);r.classList.toggle("is-on",f),r.classList.toggle("is-off",!f),s.setAttribute("aria-checked",f?"true":"false")}function v(){t.querySelectorAll(".fc-zone-body tr").forEach(d=>{let f=parseInt(d.getAttribute("data-zone"),10),x=d.querySelector(".fc-offset"),A=h(l.forecastOffset(f)),y=h(l.forecastPeakH(f));A!=null&&A>.01?(x.textContent=`+${A.toFixed(1)}\xB0`+(y!=null&&y>=0?` (${y}h)`:""),x.classList.add("active")):(x.textContent="\u2014",x.classList.remove("active"))})}function w(){let d=(f,x,A)=>{let y=h(x);document.activeElement!==f&&y!=null&&(f.value=y||A)};d(a,n.forecastLatitude,""),d(i,n.forecastLongitude,""),d(c,n.forecastLoadThreshold,1),d(p,n.forecastMaxOffsetC,1.5),t.querySelectorAll(".fc-zone-body tr").forEach(f=>{let x=parseInt(f.getAttribute("data-zone"),10);d(f.querySelector(".fc-wind"),l.windExposure(x),.5),d(f.querySelector(".fc-solar"),l.solarGain(x),.3),d(f.querySelector(".fc-lead"),l.thermalLeadH(x),4)})}g(n.forecastStatus,b),g(n.forecastEnabled,b),g(n.forecastLatitude,w),g(n.forecastLongitude,w),g(n.forecastLoadThreshold,w),g(n.forecastMaxOffsetC,w),Wt.forEach(d=>{g(l.windExposure(d),w),g(l.solarGain(d),w),g(l.thermalLeadH(d),w),g(l.forecastOffset(d),v)}),b(),v(),w()}});var Oo=`
-.smart-preheat-card {
-  background: var(--panel-bg-vibrant);
-  border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  padding: 20px;
-  box-shadow: var(--panel-shadow);
-}
-
-.smart-preheat-card .card-title {
-  font-size: .84rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 1.1px;
-  color: var(--accent);
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--panel-border);
-}
-
-.smart-preheat-card .toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
-  padding: 10px 14px;
-  border: 1px solid var(--control-border);
-  border-radius: 12px;
-  background: var(--control-bg);
-}
-
-.smart-preheat-card .toggle-label {
-  font-size: .88rem;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.smart-preheat-card .toggle-row.is-on {
-  border-color: rgba(100,255,100,.4);
-  background: rgba(45,110,45,.2);
-}
-
-.smart-preheat-card .ui-toggle {
-  width: 48px;
-  height: 26px;
-  border-radius: 999px;
-  background: var(--control-bg-hover);
-  position: relative;
-  cursor: pointer;
-  border: 1px solid var(--control-border);
-  transition: background .2s ease, border-color .2s ease;
-  flex-shrink: 0;
-}
-
-.smart-preheat-card .ui-toggle::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  background: #dbe8ff;
-  border-radius: 999px;
-  transition: transform .2s ease;
-}
-
-.smart-preheat-card .ui-toggle.on {
-  background: rgba(121, 209, 126, 0.25);
-  border-color: rgba(121, 209, 126, 0.5);
-}
-
-.smart-preheat-card .ui-toggle.on::after {
-  transform: translateX(22px);
-  background: #0f213c;
-}
-
+`,Wi=E({tag:"settings-forecast-card",render:Aa,onMount(e,t){let r=t.querySelector(".fc-badge"),o=t.querySelector(".fc-enable"),i=t.querySelector(".fc-body"),a=t.querySelector(".fc-lat"),s=t.querySelector(".fc-lon"),l=t.querySelector(".fc-threshold"),m=t.querySelector(".fc-maxoffset"),u=X(t),v=h=>{i&&i.classList.toggle("is-disabled",!h)};u.toggle(o,{read:()=>I(n.forecastEnabled),onChange:v,commit:h=>{let b=h?"on":"off";g(n.forecastEnabled,{state:b}),J("forecast_enabled",b).catch(c=>{console.error("[Forecast] toggle failed:",c),g(n.forecastEnabled,{state:h?"off":"on"})})}});function w(h,b){return c=>{g(h,{value:c}),Q(b,c).catch(d=>console.error(`[Forecast] ${b} failed:`,d))}}u.num(a,{nostep:!0,read:()=>_(n.forecastLatitude),commit:w(n.forecastLatitude,"forecast_latitude")}),u.num(s,{nostep:!0,read:()=>_(n.forecastLongitude),commit:w(n.forecastLongitude,"forecast_longitude")}),u.num(l,{read:()=>_(n.forecastLoadThreshold),commit:w(n.forecastLoadThreshold,"forecast_load_threshold")}),u.num(m,{read:()=>_(n.forecastMaxOffsetC),commit:w(n.forecastMaxOffsetC,"forecast_max_offset_c")});function y(){let h=A(n.forecastStatus)||"disabled";r.textContent=h,r.className="fc-badge",h==="ok"?r.classList.add("ok"):(h==="stale"||h.indexOf("external")>=0)&&r.classList.add("external")}function S(){t.querySelectorAll(".fc-zone-body tr").forEach(h=>{let b=parseInt(h.getAttribute("data-zone"),10),c=h.querySelector(".fc-offset"),d=_(p.forecastOffset(b)),x=_(p.forecastPeakH(b));d!=null&&d>.01?(c.textContent=`+${d.toFixed(1)}\xB0`+(x!=null&&x>=0?` (${x}h)`:""),c.classList.add("active")):(c.textContent="\u2014",c.classList.remove("active"))})}f(n.forecastStatus,y),f(n.forecastEnabled,()=>{u.refresh(),y()}),f(n.forecastLatitude,u.refresh),f(n.forecastLongitude,u.refresh),f(n.forecastLoadThreshold,u.refresh),f(n.forecastMaxOffsetC,u.refresh),yo.forEach(h=>{f(p.forecastOffset(h),S)}),y(),S(),u.refresh()}});var Fa=`
 .smart-preheat-card .absorb-badge {
   font-size: .7rem;
   font-weight: 800;
@@ -2744,65 +2339,63 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
   color: #CBFFD0;
   border-color: rgba(100,255,100,.35);
 }
-
-.smart-preheat-card .num-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.smart-preheat-card .num-row .lbl {
-  display: block;
-  color: var(--text-secondary);
-  font-size: .74rem;
-  font-weight: 700;
-  letter-spacing: .45px;
-  text-transform: uppercase;
-  margin-bottom: 4px;
-}
-
-.smart-preheat-card .num-row .inp {
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid var(--control-border);
-  background: var(--control-bg);
-  color: var(--text);
-  border-radius: 10px;
-  padding: 8px 10px;
-  font-size: .88rem;
-}
-
-.smart-preheat-card .note {
-  color: var(--text-secondary);
-  font-size: .75rem;
-  margin-top: 6px;
-  line-height: 1.4;
-}
-`;S("smart-preheat-card",Oo);var qo=()=>`
-  <div class="smart-preheat-card">
-    <div class="card-title">Preheat</div>
-    <div class="toggle-row">
-      <span class="toggle-label">Simple Preheat</span>
-      <div class="ui-toggle preheat-toggle" role="switch" aria-label="Toggle simple preheat"></div>
+`;z("smart-preheat-card",Fa);var La=()=>`
+  <div class="ui-card smart-preheat-card">
+    <div class="ui-card-title">Preheat</div>
+    <div class="ui-row">
+      <span class="ui-label">Simple Preheat</span>
+      <span class="ui-field"><div class="ui-toggle preheat-toggle" role="switch" aria-label="Toggle simple preheat"></div></span>
     </div>
-    <div class="toggle-row">
-      <span class="toggle-label">Preheat Absorption <span class="absorb-badge">idle</span></span>
-      <div class="ui-toggle absorb-toggle" role="switch" aria-label="Toggle preheat absorption"></div>
+    <div class="ui-note">Learns a per-zone head-start so a room reaches its setpoint on time despite slab lag.</div>
+
+    <div class="ui-divider"></div>
+    <div class="ui-row">
+      <span class="ui-label">Preheat Absorption <span class="absorb-badge">idle</span></span>
+      <span class="ui-field"><div class="ui-toggle absorb-toggle" role="switch" aria-label="Toggle preheat absorption"></div></span>
     </div>
-    <div class="num-row">
-      <div>
-        <span class="lbl">Absorb band (\xB0C)</span>
-        <input class="inp absorb-band" type="number" min="0" max="5" step="0.1" placeholder="1.0" />
+    <div class="ui-note">When an external optimizer pushes hot water with no zone demanding heat, keeps satisfied zones open so the slab soaks it up instead of fighting it. Releases the instant any zone calls for heat.</div>
+    <div class="gated-body absorb-body">
+      <div class="ui-row">
+        <span class="ui-label">Absorb band (\xB0C)</span>
+        <span class="ui-field"><input class="ui-input absorb-band" type="number" min="0" max="5" step="0.1" placeholder="1.0" /></span>
       </div>
-      <div>
-        <span class="lbl">Detect delta (\xB0C)</span>
-        <input class="inp absorb-delta" type="number" min="2" max="25" step="0.5" placeholder="8.0" />
+      <div class="ui-row">
+        <span class="ui-label">Detect delta (\xB0C)</span>
+        <span class="ui-field"><input class="ui-input absorb-delta" type="number" min="2" max="25" step="0.5" placeholder="8.0" /></span>
       </div>
     </div>
-    <div class="note">Simple Preheat learns a per-zone head-start so a room reaches setpoint on time despite slab lag. Preheat Absorption keeps satisfied zones open while an external optimizer pre-buffers hot water.</div>
   </div>
-`,js=_({tag:"smart-preheat-card",render:qo,onMount(e,t){let o=t.querySelector(".preheat-toggle"),r=o.closest(".toggle-row");function s(){let d=String(z(n.simplePreheatEnabled)||"").toLowerCase();return d==="on"||d==="true"||d==="1"||d==="enabled"}function a(){let d=s();o.classList.toggle("on",d),r.classList.toggle("is-on",d),o.setAttribute("aria-checked",d?"true":"false")}o.addEventListener("click",()=>{let d=!s();Y("simple_preheat_enabled",d?"on":"off")}),g(n.simplePreheatEnabled,a),a();let i=t.querySelector(".absorb-toggle"),c=i.closest(".toggle-row"),p=t.querySelector(".absorb-badge"),m=t.querySelector(".absorb-band"),b=t.querySelector(".absorb-delta");function v(){let d=H(n.preheatAbsorbEnabled);i.classList.toggle("on",d),c.classList.toggle("is-on",d),i.setAttribute("aria-checked",d?"true":"false");let f=String(z(n.preheatAbsorbing)||"").toLowerCase()==="active";p.textContent=f?"active":"idle",p.classList.toggle("active",f)}i.addEventListener("click",()=>{let d=H(n.preheatAbsorbEnabled)?"off":"on";u(n.preheatAbsorbEnabled,{state:d}),Y("preheat_absorb_enabled",d)});function w(){let d=h(n.preheatAbsorbBandC),f=h(n.preheatDetectDeltaC);document.activeElement!==m&&d!=null&&(m.value=d),document.activeElement!==b&&f!=null&&(b.value=f)}m.addEventListener("blur",()=>{let d=parseFloat(m.value);d>=0&&d<=5&&(u(n.preheatAbsorbBandC,{value:d}),J("preheat_absorb_band_c",d))}),b.addEventListener("blur",()=>{let d=parseFloat(b.value);d>=2&&d<=25&&(u(n.preheatDetectDeltaC,{value:d}),J("preheat_detect_delta_c",d))}),g(n.preheatAbsorbEnabled,v),g(n.preheatAbsorbing,v),g(n.preheatAbsorbBandC,w),g(n.preheatDetectDeltaC,w),v(),w()}});var Po=`
+`,Ji=E({tag:"smart-preheat-card",render:La,onMount(e,t){let r=t.querySelector(".preheat-toggle"),o=t.querySelector(".absorb-toggle"),i=t.querySelector(".absorb-badge"),a=t.querySelector(".absorb-band"),s=t.querySelector(".absorb-delta"),l=t.querySelector(".absorb-body");function m(){let y=String(A(n.simplePreheatEnabled)||"").toLowerCase();return y==="on"||y==="true"||y==="1"||y==="enabled"}let u=X(t);u.toggle(r,{read:m,commit:y=>J("simple_preheat_enabled",y?"on":"off")});let v=y=>{l&&l.classList.toggle("is-disabled",!y)};u.toggle(o,{read:()=>I(n.preheatAbsorbEnabled),onChange:v,commit:y=>{let S=y?"on":"off";g(n.preheatAbsorbEnabled,{state:S}),J("preheat_absorb_enabled",S)}}),u.num(a,{read:()=>_(n.preheatAbsorbBandC),commit:y=>{g(n.preheatAbsorbBandC,{value:y}),Q("preheat_absorb_band_c",y)}}),u.num(s,{read:()=>_(n.preheatDetectDeltaC),commit:y=>{g(n.preheatDetectDeltaC,{value:y}),Q("preheat_detect_delta_c",y)}});function w(){let y=String(A(n.preheatAbsorbing)||"").toLowerCase()==="active";i.textContent=y?"active":"idle",i.classList.toggle("active",y)}f(n.simplePreheatEnabled,u.refresh),f(n.preheatAbsorbEnabled,u.refresh),f(n.preheatAbsorbing,w),f(n.preheatAbsorbBandC,u.refresh),f(n.preheatDetectDeltaC,u.refresh),u.refresh(),w()}});var Ma=`
+.settings-smart-heating {
+  background: var(--panel-bg-vibrant);
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: var(--panel-shadow);
+}
+
+/* De-chrome the nested cards so they sit flush inside this panel. */
+.settings-smart-heating .smart-preheat-card,
+.settings-smart-heating .settings-forecast-card {
+  background: none;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+/* The inner card titles ("Preheat" / "Forecast Preload") become subsection heads. */
+.settings-smart-heating .sh-section + .sh-section {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--panel-border);
+}
+`;z("settings-smart-heating",Ma);var Na=()=>`
+  <div class="settings-smart-heating">
+    <div class="sh-section sh-preheat-slot"></div>
+    <div class="sh-section sh-forecast-slot"></div>
+  </div>
+`,tl=E({tag:"settings-smart-heating-card",render:Na,onMount(e,t){t.querySelector(".sh-preheat-slot").appendChild(q("smart-preheat-card")),t.querySelector(".sh-forecast-slot").appendChild(q("settings-forecast-card"))}});var Da=`
 @import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap");
 
 :root {
@@ -2846,7 +2439,7 @@ I2C_SCAN: ----- end -----`),C("I2C scan complete");return}if(a==="calibrate_all_
 }
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-html { font-size: 16px; scroll-behavior: smooth; }
+html { font-size: 12px; scroll-behavior: smooth; }
 body {
   font-family: "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background:
@@ -2901,15 +2494,15 @@ body {
 }
 
 .zone-layout,
-.diag-layout,
-.settings-layout,
-.smart-heating-layout {
+.zone-diag-layout,
+.logs-diag-layout {
   display: grid;
   gap: 14px;
 }
 
-.smart-heating-layout {
-  grid-template-columns: 1.15fr .85fr;
+.zone-diag-layout,
+.logs-diag-layout {
+  grid-template-columns: repeat(3, 1fr);
   align-items: start;
 }
 
@@ -2920,19 +2513,36 @@ body {
 
 .zone-detail-slot,
 .zone-sensor-slot,
-.zone-room-slot {
+.zone-room-slot,
+.zone-recovery-slot {
   display: flex;
 }
 
 .zone-detail-slot > *,
 .zone-sensor-slot > *,
-.zone-room-slot > * {
+.zone-room-slot > *,
+.zone-recovery-slot > * {
   flex: 1;
 }
 
-.settings-layout {
-  grid-template-columns: 1.15fr .85fr;
+/* Middle column stacks the sensor (connectivity) and fault/relearn cards,
+   stretching to match the Zone and Zone Settings columns' height. */
+.zone-mid-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
+.zone-mid-col > * { width: 100%; }
+
+/* Single row of 4 equal-height columns; cards stretch to fill via flex. */
+.settings-layout {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+.settings-layout > * { display: flex; }
+.settings-layout > * > * { flex: 1; }
 
 .ftr {
   text-align: center;
@@ -2968,11 +2578,21 @@ body {
   .dashboard-grid { grid-template-columns: 1fr 1fr; }
 }
 
+@media (max-width: 1200px) {
+  .settings-layout { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 1080px) {
+  .zone-diag-layout,
+  .logs-diag-layout { grid-template-columns: 1fr 1fr; }
+}
+
 @media (max-width: 860px) {
   .zone-layout,
   .dashboard-grid,
   .settings-layout,
-  .smart-heating-layout { grid-template-columns: 1fr; }
+  .zone-diag-layout,
+  .logs-diag-layout { grid-template-columns: 1fr; }
 
   .zone-detail-slot {
     grid-column: 1;
@@ -3000,7 +2620,18 @@ select:disabled {
   cursor: not-allowed;
   pointer-events: none;
 }
-`;S("app-root",Po);var Ro=e=>`
+
+/* Gated card body: faded + non-interactive when its feature is disabled.
+   The enable toggle stays outside this wrapper so it remains clickable. */
+.gated-body {
+  transition: opacity .2s ease;
+}
+.gated-body.is-disabled {
+  opacity: .42;
+  pointer-events: none;
+  user-select: none;
+}
+`;z("app-root",Da);var Ta=e=>`
   <div class="app">
     <main class="shell">
       <div class="hdr"></div>
@@ -3012,34 +2643,32 @@ select:disabled {
           <div class="overview-flow-return"></div>
           <div class="overview-demand"></div>
         </div>
+        <div class="overview-forecast" style="margin-top:14px"></div>
       </section>
       <section class="sec" data-section="zones">
         <div class="zone-selector"></div>
         <div class="zone-layout">
           <div class="zone-detail-slot"></div>
-          <div class="zone-sensor-slot"></div>
+          <div class="zone-mid-col">
+            <div class="zone-sensor-slot"></div>
+            <div class="zone-recovery-slot"></div>
+          </div>
           <div class="zone-room-slot"></div>
         </div>
-      </section>
-      <section class="sec" data-section="smart-heating">
-        <div class="smart-heating-layout">
-          <div class="smart-heating-preheat-slot"></div>
-          <div class="smart-heating-forecast-slot"></div>
-        </div>
-      </section>
-      <section class="sec" data-section="diagnostics">
-        <div class="diag-manual-badge-slot"></div>
-        <div class="diag-layout"></div>
       </section>
       <section class="sec" data-section="settings">
         <div class="settings-layout">
           <div class="settings-manifold-slot"></div>
-          <div class="settings-control-slot"></div>
-          <div class="settings-motor-cal-slot"></div>
           <div class="settings-asgard-slot"></div>
+          <div class="settings-motor-cal-slot"></div>
+          <div class="settings-smart-heating-slot"></div>
         </div>
+      </section>
+      <section class="sec" data-section="logs">
+        <div class="logs-stream-slot"></div>
+        <div class="logs-diag-layout" style="margin-top:14px"></div>
       </section>
       <div class="ftr">HEATVALVE-6 \xB7 UFH CONTROLLER</div>
     </main>
   </div>
-`;_({tag:"app-root",render:Ro,onMount(e,t){t.querySelector(".hdr").appendChild(O("hv6-header")),t.querySelector(".overview-flow").appendChild(O("flow-diagram")),t.querySelector(".overview-timeline").appendChild(O("zone-state-timeline")),t.querySelector(".overview-connectivity").appendChild(O("connectivity-card")),t.querySelector(".overview-flow-return").appendChild(O("graph-widgets",{variant:"flow-return"})),t.querySelector(".overview-demand").appendChild(O("graph-widgets",{variant:"demand"})),t.querySelector(".zone-selector").appendChild(O("zone-grid")),t.querySelector(".zone-detail-slot").appendChild(O("zone-detail",{zone:E("selectedZone")})),t.querySelector(".zone-sensor-slot").appendChild(O("zone-sensor-card")),t.querySelector(".zone-room-slot").appendChild(O("zone-room-card")),t.querySelector(".settings-manifold-slot").appendChild(O("settings-manifold-card")),t.querySelector(".settings-control-slot").appendChild(O("settings-control-card")),t.querySelector(".settings-motor-cal-slot").appendChild(O("settings-motor-calibration-card")),t.querySelector(".settings-asgard-slot").appendChild(O("settings-asgard-card")),t.querySelector(".smart-heating-preheat-slot").appendChild(O("smart-preheat-card")),t.querySelector(".smart-heating-forecast-slot").appendChild(O("settings-forecast-card")),t.querySelector(".diag-manual-badge-slot").appendChild(O("diag-manual-badge"));let o=t.querySelector(".diag-layout");o.appendChild(O("diag-i2c")),o.appendChild(O("diag-activity")),o.appendChild(O("diag-zone"));let r=E("selectedZone")||1;o.appendChild(O("diag-zone-motor-card",{zone:r})),o.appendChild(O("diag-zone-recovery-card",{zone:r}));let s=t.querySelectorAll(".sec");function a(){let i=E("section");s.forEach(c=>{c.classList.toggle("active",c.getAttribute("data-section")===i)})}F("section",a),a()}});function Ho(){let e=document.getElementById("app");if(!e)throw new Error("Dashboard root #app not found");e.innerHTML="",e.appendChild(O("app-root")),Ye()}Ho();})();
+`;E({tag:"app-root",render:Ta,onMount(e,t){t.querySelector(".hdr").appendChild(q("hv6-header")),t.querySelector(".overview-flow").appendChild(q("flow-diagram")),t.querySelector(".overview-timeline").appendChild(q("zone-state-timeline")),t.querySelector(".overview-connectivity").appendChild(q("connectivity-card")),t.querySelector(".overview-flow-return").appendChild(q("graph-widgets",{variant:"flow-return"})),t.querySelector(".overview-demand").appendChild(q("graph-widgets",{variant:"demand"})),t.querySelector(".overview-forecast").appendChild(q("monitor-forecast-preview")),t.querySelector(".zone-selector").appendChild(q("zone-grid")),t.querySelector(".zone-detail-slot").appendChild(q("zone-detail",{zone:M("selectedZone")})),t.querySelector(".zone-sensor-slot").appendChild(q("zone-sensor-card")),t.querySelector(".zone-recovery-slot").appendChild(q("diag-zone-recovery-card")),t.querySelector(".zone-room-slot").appendChild(q("zone-room-card")),t.querySelector(".settings-manifold-slot").appendChild(q("settings-manifold-card")),t.querySelector(".settings-asgard-slot").appendChild(q("settings-asgard-card")),t.querySelector(".settings-motor-cal-slot").appendChild(q("settings-motor-calibration-card")),t.querySelector(".settings-smart-heating-slot").appendChild(q("settings-smart-heating-card")),t.querySelector(".logs-stream-slot").appendChild(q("logs-view"));let r=t.querySelector(".logs-diag-layout");r.appendChild(q("diag-zone-motor-card",{zone:M("selectedZone")||1})),r.appendChild(q("settings-control-card")),r.appendChild(q("diag-manual-badge")),r.appendChild(q("diag-i2c")),r.appendChild(q("diag-activity"));let o=t.querySelectorAll(".sec");function i(){let a=M("section");o.forEach(s=>{s.classList.toggle("active",s.getAttribute("data-section")===a)})}L("section",i),i()}});function Oa(){let e=document.getElementById("app");if(!e)throw new Error("Dashboard root #app not found");e.innerHTML="",e.appendChild(q("app-root")),ct()}Oa();})();

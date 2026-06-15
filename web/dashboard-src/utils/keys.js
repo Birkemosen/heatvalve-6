@@ -79,6 +79,7 @@ export const gkey = {
   asgardLastPushAgeS: 'sensor-asgard_last_push_age_s',
   asgardLocalZones: 'sensor-asgard_local_zones',
   asgardPeerZones: 'sensor-asgard_peer_zones',
+  minZoneFlowPct: 'number-min_zone_flow_pct',
   forecastEnabled: 'switch-forecast_enabled',
   forecastStatus: 'text-forecast_status',
   forecastLastError: 'text-forecast_last_error',

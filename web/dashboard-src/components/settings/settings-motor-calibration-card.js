@@ -1,107 +1,20 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { ev, es } from '../../core/store.js';
-import { setGlobalNumber, setGlobalSelect } from '../../core/api.js';
+import { cardForm } from '../../core/ui-kit.js';
+import { ev, es, isEntityOn } from '../../core/store.js';
+import { setGlobalNumber, setGlobalSelect, setDriversEnabled } from '../../core/api.js';
 import { gkey } from '../../utils/keys.js';
 
 const css = `
-.settings-motor-cal-card {
-  background: var(--panel-bg-vibrant);
-  border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  padding: 20px;
-  box-shadow: var(--panel-shadow);
-}
-
-.settings-motor-cal-card .card-title {
-  font-size: .84rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 1.1px;
-  color: var(--accent);
-  margin-bottom: 8px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--panel-border);
-}
-
-.settings-motor-cal-card .hint {
-  color: var(--text-secondary);
-  font-size: .78rem;
-  margin-bottom: 12px;
-}
-
-.settings-motor-cal-card .cfg-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.settings-motor-cal-card .cfg-row {
-  display: grid;
-  gap: 6px;
-}
-
-.settings-motor-cal-card .cfg-row.full {
-  grid-column: 1 / -1;
-}
-
-.settings-motor-cal-card .lbl {
-  color: var(--text-secondary);
-  font-size: .74rem;
-  font-weight: 700;
-  letter-spacing: .45px;
-  text-transform: uppercase;
-}
-
-.settings-motor-cal-card .txt {
-  width: 100%;
-  border: 1px solid var(--control-border);
-  background: var(--control-bg);
-  color: var(--text);
-  border-radius: 10px;
-  padding: 8px 10px;
-  font-size: .86rem;
-}
-
-.settings-motor-cal-card .sel {
-  width: 100%;
-  border: 1px solid var(--control-border);
-  background: var(--control-bg);
-  color: var(--text);
-  border-radius: 10px;
-  padding: 8px 10px;
-  font-size: .86rem;
-}
-
-.settings-motor-cal-card .txt:focus {
-  outline: 2px solid rgba(83,168,255,.6);
-  outline-offset: 1px;
-  border-color: rgba(83,168,255,.55);
-}
-
-.settings-motor-cal-card .sel:focus {
-  outline: 2px solid rgba(83,168,255,.6);
-  outline-offset: 1px;
-  border-color: rgba(83,168,255,.55);
-}
-
-.settings-motor-cal-card .unit {
-  color: var(--text-faint);
-  font-size: .7rem;
-}
-
 .settings-motor-cal-card .runtime-note {
-  grid-column: 1 / -1;
   color: var(--state-warn);
   font-size: .74rem;
+  line-height: 1.4;
   border: 1px solid rgba(238,161,17,.35);
   background: rgba(238,161,17,.12);
   border-radius: 10px;
   padding: 8px 10px;
-}
-
-@media (max-width: 960px) {
-  .settings-motor-cal-card .cfg-grid { grid-template-columns: 1fr; }
+  margin: 10px 0 2px;
 }
 `;
 
@@ -123,33 +36,38 @@ const FIELDS = [
 ];
 
 const template = () => {
-  const profile = `
-    <div class="cfg-row full">
-      <span class="lbl">Motor Type (Default Profile)</span>
-      <select class="sel smc-profile">
-        <option value="Generic">Generic</option>
-        <option value="HmIP VdMot">HmIP VdMot</option>
-      </select>
-      <span class="unit">Applied as default motor profile</span>
-    </div>
-    <div class="runtime-note">HmIP-VDMot safety: runtime is fixed to 40s to prevent piston overtravel. Generic allows editable runtime.</div>
-  `;
-
   let rows = '';
   for (let i = 0; i < FIELDS.length; i++) {
     const field = FIELDS[i];
-    rows += '<div class="cfg-row">' +
-      '<span class="lbl">' + field.label + '</span>' +
-      '<input type="number" class="txt smc-' + field.cls + '" value="0" step="0.1">' +
-      '<span class="unit">' + field.unit + '</span>' +
-      '</div>';
+    const step = isIntegerSetting(field.key) ? '1' : '0.1';
+    rows += '<div class="ui-row">' +
+      '<span class="ui-label">' + field.label + ' (' + field.unit + ')</span>' +
+      '<span class="ui-field">' +
+      '<input type="number" class="ui-input smc-' + field.cls + '" value="0" step="' + step + '">' +
+      '</span></div>';
   }
 
   return `
-    <div class="settings-motor-cal-card">
-      <div class="card-title">Motor Calibration & Learning</div>
-      <div class="hint">Default starting thresholds and learning bounds used by the motor controller.</div>
-      <div class="cfg-grid">${profile}${rows}</div>
+    <div class="ui-card settings-motor-cal-card">
+      <div class="ui-card-title">Motor Calibration & Learning</div>
+      <div class="ui-row">
+        <span class="ui-label">Motor Drivers</span>
+        <span class="ui-field"><div class="ui-toggle mc-drivers-toggle" role="switch" aria-label="Toggle motor drivers"></div></span>
+      </div>
+      <div class="ui-note">Default starting thresholds and learning bounds used by the motor controller.</div>
+
+      <div class="ui-section">Profile</div>
+      <div class="ui-row">
+        <span class="ui-label">Motor Type (Default Profile)</span>
+        <span class="ui-field"><select class="ui-select smc-profile">
+          <option value="Generic">Generic</option>
+          <option value="HmIP VdMot">HmIP VdMot</option>
+        </select></span>
+      </div>
+      <div class="runtime-note">HmIP-VDMot safety: runtime is fixed to 40s to prevent piston overtravel. Generic allows editable runtime.</div>
+
+      <div class="ui-section">Thresholds &amp; Learning</div>
+      ${rows}
     </div>
   `;
 };
@@ -161,18 +79,15 @@ function isIntegerSetting(keyName) {
     keyName === 'relearn_after_hours';
 }
 
-function formatValue(keyName, value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return '0';
-  return isIntegerSetting(keyName) ? String(Math.round(numeric)) : numeric.toFixed(2);
-}
-
 export default component({
   tag: 'settings-motor-calibration-card',
   render: template,
   onMount(ctx, el) {
     const profileEl = el.querySelector('.smc-profile');
     const safeRuntimeEl = el.querySelector('.smc-safe-runtime');
+    const driversToggle = el.querySelector('.mc-drivers-toggle');
+
+    const form = cardForm(el);
 
     function enforceProfileRuntime(profile) {
       if (profile === 'HmIP VdMot') {
@@ -186,59 +101,46 @@ export default component({
       }
     }
 
-    function update() {
+    // Motor Drivers enable toggle (merged in from the old Control card).
+    form.toggle(driversToggle, { read: () => isEntityOn(gkey.drivers), commit: (on) => setDriversEnabled(on) });
+
+    // Default-profile select. On apply, also normalise the matching runtime.
+    form.select(profileEl, {
+      read: () => es(gkey.motorProfileDefault) || 'HmIP VdMot',
+      commit: (v) => { setGlobalSelect('motor_profile_default', v); enforceProfileRuntime(v); }
+    });
+
+    // Safe runtime is fixed at 40 / disabled for HmIP, editable for Generic.
+    // Disabled state follows the *committed* profile.
+    function updateRuntimeDisabled() {
       const profile = es(gkey.motorProfileDefault) || 'HmIP VdMot';
-      if (profileEl) profileEl.value = profile;
-
-      if (safeRuntimeEl) {
-        if (profile === 'HmIP VdMot') {
-          safeRuntimeEl.value = '40';
-          safeRuntimeEl.disabled = true;
-        } else {
-          safeRuntimeEl.value = formatValue('generic_runtime_limit_seconds', ev(gkey.genericRuntimeLimitSeconds));
-          safeRuntimeEl.disabled = false;
-        }
-      }
-
-      for (let i = 0; i < FIELDS.length; i++) {
-        const field = FIELDS[i];
-        const input = el.querySelector('.smc-' + field.cls);
-        if (!input) continue;
-        if (field.key === 'generic_runtime_limit_seconds') continue;
-        input.value = formatValue(field.key, ev(field.id));
-      }
+      safeRuntimeEl.disabled = (profile === 'HmIP VdMot');
     }
-
-    if (profileEl) {
-      profileEl.addEventListener('change', () => {
-        setGlobalSelect('motor_profile_default', profileEl.value);
-        enforceProfileRuntime(profileEl.value);
-      });
-      subscribe(gkey.motorProfileDefault, update);
-    }
+    form.num(safeRuntimeEl, {
+      read: () => {
+        const profile = es(gkey.motorProfileDefault) || 'HmIP VdMot';
+        return profile === 'HmIP VdMot' ? 40 : ev(gkey.genericRuntimeLimitSeconds);
+      },
+      // Only writes a generic runtime when the staged profile is Generic.
+      commit: (v) => { if (profileEl.value === 'Generic') setGlobalNumber('generic_runtime_limit_seconds', v); }
+    });
 
     for (let i = 0; i < FIELDS.length; i++) {
       const field = FIELDS[i];
+      if (field.key === 'generic_runtime_limit_seconds') continue;  // handled above
       const input = el.querySelector('.smc-' + field.cls);
       if (!input) continue;
-
-      input.addEventListener('change', () => {
-        if (field.key === 'generic_runtime_limit_seconds') {
-          const profile = es(gkey.motorProfileDefault) || 'HmIP VdMot';
-          if (profile !== 'Generic') return;
-          setGlobalNumber('generic_runtime_limit_seconds', input.value);
-          return;
-        }
-        setGlobalNumber(field.key, input.value);
-      });
-
-      subscribe(field.id, update);
+      form.num(input, { read: () => ev(field.id), commit: (v) => setGlobalNumber(field.key, v) });
+      subscribe(field.id, form.refresh);
     }
 
-    subscribe(gkey.genericRuntimeLimitSeconds, update);
-    subscribe(gkey.hmipRuntimeLimitSeconds, update);
+    subscribe(gkey.drivers, form.refresh);
+    subscribe(gkey.motorProfileDefault, () => { form.refresh(); updateRuntimeDisabled(); });
+    subscribe(gkey.genericRuntimeLimitSeconds, form.refresh);
+    subscribe(gkey.hmipRuntimeLimitSeconds, form.refresh);
 
     enforceProfileRuntime(es(gkey.motorProfileDefault) || 'HmIP VdMot');
-    update();
+    form.refresh();
+    updateRuntimeDisabled();
   }
 });

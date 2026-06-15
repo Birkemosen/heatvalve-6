@@ -49,7 +49,7 @@ const css = `
 }
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-html { font-size: 16px; scroll-behavior: smooth; }
+html { font-size: 12px; scroll-behavior: smooth; }
 body {
   font-family: "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background:
@@ -104,15 +104,15 @@ body {
 }
 
 .zone-layout,
-.diag-layout,
-.settings-layout,
-.smart-heating-layout {
+.zone-diag-layout,
+.logs-diag-layout {
   display: grid;
   gap: 14px;
 }
 
-.smart-heating-layout {
-  grid-template-columns: 1.15fr .85fr;
+.zone-diag-layout,
+.logs-diag-layout {
+  grid-template-columns: repeat(3, 1fr);
   align-items: start;
 }
 
@@ -123,19 +123,36 @@ body {
 
 .zone-detail-slot,
 .zone-sensor-slot,
-.zone-room-slot {
+.zone-room-slot,
+.zone-recovery-slot {
   display: flex;
 }
 
 .zone-detail-slot > *,
 .zone-sensor-slot > *,
-.zone-room-slot > * {
+.zone-room-slot > *,
+.zone-recovery-slot > * {
   flex: 1;
 }
 
-.settings-layout {
-  grid-template-columns: 1.15fr .85fr;
+/* Middle column stacks the sensor (connectivity) and fault/relearn cards,
+   stretching to match the Zone and Zone Settings columns' height. */
+.zone-mid-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
+.zone-mid-col > * { width: 100%; }
+
+/* Single row of 4 equal-height columns; cards stretch to fill via flex. */
+.settings-layout {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+.settings-layout > * { display: flex; }
+.settings-layout > * > * { flex: 1; }
 
 .ftr {
   text-align: center;
@@ -171,11 +188,21 @@ body {
   .dashboard-grid { grid-template-columns: 1fr 1fr; }
 }
 
+@media (max-width: 1200px) {
+  .settings-layout { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 1080px) {
+  .zone-diag-layout,
+  .logs-diag-layout { grid-template-columns: 1fr 1fr; }
+}
+
 @media (max-width: 860px) {
   .zone-layout,
   .dashboard-grid,
   .settings-layout,
-  .smart-heating-layout { grid-template-columns: 1fr; }
+  .zone-diag-layout,
+  .logs-diag-layout { grid-template-columns: 1fr; }
 
   .zone-detail-slot {
     grid-column: 1;
@@ -203,6 +230,17 @@ select:disabled {
   cursor: not-allowed;
   pointer-events: none;
 }
+
+/* Gated card body: faded + non-interactive when its feature is disabled.
+   The enable toggle stays outside this wrapper so it remains clickable. */
+.gated-body {
+  transition: opacity .2s ease;
+}
+.gated-body.is-disabled {
+  opacity: .42;
+  pointer-events: none;
+  user-select: none;
+}
 `;
 
 injectStyle('app-root', css);
@@ -222,32 +260,30 @@ const template = (ctx) => `
           <div class="overview-flow-return"></div>
           <div class="overview-demand"></div>
         </div>
+        <div class="overview-forecast" style="margin-top:14px"></div>
       </section>
       <section class="sec" data-section="zones">
         <div class="zone-selector"></div>
         <div class="zone-layout">
           <div class="zone-detail-slot"></div>
-          <div class="zone-sensor-slot"></div>
+          <div class="zone-mid-col">
+            <div class="zone-sensor-slot"></div>
+            <div class="zone-recovery-slot"></div>
+          </div>
           <div class="zone-room-slot"></div>
         </div>
-      </section>
-      <section class="sec" data-section="smart-heating">
-        <div class="smart-heating-layout">
-          <div class="smart-heating-preheat-slot"></div>
-          <div class="smart-heating-forecast-slot"></div>
-        </div>
-      </section>
-      <section class="sec" data-section="diagnostics">
-        <div class="diag-manual-badge-slot"></div>
-        <div class="diag-layout"></div>
       </section>
       <section class="sec" data-section="settings">
         <div class="settings-layout">
           <div class="settings-manifold-slot"></div>
-          <div class="settings-control-slot"></div>
-          <div class="settings-motor-cal-slot"></div>
           <div class="settings-asgard-slot"></div>
+          <div class="settings-motor-cal-slot"></div>
+          <div class="settings-smart-heating-slot"></div>
         </div>
+      </section>
+      <section class="sec" data-section="logs">
+        <div class="logs-stream-slot"></div>
+        <div class="logs-diag-layout" style="margin-top:14px"></div>
       </section>
       <div class="ftr">HEATVALVE-6 · UFH CONTROLLER</div>
     </main>
@@ -269,30 +305,29 @@ component({
     el.querySelector('.overview-connectivity').appendChild(mountComponent('connectivity-card'));
     el.querySelector('.overview-flow-return').appendChild(mountComponent('graph-widgets', { variant: 'flow-return' }));
     el.querySelector('.overview-demand').appendChild(mountComponent('graph-widgets', { variant: 'demand' }));
+    el.querySelector('.overview-forecast').appendChild(mountComponent('monitor-forecast-preview'));
+
     el.querySelector('.zone-selector').appendChild(mountComponent('zone-grid'));
     el.querySelector('.zone-detail-slot').appendChild(mountComponent('zone-detail', { zone: getDashboardValue('selectedZone') }));
+    // Middle column: sensor (connectivity) + fault/relearn, both following the selected zone.
     el.querySelector('.zone-sensor-slot').appendChild(mountComponent('zone-sensor-card'));
+    el.querySelector('.zone-recovery-slot').appendChild(mountComponent('diag-zone-recovery-card'));
     el.querySelector('.zone-room-slot').appendChild(mountComponent('zone-room-card'));
 
     el.querySelector('.settings-manifold-slot').appendChild(mountComponent('settings-manifold-card'));
-    el.querySelector('.settings-control-slot').appendChild(mountComponent('settings-control-card'));
-    el.querySelector('.settings-motor-cal-slot').appendChild(mountComponent('settings-motor-calibration-card'));
     el.querySelector('.settings-asgard-slot').appendChild(mountComponent('settings-asgard-card'));
+    el.querySelector('.settings-motor-cal-slot').appendChild(mountComponent('settings-motor-calibration-card'));
+    // Smart Heating: Preheat + Forecast combined into one card under Settings.
+    el.querySelector('.settings-smart-heating-slot').appendChild(mountComponent('settings-smart-heating-card'));
 
-    el.querySelector('.smart-heating-preheat-slot').appendChild(mountComponent('smart-preheat-card'));
-    el.querySelector('.smart-heating-forecast-slot').appendChild(mountComponent('settings-forecast-card'));
-
-    el.querySelector('.diag-manual-badge-slot').appendChild(mountComponent('diag-manual-badge'));
-
-    const diagLayout = el.querySelector('.diag-layout');
-    diagLayout.appendChild(mountComponent('diag-i2c'));
-    diagLayout.appendChild(mountComponent('diag-activity'));
-    diagLayout.appendChild(mountComponent('diag-zone'));
-
-    // Mount per-zone diagnostic motor and recovery cards
-    const selectedZone = getDashboardValue('selectedZone') || 1;
-    diagLayout.appendChild(mountComponent('diag-zone-motor-card', { zone: selectedZone }));
-    diagLayout.appendChild(mountComponent('diag-zone-recovery-card', { zone: selectedZone }));
+    // Logs view: live device-log stream + device-level diagnostics + motor control + device actions.
+    el.querySelector('.logs-stream-slot').appendChild(mountComponent('logs-view'));
+    const logsDiag = el.querySelector('.logs-diag-layout');
+    logsDiag.appendChild(mountComponent('diag-zone-motor-card', { zone: getDashboardValue('selectedZone') || 1 }));
+    logsDiag.appendChild(mountComponent('settings-control-card'));
+    logsDiag.appendChild(mountComponent('diag-manual-badge'));
+    logsDiag.appendChild(mountComponent('diag-i2c'));
+    logsDiag.appendChild(mountComponent('diag-activity'));
 
     const sectionNodes = el.querySelectorAll('.sec');
 

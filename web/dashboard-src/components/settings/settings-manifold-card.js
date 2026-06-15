@@ -1,5 +1,6 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
+import { cardForm } from '../../core/ui-kit.js';
 import { es, ev } from '../../core/store.js';
 import { setGlobalSelect } from '../../core/api.js';
 import { gkey, key } from '../../utils/keys.js';
@@ -9,58 +10,6 @@ import { fmtT } from '../../utils/format.js';
 // CSS
 // ========================================
 const css = `
-.settings-manifold-card {
-  background: var(--panel-bg-vibrant);
-  border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  padding: 20px;
-  box-shadow: var(--panel-shadow);
-}
-
-.settings-manifold-card .card-title {
-  font-size: .84rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 1.1px;
-  color: var(--accent);
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--panel-border);
-}
-
-.settings-manifold-card .cfg-row {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.settings-manifold-card .lbl {
-  color: var(--text-secondary);
-  font-size: .78rem;
-  font-weight: 700;
-  letter-spacing: .45px;
-  text-transform: uppercase;
-  line-height: 1.2;
-}
-
-.settings-manifold-card .sel {
-  width: 100%;
-  border: 1px solid var(--control-border);
-  background: var(--control-bg);
-  color: var(--text);
-  border-radius: 10px;
-  padding: 9px 10px;
-  font-size: .88rem;
-  transition: border-color .15s ease;
-}
-
-.settings-manifold-card .sel:focus {
-  outline: 2px solid rgba(83,168,255,.6);
-  outline-offset: 1px;
-  border-color: rgba(83,168,255,.55);
-}
-
 .settings-manifold-card .probe-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -86,6 +35,7 @@ const css = `
   margin-top: 4px;
   font-size: 1rem;
   font-weight: 800;
+  font-family: var(--mono);
 }
 
 @media (max-width: 900px) {
@@ -108,13 +58,21 @@ const template = () => {
   }
 
   return `
-    <div class="settings-manifold-card">
-      <div class="card-title">Manifold Configuration</div>
-      <div class="cfg-row"><span class="lbl">Manifold Type</span>
-        <select class="sel sm-type"><option value="NO (Normally Open)">Normally Open (NO)</option><option value="NC (Normally Closed)">Normally Closed (NC)</option></select>
+    <div class="ui-card settings-manifold-card">
+      <div class="ui-card-title">Manifold Configuration</div>
+      <div class="ui-row">
+        <span class="ui-label">Manifold Type</span>
+        <span class="ui-field"><select class="ui-select sm-type"><option value="NO (Normally Open)">Normally Open (NO)</option><option value="NC (Normally Closed)">Normally Closed (NC)</option></select></span>
       </div>
-      <div class="cfg-row"><span class="lbl">Flow Probe</span><select class="sel sm-flow">${probeOptions}</select></div>
-      <div class="cfg-row"><span class="lbl">Return Probe</span><select class="sel sm-ret">${probeOptions}</select></div>
+      <div class="ui-row">
+        <span class="ui-label">Flow Probe</span>
+        <span class="ui-field"><select class="ui-select sm-flow">${probeOptions}</select></span>
+      </div>
+      <div class="ui-row">
+        <span class="ui-label">Return Probe</span>
+        <span class="ui-field"><select class="ui-select sm-ret">${probeOptions}</select></span>
+      </div>
+      <div class="ui-section">Probe Temperatures</div>
       <div class="probe-grid">${probes}</div>
     </div>
   `;
@@ -131,25 +89,23 @@ export default component({
     const flowEl = el.querySelector('.sm-flow');
     const retEl = el.querySelector('.sm-ret');
 
-    function update() {
-      typeEl.value = es(gkey.manifoldType) || 'NO (Normally Open)';
-      flowEl.value = es(gkey.manifoldFlowProbe) || 'Probe 7';
-      retEl.value = es(gkey.manifoldReturnProbe) || 'Probe 8';
+    const form = cardForm(el);
+    form.select(typeEl, { read: () => es(gkey.manifoldType) || 'NO (Normally Open)', commit: (v) => setGlobalSelect('manifold_type', v) });
+    form.select(flowEl, { read: () => es(gkey.manifoldFlowProbe) || 'Probe 7', commit: (v) => setGlobalSelect('manifold_flow_probe', v) });
+    form.select(retEl, { read: () => es(gkey.manifoldReturnProbe) || 'Probe 8', commit: (v) => setGlobalSelect('manifold_return_probe', v) });
+
+    function updateProbes() {
       for (let probe = 1; probe <= 8; probe++) {
         const target = el.querySelector('[data-probe="' + probe + '"]');
-        const value = ev(key.probeTemp(probe));
-        if (target) target.textContent = fmtT(value);
+        if (target) target.textContent = fmtT(ev(key.probeTemp(probe)));
       }
     }
 
-    typeEl.addEventListener('change', () => setGlobalSelect('manifold_type', typeEl.value));
-    flowEl.addEventListener('change', () => setGlobalSelect('manifold_flow_probe', flowEl.value));
-    retEl.addEventListener('change', () => setGlobalSelect('manifold_return_probe', retEl.value));
-
-    subscribe(gkey.manifoldType, update);
-    subscribe(gkey.manifoldFlowProbe, update);
-    subscribe(gkey.manifoldReturnProbe, update);
-    for (let probe = 1; probe <= 8; probe++) subscribe(key.probeTemp(probe), update);
-    update();
+    subscribe(gkey.manifoldType, form.refresh);
+    subscribe(gkey.manifoldFlowProbe, form.refresh);
+    subscribe(gkey.manifoldReturnProbe, form.refresh);
+    for (let probe = 1; probe <= 8; probe++) subscribe(key.probeTemp(probe), updateProbes);
+    form.refresh();
+    updateProbes();
   }
 });

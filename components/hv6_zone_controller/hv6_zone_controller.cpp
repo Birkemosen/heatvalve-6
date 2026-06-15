@@ -606,8 +606,12 @@ void Hv6ZoneController::set_zone_exterior_walls(uint8_t zone, uint8_t walls) {
     return;
   auto cfg = config_store_->get_config();
   cfg.zones[zone].exterior_walls = walls & 0x0F;  // Only lower 4 bits valid
+  // Seed the editable forecast wind-exposure from the wall layout; the user can
+  // still override it afterwards via set_zone_wind_exposure().
+  cfg.zones[zone].wind_exposure = default_wind_exposure(cfg.zones[zone].exterior_walls);
   config_store_->update_zone(zone, cfg.zones[zone]);
-  ESP_LOGI(TAG, "Zone %d exterior walls: 0x%02X", zone + 1, cfg.zones[zone].exterior_walls);
+  ESP_LOGI(TAG, "Zone %d exterior walls: 0x%02X (wind exposure %.2f)", zone + 1,
+           cfg.zones[zone].exterior_walls, cfg.zones[zone].wind_exposure);
 }
 
 uint8_t Hv6ZoneController::get_zone_exterior_walls(uint8_t zone) const {
@@ -1366,13 +1370,15 @@ float Hv6ZoneController::apply_hydraulic_balance_(uint8_t zone, float raw_positi
 }
 
 /// Enforce per-zone minimum flow when a modulating heat source is present (e.g. Ecodan).
-/// This ensures the heat pump always has sufficient flow through the manifold.
+/// This ensures the heat pump always has sufficient flow through the manifold. Active
+/// whenever the Asgard/Ecodan bridge is enabled (the bridge implies a modulating source)
+/// or the explicit `modulating_heat_source` balancing flag is set.
 void Hv6ZoneController::apply_minimum_flow_(std::array<float, NUM_ZONES> &positions) {
   if (!config_store_)
     return;
   const auto cfg = config_store_->get_config();
 
-  if (!cfg.balancing.modulating_heat_source)
+  if (!cfg.asgard.enabled && !cfg.balancing.modulating_heat_source)
     return;
 
   float min_pct = cfg.balancing.minimum_flow_pct;

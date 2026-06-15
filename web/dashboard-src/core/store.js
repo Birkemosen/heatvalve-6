@@ -24,8 +24,13 @@ const D = {
   lastHistoryAt: 0,
   zoneNames,
   manualMode: false,
-  zoneStateHistory: null,   // { interval_s, uptime_s, count, entries: [[uptime_s,z0..z5],...] }
+  zoneStateHistory: null,   // { interval_s, uptime_s, count, entries: [[uptime_s,z0..z5,absorbing],...] }
+  deviceLog: [],            // [{ seq, level, tag, msg }] live device log lines (newest last)
+  deviceLogSeq: 0,          // highest seq seen → passed as ?since= to /logs
+  forecastHours: null,      // { base_epoch, age_s, count, hours: [[temp_c, wind_ms, wind_dir_deg],...] }
 };
+
+export const DEVICE_LOG_MAX = 300;
 
 function createZoneLog() {
   const out = Object.create(null);
@@ -276,4 +281,46 @@ function timeStamp() {
 export function setZoneStateHistory(data) {
   D.zoneStateHistory = data || null;
   notify(dashboardKey('zoneStateHistory'));
+}
+
+// ---- live device log (fed by GET /api/hv6/v1/logs) ----
+
+export function getDeviceLogSeq() {
+  return D.deviceLogSeq;
+}
+
+export function appendDeviceLog(lines, nextSeq) {
+  if (Array.isArray(lines) && lines.length) {
+    for (const l of lines) {
+      // Wire shape: [seq, level, tag, msg]
+      D.deviceLog.push({ seq: l[0], level: l[1], tag: l[2], msg: l[3] });
+      if (l[0] > D.deviceLogSeq) D.deviceLogSeq = l[0];
+    }
+    while (D.deviceLog.length > DEVICE_LOG_MAX) D.deviceLog.shift();
+    notify(dashboardKey('deviceLog'));
+  }
+  if (typeof nextSeq === 'number' && nextSeq > D.deviceLogSeq) {
+    // next_seq is the firmware's running counter; never re-request seqs we've seen.
+    D.deviceLogSeq = nextSeq - 1;
+  }
+}
+
+export function getDeviceLog() {
+  return D.deviceLog;
+}
+
+export function clearDeviceLog() {
+  D.deviceLog = [];
+  notify(dashboardKey('deviceLog'));
+}
+
+// ---- fetched forecast preview (GET /api/hv6/v1/forecast) ----
+
+export function setForecastHours(data) {
+  D.forecastHours = data || null;
+  notify(dashboardKey('forecastHours'));
+}
+
+export function getForecastHours() {
+  return D.forecastHours;
 }

@@ -71,7 +71,7 @@ Detects when filtered current exceeds the running mean by a configurable factor,
 sustained for multiple consecutive ticks.
 
 ```
-condition:  current_filtered > mean_current × current_factor
+condition:  current_filtered > mean_current[dir] × current_factor
 debounce:   6 consecutive 10 ms FSM ticks (60 ms sustained)
 ```
 
@@ -80,16 +80,22 @@ debounce:   6 consecutive 10 ms FSM ticks (60 ms sustained)
 | Current factor | 1.7× | 1.7× | `close_current_factor` / `open_current_factor` |
 | Debounce | 6 ticks (60ms) | 6 ticks (60ms) | `ENDSTOP_HIGH_TICKS` (compile-time) |
 
-The per-zone `mean_current` is a running average updated after each movement. The
-debounce counter resets to zero on any below-threshold reading, so the overcurrent
-must be genuinely sustained.
+The threshold references a **per-direction** running mean (`mean_open_currents_[]` /
+`mean_close_currents_[]`), each updated after a move in that direction. This matters
+because closing draws materially more current than opening (see profile below): a
+single blended mean is biased upward by the close direction, inflating the open
+threshold above the gentle open stall so the threshold path never trips and the motor
+grinds past the open stop. With a direction-specific mean the open threshold tracks
+the open running current. The debounce counter resets to zero on any below-threshold
+reading, so the overcurrent must be genuinely sustained.
 
-**Close direction:** With 1.8× factor and ~20 mA mean → threshold ≈ 36 mA. The close
-endstop ramps to 35–50 mA and triggers cleanly.
+**Close direction:** With 1.7× factor and ~19 mA close mean → threshold ≈ 32 mA. The
+close endstop ramps to 35–50 mA and triggers cleanly.
 
-**Open direction:** With 1.2× factor and ~20 mA mean → threshold ≈ 24 mA. The open
-endstop reaches only 23–27 mA, so this path may fire late — the slope path provides
-the primary detection for opening.
+**Open direction:** With 1.7× factor and ~15 mA open mean → threshold ≈ 26 mA. The
+open endstop reaches 23–27 mA, so with the per-direction mean this path now triggers
+near the top of the open ramp (previously, a blended ~20 mA mean put the threshold at
+~34 mA — unreachable — and detection fell back to the slow slope path).
 
 ### Path 2: Slope Detection (Secondary)
 
@@ -107,7 +113,7 @@ debounce:   2 consecutive 500 ms windows (1 s of rising current)
 | Slope threshold | 0.6 mA/s | 0.15 mA/s | `close_slope_threshold_ma_per_s` / `open_slope_threshold_ma_per_s` |
 | Slope floor factor | 1.3× | 1.3× | `close_slope_current_factor` / `open_slope_current_factor` |
 | Window size | 500ms | 500ms | `SLOPE_WINDOW_TICKS` (compile-time) |
-| Required windows | 2 | 2 | `ENDSTOP_SLOPE_WINDOWS` (compile-time) |
+| Required windows | 2 (1 s) | 1 (~500 ms) | `ENDSTOP_SLOPE_WINDOWS` / `ENDSTOP_SLOPE_WINDOWS_OPEN` |
 
 Every 500 ms, the slope is computed as:
 
@@ -122,8 +128,10 @@ A window is marked "rising" only if BOTH conditions hold:
 The floor condition prevents false triggers on the mid-travel current step (~14 → 19 mA
 during closing) where current rises briefly but at low absolute level.
 
-Requiring 2 consecutive qualifying windows means 1 second of sustained rising current
-above the floor. A single non-qualifying window resets the counter.
+Closing requires 2 consecutive qualifying windows (1 s of sustained rising current);
+opening requires only 1 (~500 ms), because the open ramp is gentle and slow and a full
+second of grinding past the stop is what produces the audible clicking. A single
+non-qualifying window resets the counter.
 
 **Close direction:** The steep ramp (19 → 50 mA) easily produces slopes >0.6 mA/s,
 but Path 1 usually fires first due to the high peak.
@@ -132,18 +140,30 @@ but Path 1 usually fires first due to the high peak.
 With the lower 0.15 mA/s threshold, slope detection is often the **first** trigger
 for the open endstop.
 
-### Path 3: Hard Safety Cap (Emergency)
+### Path 3: Hard Safety Cap (Fast, low-latency)
 
-Instant stop if current exceeds an absolute ceiling, regardless of mean or direction.
+A fast stop evaluated on the **raw** per-frame current (~17 ms latency) rather than the
+~200 ms-lagged EMA, with a tiny 2-tick debounce. The cap is **direction-aware**:
 
 ```
-condition:  current_filtered > 100 mA
-debounce:   none (immediate stop)
+close:  raw_current > 100 mA                                   (ENDSTOP_HARD_CAP_MA)
+open:   raw_current > max(open_hard_cap_floor_ma,
+                          mean_open × open_hard_cap_factor)     (capped at 100 mA)
+debounce: 2 consecutive raw frames (HARD_CAP_TICKS)
 ```
 
-These valve motors draw 14–35 mA in normal operation. A reading above 100 mA indicates
-a fault condition (shorted winding, stalled rotor, or ADC error). If this path fires
-during normal endstop detection, the threshold/slope parameters are too relaxed.
+| Parameter | Default | Config Field |
+|-----------|---------|--------------|
+| Absolute ceiling | 100 mA | `ENDSTOP_HARD_CAP_MA` (compile-time) |
+| Open cap factor | 1.7× | `open_hard_cap_factor` |
+| Open cap floor | 30 mA | `open_hard_cap_floor_ma` |
+
+The fixed 100 mA ceiling is a catastrophic-fault guard (shorted winding, stalled rotor)
+and fits the 33–50 mA close endstop, but the gentle ~25 mA open stall never reaches it.
+The lower **open** cap — derived from the learned open mean — gives the open endstop the
+same fast raw-current belt: because the raw signal leads the filtered EMA, it trips
+~200 ms sooner than the Path 1 threshold on the same criterion. The floor prevents an
+under-learned mean from tripping mid-travel.
 
 ### Path 4: Ripple Safety Limit (Open Direction Only)
 
@@ -157,7 +177,7 @@ condition:  ripple_count ≥ learned_open_ripples × ripple_limit_factor
 
 | Parameter | Default | Config Field |
 |-----------|---------|--------------|
-| Ripple limit factor | 1.2× | `open_ripple_limit_factor` (0 = disabled) |
+| Ripple limit factor | 1.10× | `open_ripple_limit_factor` (0 = disabled) |
 
 **Why only opening:** The open direction has a gentler current profile that makes
 threshold/slope detection less reliable. The ripple limit provides belt-and-suspenders
@@ -180,9 +200,12 @@ rise, which develops over seconds.
 
 ### Mean Current Tracking
 
-Each motor zone maintains a running mean current (`mean_currents_[]`), initialized
-to 20 mA. This adapts to individual motor characteristics and aging. The threshold
-and slope floor paths reference this mean, making detection self-adjusting.
+Each motor zone maintains **two** running mean currents — one per direction
+(`mean_open_currents_[]` / `mean_close_currents_[]`), both initialized to 20 mA. They
+adapt to individual motor characteristics and aging. The threshold, slope-floor, and
+open hard-cap paths reference the mean for the **active** direction, making detection
+self-adjusting and immune to the close/open current asymmetry. Both are persisted to
+NVS (`mean_open_current_ma` / `mean_close_current_ma`) and reloaded on boot.
 
 ## Current Profile Reference
 
@@ -221,10 +244,10 @@ Motor Start
     │
     ├── Endstop approach:
     │   ├── Current rises as motor stalls
-    │   ├── Path 1 (threshold): 6 ticks above mean×factor → STOP
-    │   ├── Path 2 (slope): 2 windows with dI/dt > threshold → STOP
-    │   ├── Path 3 (hard cap): >100 mA instant → STOP
-    │   └── Path 4 (ripple, open only): ripples > learned×1.2 → STOP
+    │   ├── Path 1 (threshold): 6 ticks above mean[dir]×factor → STOP
+    │   ├── Path 2 (slope): close 2 windows / open 1 window, dI/dt > threshold → STOP
+    │   ├── Path 3 (hard cap): raw > 100 mA (close) / mean_open×1.7 (open) → STOP
+    │   └── Path 4 (ripple, open only): ripples > learned×1.10 → STOP
     │
     └── Motor stopped, position updated to 0% or 100%
 ```
@@ -233,10 +256,13 @@ Motor Start
 
 | Parameter | Close | Open | Rationale |
 |-----------|-------|------|-----------|
+| Threshold mean | `mean_close` | `mean_open` | Per-direction; close runs hotter than open |
 | Threshold factor | 1.7× (tolerant) | 1.7× (tolerant) | Close has high peak; open barely rises |
 | Slope threshold | 0.6 mA/s | 0.15 mA/s | Close ramps steeply; open ramps gently |
 | Slope floor | 1.3× | 1.3× | Same mid-travel step protection both ways |
-| Ripple limit | N/A | 1.2× | Extra safety for harder-to-detect open endstop |
+| Slope windows | 2 (1 s) | 1 (~500 ms) | Open ramp is slow; long grind = clicking |
+| Hard cap | 100 mA (fixed) | `max(30, mean_open×1.7)` | Open stall never reaches the fixed ceiling |
+| Ripple limit | N/A | 1.10× | Extra safety for harder-to-detect open endstop |
 
 ## Pin Engagement Detection
 
@@ -348,15 +374,26 @@ to NVS.
 
 ## Calibration (Learning)
 
-Three-pass close → open → close calibration, measuring per-pass:
+Each attempt runs **home-open → close → open → close**, measuring per-pass:
 - Run time (ms)
 - Ripple count (commutator zero-crossings)
 
-Validation: each pass must exceed `calibration_min_travel_ms = 3000 ms`.
+**Homing pass (open first):** Before the close reference pass, the valve is driven OPEN
+to its endstop. Opening is the safe, spring-assisted direction — the actuator-socket
+pop-off is a *close*-direction over-force failure. At boot/after a flash the valve is
+usually already closed, so a "close first" sequence drove a fully-closed valve into its
+stop for the entire ~1.2 s detection blind window with zero travel → pop-off. Homing
+open guarantees the following close pass travels a full stroke before contacting the
+closed stop, so detection has already armed by the moment of contact. The valve position
+is deliberately **not** persisted (avoids per-move NVS wear over the 10–15 yr service
+life), so calibration always homes rather than trusting a stored position. Re-homed at
+the start of every retry, since a failed attempt can leave the valve closed.
+
+Validation: each measured pass must exceed `calibration_min_travel_ms = 3000 ms`.
 Up to `calibration_max_retries = 2` retry attempts. On failure, zone is marked blocked.
 
 After successful calibration, the learned values (open_ms, close_ms, open_ripples,
-close_ripples, deadzone_ms, mean_current) are persisted to NVS.
+close_ripples, deadzone_ms, mean_open_current, mean_close_current) are persisted to NVS.
 
 ## Automatic Relearn
 

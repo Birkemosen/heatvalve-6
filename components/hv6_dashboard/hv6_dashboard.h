@@ -72,6 +72,7 @@ struct DashboardSnapshot {
   uint32_t          asgard_push_fail_streak{0};
   uint8_t           asgard_local_zones{0};
   uint8_t           asgard_peer_zones{0};
+  float             min_zone_flow_pct{15.0f};  // per-zone minimum valve opening enforced while bridge active
 
   // --- Forecast preload (wind-aware) ---
   hv6::ForecastConfig forecast;            // current forecast config
@@ -107,6 +108,23 @@ static constexpr uint8_t  HISTORY_STATE_UNKNOWN = 0xFF;
 struct HistoryEntry {
   uint32_t uptime_s;
   uint8_t  zone_state[hv6::NUM_ZONES];
+  uint8_t  absorbing;  ///< 1 if preheat absorption was active at sample time, else 0
+};
+
+// -----------------------------------------------------------------------
+// Live device-log ring buffer
+// Fed by the ESPHome logger callback (see HV6Dashboard::on_log_), served by
+// GET /api/hv6/v1/logs?since=<seq>. RAM-only; lost on reboot.
+// -----------------------------------------------------------------------
+static constexpr uint16_t LOG_SLOTS   = 96;
+static constexpr size_t   LOG_TAG_LEN = 16;
+static constexpr size_t   LOG_MSG_LEN = 112;
+
+struct LogLine {
+  uint32_t seq;          ///< Monotonic; 0 = empty slot. Client passes ?since=<last seq>.
+  uint8_t  level;        ///< ESPHome log level (0=NONE..5=VERY_VERBOSE)
+  char     tag[LOG_TAG_LEN];
+  char     msg[LOG_MSG_LEN];
 };
 
 class HV6Dashboard : public Component, public AsyncWebHandler {
@@ -168,6 +186,8 @@ class HV6Dashboard : public Component, public AsyncWebHandler {
   void handle_js_(AsyncWebServerRequest *request);
   void handle_state_(AsyncWebServerRequest *request);
   void handle_history_(AsyncWebServerRequest *request);
+  void handle_logs_(AsyncWebServerRequest *request);
+  void handle_forecast_(AsyncWebServerRequest *request);
   void handle_v1_(AsyncWebServerRequest *request, const char *path);
   void handle_ble_scan_(AsyncWebServerRequest *request);
   void handle_peer_(AsyncWebServerRequest *request);
@@ -219,6 +239,17 @@ class HV6Dashboard : public Component, public AsyncWebHandler {
   uint16_t history_head_{0};
   uint16_t history_count_{0};
   uint32_t history_last_sample_ms_{0};
+
+  // Live device-log ring (protected by log_lock_). Writer is the ESPHome logger
+  // callback (any task) — it takes the lock non-blocking and drops on contention
+  // so logging is never stalled. on_log_static_ is the C function-pointer trampoline.
+  static void on_log_static_(void *self, uint8_t level, const char *tag,
+                             const char *message, size_t message_len);
+  void on_log_(uint8_t level, const char *tag, const char *message, size_t message_len);
+  SemaphoreHandle_t log_lock_{nullptr};
+  LogLine  log_ring_[LOG_SLOTS]{};
+  uint16_t log_head_{0};
+  uint32_t log_next_seq_{1};
 };
 
 }  // namespace hv6_dashboard

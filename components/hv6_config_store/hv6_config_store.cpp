@@ -476,6 +476,44 @@ bool Hv6ConfigStore::load_sensor_config_(nvs_handle_t handle) {
   return true;
 }
 
+// -----------------------------------------------------------------------------
+// Zone configuration — persisted under its own key so the user's area / pipe /
+// exterior-wall settings survive the version-based discard of the main config
+// blob on firmware update. Blob format: [uint32 version][ZoneConfig x NUM_ZONES].
+// -----------------------------------------------------------------------------
+
+void Hv6ConfigStore::save_zone_config_(nvs_handle_t handle, const ZoneConfig (&zones)[NUM_ZONES]) {
+  uint8_t blob[sizeof(uint32_t) + sizeof(ZoneConfig) * NUM_ZONES];
+  uint32_t version = ZONE_CONFIG_VERSION;
+  memcpy(blob, &version, sizeof(uint32_t));
+  memcpy(blob + sizeof(uint32_t), zones, sizeof(ZoneConfig) * NUM_ZONES);
+  nvs_set_blob(handle, KEY_ZONES, blob, sizeof(blob));
+}
+
+bool Hv6ConfigStore::load_zone_config_(nvs_handle_t handle) {
+  size_t size = 0;
+  if (nvs_get_blob(handle, KEY_ZONES, nullptr, &size) != ESP_OK)
+    return false;  // no durable copy yet (first boot, or pre-upgrade firmware)
+  if (size != sizeof(uint32_t) + sizeof(ZoneConfig) * NUM_ZONES)
+    return false;  // layout changed — fall back to whatever the main blob/defaults gave
+
+  uint8_t blob[sizeof(uint32_t) + sizeof(ZoneConfig) * NUM_ZONES];
+  size_t read_size = size;
+  if (nvs_get_blob(handle, KEY_ZONES, blob, &read_size) != ESP_OK)
+    return false;
+
+  uint32_t version = 0;
+  memcpy(&version, blob, sizeof(uint32_t));
+  if (version != ZONE_CONFIG_VERSION)
+    return false;
+
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  memcpy(config_.zones, blob + sizeof(uint32_t), sizeof(ZoneConfig) * NUM_ZONES);
+  xSemaphoreGive(mutex_);
+  ESP_LOGI(TAG, "Zone config restored from durable key");
+  return true;
+}
+
 bool Hv6ConfigStore::erase_namespace() {
   if (!initialized_)
     return false;
@@ -561,16 +599,18 @@ void Hv6ConfigStore::load_config_() {
     }
   }
 
-  // Overlay the durable sensor pairing on top of whatever the main blob loaded
-  // (or the defaults, when the main blob was version-discarded above).
-  bool had_durable = load_sensor_config_(handle);
+  // Overlay the durable sensor pairing and zone config on top of whatever the
+  // main blob loaded (or the defaults, when the main blob was version-discarded
+  // above).
+  bool had_durable_sensors = load_sensor_config_(handle);
+  bool had_durable_zones = load_zone_config_(handle);
 
   nvs_close(handle);
 
-  // Migration: a returning device whose pairing only lived in the main blob has
-  // no durable copy yet. Seed one now (deferred commit) while the pairing is
+  // Migration: a returning device whose pairing/zones only lived in the main blob
+  // has no durable copy yet. Seed one now (deferred commit) while the data is
   // still present, so it survives the next CONFIG_VERSION bump.
-  if (!had_durable)
+  if (!had_durable_sensors || !had_durable_zones)
     mark_dirty();
 }
 
@@ -589,8 +629,10 @@ void Hv6ConfigStore::save_config_() {
 
   nvs_set_blob(handle, KEY_CONFIG, &snapshot, sizeof(DeviceConfig));
 
-  // Mirror the sensor pairing to its own key so it outlives a CONFIG_VERSION bump.
+  // Mirror the sensor pairing and zone config to their own keys so they outlive
+  // a CONFIG_VERSION bump.
   save_sensor_config_(handle, snapshot.sensor_config);
+  save_zone_config_(handle, snapshot.zones);
 
   nvs_commit(handle);
   nvs_close(handle);

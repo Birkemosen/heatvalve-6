@@ -17,6 +17,7 @@
 #include "forecast_model.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 
 namespace esphome {
 namespace hv6_forecast {
@@ -44,6 +45,11 @@ class Hv6Forecast : public esphome::Component {
   int8_t get_zone_peak_in_h(uint8_t zone) const {
     return zone < hv6::NUM_ZONES ? zone_peak_in_h_[zone] : -1;
   }
+  /// Copy up to `max` cached forecast hours into `out` (oldest-to-newest, hours_[0] ≈ now).
+  /// Returns the number copied; writes the base epoch and cache age (s) to the out-params.
+  /// Guarded by hours_lock_ so the dashboard reader never sees a torn array.
+  uint8_t copy_hours(ForecastHour *out, uint8_t max, uint32_t *base_epoch_out,
+                     uint32_t *age_s_out) const;
 
  protected:
   static constexpr uint32_t STACK_SIZE = 16384;  ///< TLS handshake + 48 h JSON parse
@@ -71,6 +77,7 @@ class Hv6Forecast : public esphome::Component {
   ForecastHour hours_[FORECAST_HOURS];
   uint8_t hours_count_{0};
   uint32_t hours_base_epoch_{0};  ///< Epoch of hours_[0]; 0 = no data
+  SemaphoreHandle_t hours_lock_{nullptr};  ///< Guards hours_/count/base for cross-task reads
 
   // Diagnostics (written by task, read by dashboard)
   Status status_{Status::DISABLED};

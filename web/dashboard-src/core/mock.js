@@ -1,6 +1,6 @@
 // core/mock.js
 
-import { setEntity, setLive, sampleHistory, setI2cResult, addActivity, setDashboardValue, setZoneStateHistory, getDashboardValue } from './store.js';
+import { setEntity, setLive, sampleHistory, setI2cResult, addActivity, setDashboardValue, setZoneStateHistory, getDashboardValue, setForecastHours, appendDeviceLog } from './store.js';
 import { key, gkey } from '../utils/keys.js';
 
 const ZONES = 6;
@@ -8,6 +8,17 @@ const PROBES = 8;
 
 let timer = null;
 let tick = 0;
+let mockLogSeq = 1;
+
+// Rotating sample log lines so the mock Logs view looks alive.
+const MOCK_LOG_SAMPLES = [
+  [3, 'hv6_zone', 'Control cycle: 4 zones heating, house avg 21.3°C'],
+  [3, 'hv6_valve', 'Motor 2 reached open endstop (ripples=412)'],
+  [5, 'hv6_ripple', 'ADC DMA buffer drained, 2048 samples'],
+  [3, 'hv6_forecast', 'Forecast updated: 48 hours from Open-Meteo'],
+  [2, 'hv6_zone', 'Zone 5 disabled — skipping control'],
+  [3, 'hv6_asgard', 'Pushed z1 thermostat 21.4°C to Asgard'],
+];
 
 const state = {
   temp: new Float32Array(ZONES),
@@ -42,6 +53,9 @@ function seed() {
     setEntity(key.spacing(zone), { value: [150, 200, 150, 100, 200, 150][index] });
     setEntity(key.ble(zone), { state: 'AA:BB:CC:DD:EE:0' + zone });
     setEntity(key.exteriorWalls(zone), { state: ['N', 'E', 'S', 'W', 'N,E', 'S,W'][index] });
+    setEntity(key.windExposure(zone), { value: [0.5, 0.5, 0.5, 0.5, 0.7, 0.7][index] });
+    setEntity(key.solarGain(zone), { value: 0.3 });
+    setEntity(key.thermalLeadH(zone), { value: 4 });
     setEntity(key.preheatAdvance(zone), { value: 0.08 + (index * 0.03) });
   }
 
@@ -106,9 +120,35 @@ function seed() {
     const t = NOW_S - age_s;
     const hourIndex = Math.floor(i / 12) % 24;   // 12 entries per hour
     const states = patterns.map((p) => p[hourIndex % p.length]);
-    mockEntries.push([t, ...states]);
+    // Mock a couple of absorption episodes (~3 h and ~9 h ago) so the band shows.
+    const hoursAgo = age_s / 3600;
+    const absorbing = (hoursAgo > 2.5 && hoursAgo < 3.5) || (hoursAgo > 8.5 && hoursAgo < 9.5) ? 1 : 0;
+    mockEntries.push([t, ...states, absorbing]);
   }
   setZoneStateHistory({ interval_s: INTERVAL_S, uptime_s: NOW_S, count: TOTAL, entries: mockEntries });
+
+  // Mock fetched forecast (48 h): cold front with a wind spike ~12 h out.
+  const fcHours = [];
+  for (let i = 0; i < 48; i++) {
+    const temp = 6 - 3 * Math.sin(i / 24 * Math.PI) - (i > 10 && i < 20 ? 2 : 0);
+    const wind = 4 + (i > 8 && i < 18 ? 9 * Math.exp(-Math.pow(i - 13, 2) / 12) : 0) + Math.sin(i / 5);
+    const dir = (220 + i * 4) % 360;
+    fcHours.push([Number(temp.toFixed(1)), Number(Math.max(0, wind).toFixed(1)), Math.round(dir)]);
+  }
+  setForecastHours({ base_epoch: NOW_S, age_s: 8 * 60, count: 48, hours: fcHours });
+
+  // Seed the device-log stream with a few lines.
+  seedMockLogs(6);
+}
+
+function seedMockLogs(n) {
+  const lines = [];
+  for (let i = 0; i < n; i++) {
+    const s = MOCK_LOG_SAMPLES[mockLogSeq % MOCK_LOG_SAMPLES.length];
+    lines.push([mockLogSeq, s[0], s[1], s[2]]);
+    mockLogSeq++;
+  }
+  appendDeviceLog(lines, mockLogSeq);
 }
 
 function simulate() {
@@ -167,6 +207,9 @@ function simulate() {
   // Keep history uptime_s current so the timeline x-axis tracks wall time.
   const hist = getDashboardValue('zoneStateHistory');
   if (hist) hist.uptime_s = (Number(Date.now() / 1000) | 0);
+
+  // Emit a mock log line every few ticks so the Logs view looks live.
+  if (tick % 3 === 0) seedMockLogs(1);
 }
 
 export function startMock() {
@@ -277,11 +320,23 @@ export function handleMockPost(body) {
 
   // Text settings
   if (k === 'zone_ble_mac' && zone >= 1) { setEntity(key.ble(zone), { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
-  if (k === 'zone_exterior_walls' && zone >= 1) { setEntity(key.exteriorWalls(zone), { state: String(v) || 'None' }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
+  if (k === 'zone_exterior_walls' && zone >= 1) {
+    const walls = String(v) || 'None';
+    setEntity(key.exteriorWalls(zone), { state: walls });
+    // Mirror the firmware: re-seed wind exposure from the wall count.
+    const count = walls === 'None' ? 0 : walls.split(',').filter(Boolean).length;
+    const seeded = [0, 0.5, 0.7, 0.85, 1][Math.min(count, 4)];
+    setEntity(key.windExposure(zone), { value: seeded });
+    addActivity('Setting updated: ' + k + ' = ' + v, zone);
+    return;
+  }
 
   // Number settings (zone)
   if (k === 'zone_area_m2' && zone >= 1) { setEntity(key.area(zone), { value: Number(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
   if (k === 'zone_pipe_spacing_mm' && zone >= 1) { setEntity(key.spacing(zone), { value: Number(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
+  if (k === 'zone_wind_exposure' && zone >= 1) { setEntity(key.windExposure(zone), { value: Number(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
+  if (k === 'zone_solar_gain' && zone >= 1) { setEntity(key.solarGain(zone), { value: Number(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
+  if (k === 'zone_thermal_lead_h' && zone >= 1) { setEntity(key.thermalLeadH(zone), { value: Number(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
 
   // Number settings (global motor calibration)
   const numMap = {

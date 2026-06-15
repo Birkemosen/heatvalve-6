@@ -5,7 +5,7 @@ from esphome.const import CONF_ID
 import gzip
 from esphome.core import CORE
 
-DEPENDENCIES = ["web_server_base", "network"] 
+DEPENDENCIES = ["web_server_base", "network", "logger"]
 AUTO_LOAD = ["web_server_base"]
 
 CONF_WEB_SERVER_BASE_ID = "web_server_base_id"

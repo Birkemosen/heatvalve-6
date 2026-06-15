@@ -1,7 +1,7 @@
 import { component } from '../core/component.js';
 import { injectStyle } from '../core/style.js';
 import { getDashboardValue, subscribeDashboard, setSection } from '../core/store.js';
-import { ev, es } from '../core/store.js';
+import { ev, es, isEntityOn } from '../core/store.js';
 import { fmtUp, fmtWifi } from '../utils/format.js';
 import { gkey } from '../utils/keys.js';
 import { subscribe } from '../core/component.js';
@@ -211,11 +211,10 @@ const template = () => `
         <span class="brand-fw" id="hdr-fw"></span>
       </div>
       <nav class="top-menu">
-        <a href="#" class="menu-link active" data-section="overview">Dashboard</a>
+        <a href="#" class="menu-link active" data-section="overview">Monitor</a>
         <a href="#" class="menu-link" data-section="zones">Zones</a>
-        <a href="#" class="menu-link" data-section="smart-heating">Smart Heating</a>
-        <a href="#" class="menu-link" data-section="diagnostics">Diagnostics</a>
         <a href="#" class="menu-link" data-section="settings">Settings</a>
+        <a href="#" class="menu-link" data-section="logs">Logs</a>
       </nav>
       <div class="top-meta">
         <div class="meta-row">
@@ -223,6 +222,7 @@ const template = () => `
           <span id="hdr-sync" class="meta-chip meta-chip-state synced">Synced</span>
           <span class="meta-chip"><span class="meta-chip-label">Uptime</span><span class="meta-chip-value" id="hdr-up">---</span></span>
           <span class="meta-chip"><span class="meta-chip-label">WiFi</span><span class="meta-chip-value" id="hdr-wifi">---</span></span>
+          <span class="meta-chip" id="hdr-asgard" hidden><span class="meta-chip-label">Asgard</span><span class="meta-chip-value" id="hdr-asgard-val">---</span></span>
         </div>
       </div>
     </div>
@@ -241,6 +241,8 @@ export default component({
     const syncEl = el.querySelector('#hdr-sync');
     const upEl = el.querySelector('#hdr-up');
     const wifiEl = el.querySelector('#hdr-wifi');
+    const asgardEl = el.querySelector('#hdr-asgard');
+    const asgardValEl = el.querySelector('#hdr-asgard-val');
     const fwEl = el.querySelector('#hdr-fw');
     const links = el.querySelectorAll('.menu-link');
 
@@ -265,6 +267,10 @@ export default component({
       syncEl.className = 'meta-chip meta-chip-state ' + syncState;
       upEl.textContent = fmtUp(ev(gkey.uptime));
       wifiEl.textContent = fmtWifi(ev(gkey.wifi));
+      const pushC = ev(gkey.asgardLastPushC);
+      const showAsgard = isEntityOn(gkey.asgardEnabled) && pushC != null && Number.isFinite(pushC);
+      asgardEl.hidden = !showAsgard;
+      if (showAsgard) asgardValEl.textContent = pushC.toFixed(2) + '°C';
       const fw = getDashboardValue('firmwareVersion') || es(gkey.firmware);
       fwEl.textContent = fw ? 'FW ' + fw : '';
     }
@@ -282,6 +288,8 @@ export default component({
     subscribeDashboard('firmwareVersion', updateMeta);
     subscribe(gkey.uptime, updateMeta);
     subscribe(gkey.wifi, updateMeta);
+    subscribe(gkey.asgardLastPushC, updateMeta);
+    subscribe(gkey.asgardEnabled, updateMeta);
     subscribe(gkey.firmware, updateMeta);
     updateSection();
     updateMeta();

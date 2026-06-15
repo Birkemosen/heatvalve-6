@@ -111,7 +111,8 @@ class Hv6ValveController : public esphome::Component {
   static constexpr uint32_t SLOPE_WINDOW_TICKS = 50;             ///< 500ms window for dI/dt estimation
   static constexpr float ENDSTOP_SLOPE_MA_PER_S = 0.4f;         ///< Slope threshold (mA/s) for ramp detection
   static constexpr float ENDSTOP_SLOPE_CURRENT_FACTOR = 1.3f;   ///< Current must exceed mean×1.3 for slope trigger
-  static constexpr uint8_t ENDSTOP_SLOPE_WINDOWS = 2;           ///< Consecutive windows with rising slope required
+  static constexpr uint8_t ENDSTOP_SLOPE_WINDOWS = 2;           ///< Consecutive windows with rising slope required (close)
+  static constexpr uint8_t ENDSTOP_SLOPE_WINDOWS_OPEN = 1;      ///< Open ramp is gentle/slow — halve slope latency to ~500ms
   static constexpr uint32_t RELEARN_CHECK_INTERVAL_MS = 10000;  ///< Check relearn triggers every 10s
   static constexpr uint32_t CALIBRATION_REQUEST_GUARD_MS = 15000;  ///< Ignore calibration requests briefly after boot
   static constexpr uint32_t AUTO_START_DELAY_MS = 10000;  ///< Delay after boot before auto-enable + full calibration
@@ -267,7 +268,14 @@ class Hv6ValveController : public esphome::Component {
   // Telemetry
   mutable SemaphoreHandle_t telemetry_mutex_ = nullptr;
   std::array<MotorTelemetry, NUM_ZONES> telemetry_{};
-  std::array<float, NUM_ZONES> mean_currents_;
+  // Endstop threshold base, tracked per direction: closing draws materially more
+  // current than opening, so a single blended mean inflates the open threshold and
+  // lets the motor grind past the open stop. Indexed via mean_current_().
+  std::array<float, NUM_ZONES> mean_open_currents_;
+  std::array<float, NUM_ZONES> mean_close_currents_;
+  float &mean_current_(uint8_t zone, MotorDirection dir) {
+    return dir == MotorDirection::OPEN ? mean_open_currents_[zone] : mean_close_currents_[zone];
+  }
 
   // Command queue + task
   QueueHandle_t cmd_queue_ = nullptr;

@@ -45,7 +45,8 @@ static const char *const TAG = "hv6_valve_ctrl";
 // =============================================================================
 
 void Hv6ValveController::setup() {
-  mean_currents_.fill(INITIAL_MEAN_CURRENT_MA);
+  mean_open_currents_.fill(INITIAL_MEAN_CURRENT_MA);
+  mean_close_currents_.fill(INITIAL_MEAN_CURRENT_MA);
 
   telemetry_mutex_ = xSemaphoreCreateMutex();
   if (telemetry_mutex_ == nullptr) {
@@ -210,6 +211,8 @@ void Hv6ValveController::setup() {
         telemetry_[i].learned_close_ms = saved.learned_close_ms;
         telemetry_[i].deadzone_ms = saved.deadzone_ms;
         telemetry_[i].mean_current_ma = saved.mean_current_ma;
+        telemetry_[i].mean_open_current_ma = saved.mean_open_current_ma;
+        telemetry_[i].mean_close_current_ma = saved.mean_close_current_ma;
         telemetry_[i].movement_count = saved.movement_count;
         telemetry_[i].movements_since_learn = saved.movements_since_learn;
         telemetry_[i].last_learn_ms = saved.last_learn_ms;
@@ -226,7 +229,11 @@ void Hv6ValveController::setup() {
         telemetry_[i].last_close_peak_ma = saved.last_close_peak_ma;
         telemetry_[i].last_learning_sample_valid = saved.last_learning_sample_valid;
         telemetry_[i].last_fault_code = saved.last_fault_code;
-        mean_currents_[i] = saved.mean_current_ma;
+        // Seed per-direction means from the durable telemetry. A blob written by
+        // a pre-v19 build (size mismatch) won't load at all, so these fields carry
+        // their struct defaults; once loaded they hold the learned per-direction means.
+        mean_open_currents_[i] = saved.mean_open_current_ma;
+        mean_close_currents_[i] = saved.mean_close_current_ma;
         xSemaphoreGive(telemetry_mutex_);
       }
     }
@@ -1215,8 +1222,13 @@ void Hv6ValveController::stop_motor_(bool record_event) {
 
     if (current_count_ > 0) {
       float avg = current_sum_ / static_cast<float>(current_count_);
-      mean_currents_[current_zone_] = mean_currents_[current_zone_] * 0.9f + avg * 0.1f;
-      t.mean_current_ma = mean_currents_[current_zone_];
+      float &m = mean_current_(current_zone_, current_dir_);
+      m = m * 0.9f + avg * 0.1f;
+      if (current_dir_ == MotorDirection::OPEN)
+        t.mean_open_current_ma = m;
+      else
+        t.mean_close_current_ma = m;
+      t.mean_current_ma = m;  // legacy mirror (most recent move, either direction)
     }
     xSemaphoreGive(telemetry_mutex_);
 
@@ -1434,7 +1446,17 @@ void Hv6ValveController::detect_endstop_() {
   // vulnerable near-stop region even before the slope/threshold guard opens.
   bool hard_cap_endstop = false;
   if (past_boost) {
-    if (current_raw_ma_ > ENDSTOP_HARD_CAP_MA) {
+    // Close stall reaches the fixed catastrophic ceiling; the gentle open stall
+    // (~25 mA) does not, so derive a lower open cap from the learned open mean —
+    // a fast raw-current belt for the open endstop, floored so an under-learned
+    // mean can't trip mid-travel and capped by the absolute ceiling.
+    float hard_cap = ENDSTOP_HARD_CAP_MA;
+    if (current_dir_ == MotorDirection::OPEN && motor_cfg_.open_hard_cap_factor > 0.0f) {
+      float open_cap = std::max(motor_cfg_.open_hard_cap_floor_ma,
+                                mean_open_currents_[current_zone_] * motor_cfg_.open_hard_cap_factor);
+      hard_cap = std::min(ENDSTOP_HARD_CAP_MA, open_cap);
+    }
+    if (current_raw_ma_ > hard_cap) {
       if (hard_cap_high_count_ < 255)
         hard_cap_high_count_++;
     } else {
@@ -1459,7 +1481,7 @@ void Hv6ValveController::detect_endstop_() {
     // While soft-approach has reduced the drive duty, the running current is
     // proportionally lower than the learned mean (captured at full hold duty),
     // so scale the comparison mean to preserve detection sensitivity.
-    float detect_mean = mean_currents_[current_zone_];
+    float detect_mean = mean_current_(current_zone_, current_dir_);
     if (soft_approach_active_ && motor_cfg_.pwm_hold_duty_pct > 0) {
       detect_mean *= static_cast<float>(motor_cfg_.pwm_approach_duty_pct) /
                      static_cast<float>(motor_cfg_.pwm_hold_duty_pct);
@@ -1509,8 +1531,9 @@ void Hv6ValveController::detect_endstop_() {
       endstop_high_count_ = 0;
     }
 
+    uint8_t slope_windows_req = is_opening ? ENDSTOP_SLOPE_WINDOWS_OPEN : ENDSTOP_SLOPE_WINDOWS;
     threshold_endstop = endstop_high_count_ >= ENDSTOP_HIGH_TICKS;
-    slope_endstop = slope_endstop_windows_ >= ENDSTOP_SLOPE_WINDOWS;
+    slope_endstop = slope_endstop_windows_ >= slope_windows_req;
   }
 
   if (!threshold_endstop && !slope_endstop && !hard_cap_endstop)
@@ -1519,7 +1542,7 @@ void Hv6ValveController::detect_endstop_() {
   const char *trigger = hard_cap_endstop ? "hard_cap" : threshold_endstop ? "threshold" : "slope";
   ESP_LOGI(TAG, "Motor %d endstop (%s: filt=%.1f mA, raw=%.1f mA, mean=%.1f, slope=%.2f mA/s, t=%" PRIu32 "ms%s)",
            current_zone_ + 1, trigger, current_filtered_ma_, current_raw_ma_,
-           mean_currents_[current_zone_], current_slope_ma_per_s_, motor_run_time_ms_,
+           mean_current_(current_zone_, current_dir_), current_slope_ma_per_s_, motor_run_time_ms_,
            soft_approach_active_ ? ", soft" : "");
 
   xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
@@ -1823,6 +1846,23 @@ uint32_t Hv6ValveController::calibration_pass_(uint8_t zone, MotorDirection dir)
   if (!start_motor_(zone, dir))
     return 0;
 
+  // Coast into the stop on re-learns: start_motor_() disables soft-approach for
+  // calibration, but when the stroke is already known from a prior learn, seed the
+  // time-based approach so the actuator eases off before the (re-measured) endstop.
+  // The first-ever learn (no learned travel) keeps full force and relies on the
+  // per-direction threshold + open hard cap for a clean stop. Safe to set here —
+  // calibration_pass_ drives motor_loop_() synchronously in this same task.
+  {
+    xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
+    uint32_t learned = (dir == MotorDirection::OPEN) ? telemetry_[zone].learned_open_ms
+                                                     : telemetry_[zone].learned_close_ms;
+    xSemaphoreGive(telemetry_mutex_);
+    if (learned > 0) {
+      drive_to_endstop_active_ = true;
+      approach_stroke_ms_ = learned;
+    }
+  }
+
   while (motor_turning_) {
     motor_loop_();
     vTaskDelay(pdMS_TO_TICKS(FAST_TICK_MS));
@@ -1843,10 +1883,19 @@ uint32_t Hv6ValveController::calibration_pass_(uint8_t zone, MotorDirection dir)
     return 0;
   }
 
-  // Update mean current from this pass
+  // Update the per-direction mean current from this pass
   if (current_count_ > 0) {
     float avg = current_sum_ / static_cast<float>(current_count_);
-    mean_currents_[zone] = (mean_currents_[zone] + avg) / 2.0f;
+    float &m = mean_current_(zone, dir);
+    m = (m + avg) / 2.0f;
+    xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
+    if (dir == MotorDirection::OPEN)
+      telemetry_[zone].mean_open_current_ma = m;
+    else
+      telemetry_[zone].mean_close_current_ma = m;
+    telemetry_[zone].mean_current_ma = m;
+    xSemaphoreGive(telemetry_mutex_);
+    // update_learned_factor_() takes telemetry_mutex_ — call it after releasing.
     update_learned_factor_(zone, dir, avg, current_peak_ma_, true);
   }
 
@@ -1926,7 +1975,24 @@ void Hv6ValveController::run_calibration_(uint8_t zone) {
   uint32_t min_travel = motor_cfg_.calibration_min_travel_ms;
 
   for (uint8_t attempt = 0; attempt <= max_retries; attempt++) {
-    // Pass 1: close fully (reach known start position)
+    // Homing: drive OPEN to the endstop first. Opening is the safe, spring-assisted
+    // direction — the actuator-socket pop-off is a CLOSE-direction over-force failure.
+    // At boot/after a flash the valve is usually already closed, so the old "close
+    // first" pass drove a fully-closed valve into its stop for the entire ~1.2 s
+    // detection blind window with zero travel → pop-off. Homing open first guarantees
+    // the following close pass travels a full stroke before it contacts the closed
+    // stop, so detection has already armed by the moment of contact. Re-homed on every
+    // retry too, since a failed attempt can leave the valve closed. Position is not
+    // persisted (avoids per-move NVS wear over the 10–15 yr service life), so we always
+    // home rather than trust a stored position.
+    uint32_t home_ms = calibration_pass_(zone, MotorDirection::OPEN);
+    if (home_ms == 0) {
+      ESP_LOGW(TAG, "Calibration zone %d: homing open failed", zone + 1);
+      break;
+    }
+
+    // Pass 1: close fully from the open endstop (establishes the closed reference;
+    // safe now that the valve starts a full stroke away from the closed stop)
     uint32_t close1_ms = calibration_pass_(zone, MotorDirection::CLOSE);
     if (close1_ms == 0) {
       ESP_LOGW(TAG, "Calibration zone %d: initial close failed", zone + 1);
@@ -1962,7 +2028,9 @@ void Hv6ValveController::run_calibration_(uint8_t zone) {
       t.learned_open_ripples = open_ripples;
       t.learned_close_ripples = close2_ripples;
       t.deadzone_ms = deadzone;
-      t.mean_current_ma = mean_currents_[zone];
+      t.mean_open_current_ma = mean_open_currents_[zone];
+      t.mean_close_current_ma = mean_close_currents_[zone];
+      t.mean_current_ma = mean_close_currents_[zone];  // valve closed after pass 3
       t.drift_percent = 0.0f;
       t.movements_since_learn = 0;
       t.last_learn_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);

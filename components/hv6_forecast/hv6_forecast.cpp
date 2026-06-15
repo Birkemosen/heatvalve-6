@@ -51,6 +51,8 @@ void Hv6Forecast::setup() {
   for (uint8_t i = 0; i < hv6::NUM_ZONES; i++)
     zone_peak_in_h_[i] = -1;
 
+  hours_lock_ = xSemaphoreCreateMutex();
+
   load_cache_();
 
   xTaskCreatePinnedToCore(task_func_, "hv6_forecast", STACK_SIZE, this, PRIORITY, &task_handle_, CORE);
@@ -88,6 +90,25 @@ uint32_t Hv6Forecast::get_forecast_age_s() const {
     return 0;
   uint32_t now = epoch_s_();
   return (now > hours_base_epoch_) ? (now - hours_base_epoch_) : 0;
+}
+
+uint8_t Hv6Forecast::copy_hours(ForecastHour *out, uint8_t max, uint32_t *base_epoch_out,
+                                uint32_t *age_s_out) const {
+  if (out == nullptr || max == 0)
+    return 0;
+  if (hours_lock_ != nullptr && xSemaphoreTake(hours_lock_, pdMS_TO_TICKS(50)) != pdTRUE) {
+    if (base_epoch_out) *base_epoch_out = 0;
+    if (age_s_out) *age_s_out = 0;
+    return 0;
+  }
+  const uint8_t n = hours_count_ < max ? hours_count_ : max;
+  for (uint8_t i = 0; i < n; i++)
+    out[i] = hours_[i];
+  if (base_epoch_out) *base_epoch_out = hours_base_epoch_;
+  if (age_s_out) *age_s_out = get_forecast_age_s();
+  if (hours_lock_ != nullptr)
+    xSemaphoreGive(hours_lock_);
+  return n;
 }
 
 // =============================================================================
@@ -287,6 +308,11 @@ bool Hv6Forecast::fetch_forecast_(const hv6::ForecastConfig &cfg) {
 
         uint8_t count = 0;
         uint32_t base_epoch = 0;
+        // Hold hours_lock_ across the commit so a concurrent dashboard read
+        // (copy_hours) never observes a half-written array. The loop is short
+        // (≤FORECAST_HOURS simple assignments), so the critical section is brief.
+        if (hours_lock_ != nullptr)
+          xSemaphoreTake(hours_lock_, portMAX_DELAY);
         for (size_t i = start; i < times.size() && count < FORECAST_HOURS; i++, count++) {
           if (count == 0)
             base_epoch = times[i].as<uint32_t>();
@@ -304,6 +330,8 @@ bool Hv6Forecast::fetch_forecast_(const hv6::ForecastConfig &cfg) {
         } else {
           snprintf(last_error_, sizeof(last_error_), "short forecast (%u h)", count);
         }
+        if (hours_lock_ != nullptr)
+          xSemaphoreGive(hours_lock_);
       } else {
         snprintf(last_error_, sizeof(last_error_), "json %s", jerr.c_str());
       }

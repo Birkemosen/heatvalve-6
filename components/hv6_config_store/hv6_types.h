@@ -155,6 +155,25 @@ namespace ExteriorWall {
   static constexpr uint8_t WEST  = 1 << 3;
 }  // namespace ExteriorWall
 
+/// Seed a sensible forecast wind-exposure factor (0..1) from the exterior-wall
+/// bitmask. More exposed walls (a corner room) catch more wind regardless of
+/// direction, so exposure scales with the wall count. Used to pre-fill the
+/// editable per-zone wind_exposure when the walls are changed — the user can
+/// still override it afterwards for site-specific shelter.
+inline float default_wind_exposure(uint8_t walls) {
+  uint8_t count = 0;
+  for (uint8_t bit = 0; bit < 4; bit++)
+    if (walls & (1 << bit))
+      count++;
+  switch (count) {
+    case 0:  return 0.0f;
+    case 1:  return 0.5f;
+    case 2:  return 0.7f;
+    case 3:  return 0.85f;
+    default: return 1.0f;
+  }
+}
+
 // =============================================================================
 // Configuration Structs
 // =============================================================================
@@ -238,6 +257,12 @@ struct SensorConfig {
 /// pairings + temp sources survive a CONFIG_VERSION bump on firmware update.
 /// Bump only when SensorConfig's layout changes.
 static constexpr uint32_t SENSOR_CONFIG_VERSION = 1;
+
+/// Version tag for the standalone zone-config NVS blob. Persisted under its own
+/// key (separate from the main DeviceConfig blob) so per-zone settings (area,
+/// pipe type/spacing, exterior walls, etc.) survive a CONFIG_VERSION bump on
+/// firmware update. Bump only when ZoneConfig's layout changes.
+static constexpr uint32_t ZONE_CONFIG_VERSION = 1;
 
 struct BalancingConfig {
   bool dynamic_balancing_enabled = false;   ///< Use measured return temps for balance factors
@@ -330,8 +355,13 @@ struct MotorConfig {
   float open_current_factor = 1.7f;
   float open_slope_threshold_ma_per_s = 0.15f;
   float open_slope_current_factor = 1.3f;
+  // Direction-aware fast hard cap: the gentle open stall (~25 mA) never reaches
+  // the fixed ENDSTOP_HARD_CAP_MA safety ceiling, so derive a lower open cap on
+  // the raw (low-latency) current as a fast belt for the open endstop.
+  float open_hard_cap_factor = 1.7f;     // open raw cap = max(floor, mean_open × factor)
+  float open_hard_cap_floor_ma = 30.0f;  // floor so a low/under-learned mean can't trip mid-travel
   // Ripple safety limit for opening: learned_open_ripples × factor (0 = disabled)
-  float open_ripple_limit_factor = 1.2f;
+  float open_ripple_limit_factor = 1.10f;
   // Pin engagement detection (calibration)
   float pin_engage_step_ma = 3.0f;              // Current increase to detect pin contact
   uint16_t pin_engage_margin_ripples = 50;       // Offset toward open from detected point
@@ -367,6 +397,8 @@ struct MotorTelemetry {
   bool present = false;
   bool presence_known = false;
   float mean_current_ma = 20.0f;
+  float mean_open_current_ma = 20.0f;   ///< Running mean current, OPEN moves (open endstop threshold base)
+  float mean_close_current_ma = 20.0f;  ///< Running mean current, CLOSE moves (close endstop threshold base)
   float current_position_pct = 0.0f;
   uint32_t pin_engage_close_ripples = 0;  // Ripples from open end at pin contact (close pass)
   float learned_open_current_factor = 0.0f;
@@ -430,7 +462,11 @@ struct SystemConfig {
 /// v15 adds AsgardConfig (Ecodan heat-pump bridge, weighted z1 temperature push).
 /// v16 adds preheat absorption fields to ControlConfig.
 /// v17 adds ForecastConfig and per-zone exposure fields (forecast preload).
-static constexpr uint32_t CONFIG_VERSION = 18;
+/// v18 baseline.
+/// v19 adds per-direction mean current (MotorTelemetry) + open hard-cap fields
+///     (MotorConfig); tightens open_ripple_limit_factor to 1.10 — fixes motors
+///     clicking past the open endstop during learning.
+static constexpr uint32_t CONFIG_VERSION = 19;
 
 struct DeviceConfig {
   uint32_t config_version = CONFIG_VERSION;

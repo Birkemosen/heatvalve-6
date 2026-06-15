@@ -2,11 +2,13 @@
 
 import { startMock } from './mock.js';
 import { setEntity, setLive, sampleHistory, addActivity, setI2cResult, shouldSuppressStateUpdate } from './store.js';
-import { fetchHistory } from './api.js';
+import { fetchHistory, fetchLogs, fetchForecastHours } from './api.js';
 
 let reconnectTimer = null;
 let pollAbortController = null;
 let historyRefreshTimer = null;
+let logsRefreshTimer = null;
+let forecastRefreshTimer = null;
 
 async function fetchStateOnce() {
   if (pollAbortController) {
@@ -83,6 +85,16 @@ export function connect() {
       fetchHistory();
       if (!historyRefreshTimer) {
         historyRefreshTimer = setInterval(fetchHistory, 5 * 60 * 1000);
+      }
+      // Live device logs: poll fast (~3 s) so the Logs view feels live.
+      fetchLogs();
+      if (!logsRefreshTimer) {
+        logsRefreshTimer = setInterval(fetchLogs, 3000);
+      }
+      // Fetched forecast preview: refresh every 5 minutes.
+      fetchForecastHours();
+      if (!forecastRefreshTimer) {
+        forecastRefreshTimer = setInterval(fetchForecastHours, 5 * 60 * 1000);
       }
       scheduleReconnect();
     })

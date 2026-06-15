@@ -1,6 +1,8 @@
 import { mountComponent } from './core/component.js';
 import { connect } from './core/sse.js';
 
+// shared design system (must load before components that reference its classes)
+import './core/ui-kit.js';
 
 // register components (side-effect imports)
 import './app/header.js';
@@ -14,8 +16,9 @@ import './components/zone/zone-detail.js';
 import './components/zone/zone-sensor-card.js';
 import './components/zone/zone-room-card.js';
 import './components/overview/flow-diagram.js';
+import './components/overview/monitor-forecast-preview.js';
+import './components/logs/logs-view.js';
 import './components/diagnostics/diag-i2c.js';
-import './components/diagnostics/diag-zone.js';
 import './components/diagnostics/diag-activity.js';
 import './components/diagnostics/diag-manual-badge.js';
 import './components/diagnostics/diag-zone-motor-card.js';
@@ -26,6 +29,7 @@ import './components/settings/settings-motor-calibration-card.js';
 import './components/settings/settings-asgard-card.js';
 import './components/settings/settings-forecast-card.js';
 import './components/settings/smart-preheat-card.js';
+import './components/settings/settings-smart-heating-card.js';
 
 // root
 import './app/app-root.js';

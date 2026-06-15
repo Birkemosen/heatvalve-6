@@ -111,6 +111,15 @@ All 6 IPROPI outputs are wire-ORed to a single ADC pin (GPIO7). The valve contro
 
 Motor calibration telemetry is stored separately per-motor under keys `mot0`–`mot5`.
 
+Zone configuration (`ZoneConfig[NUM_ZONES]`: area, pipe type/spacing, exterior walls,
+setpoint, per-zone forecast tuning, etc.) is **also mirrored to its own `zones` NVS
+key** for the same reason as the BLE pairings below — without it, every firmware update
+that bumps `CONFIG_VERSION` would reset the user's per-room setup to defaults. The
+durable blob carries its own `ZONE_CONFIG_VERSION` (bump only when `ZoneConfig`'s layout
+changes); on boot `load_config_()` overlays it on top of the (possibly version-reset)
+main config, and a returning device with no durable copy yet seeds one automatically. It
+is written together with the main config on every commit and cleared by `erase-nvs`.
+
 BLE sensor pairing (`SensorConfig`: per-zone `zone_ble_mac` + `zone_temp_source`) is
 **also mirrored to its own `sensors` NVS key** so it survives a `CONFIG_VERSION` bump —
 otherwise every firmware update that changes the struct would wipe the user's BLE
@@ -127,7 +136,16 @@ Source files live under `web/dashboard-src/` and are bundled by esbuild into `we
 
 The dashboard **must not** call ESPHome entity REST routes (`/climate`, `/switch`, `/number`, etc.) — all dashboard traffic goes through `/api/hv6/v1`.
 
-The app has five top-level sections (nav in [web/dashboard-src/app/header.js](web/dashboard-src/app/header.js), one `<section data-section>` per area in [web/dashboard-src/app/app-root.js](web/dashboard-src/app/app-root.js)): **Dashboard**, **Zones**, **Smart Heating**, **Diagnostics**, **Settings**. The *Smart Heating* section groups all predictive-heating controls — the `smart-preheat-card` (Simple Preheat + Preheat Absorption) and the `settings-forecast-card` (Forecast Preload). Device controls (Motor Drivers, probe map, restart) stay in *Settings* under `settings-control-card`.
+**Config-card save model** — the Settings + Zones config cards (manifold, asgard, motor-cal, smart-preheat, forecast, zone-room, zone-sensor) use a shared per-card staging controller, `cardForm()` in [web/dashboard-src/core/ui-kit.js](web/dashboard-src/core/ui-kit.js). Edits to any control (number/text/select/toggle, plus the custom wall buttons) are staged locally and surface an **"Unsaved changes"** banner under that card's title with **Apply / Discard**; nothing is written to the device until **Apply** (per-card, not global). Incoming device state refreshes a control only while it is *not* dirty, so pending edits aren't clobbered; switching zones discards a zone card's pending edits. Numeric fields render as flat text between **− / +** steppers (double-click to type) with a magnitude-aware step (`dynamicStep`: declared precision below 1000, scaling up above). Feature-gate toggles (bridge, forecast, absorption) un-fade their gated body off the *staged* toggle so you can enable → edit → Apply in one go. `zone-detail`'s target-temp ± and Zone-Enabled remain **live** (operational thermostat controls, not staged).
+
+The app has four top-level sections (nav in [web/dashboard-src/app/header.js](web/dashboard-src/app/header.js), one `<section data-section>` per area in [web/dashboard-src/app/app-root.js](web/dashboard-src/app/app-root.js); the internal key for Monitor is still `overview`):
+
+- **Monitor** — live system overview: flow diagram, zone-state timeline (with a preheat-absorption band), a compact connectivity card, flow/return + demand graphs, and a read-only fetched-forecast **graph** (`monitor-forecast-preview`, served by `GET /api/hv6/v1/forecast`) plotting temperature + wind speed with hour/direction x-labels.
+- **Zones** — three columns for the selected zone: **Zone** (`zone-detail`, which now also shows the merged snapshot — state, temps, flow %, motor learned parameters, last fault), a middle column stacking the sensor/**connectivity** card (`zone-sensor-card`) and the **Faults & Relearn** card (`diag-zone-recovery-card`, reset fault / factors / relearn for the selected zone), and **Zone Settings** (`zone-room-card`). The standalone `diag-zone` snapshot card was folded into `zone-detail`.
+- **Settings** — a 4-column equal-height row of global settings: `settings-manifold-card`, `settings-asgard-card`, `settings-motor-calibration-card`, and the combined **Smart Heating** card (`settings-smart-heating-card`, hosting `smart-preheat-card` and `settings-forecast-card` as subsections). Collapses to 2 columns ≤1200px and 1 column ≤860px. The **Motor Drivers** enable toggle lives at the top of `settings-motor-calibration-card`.
+- **Logs** — live device-log stream (`logs-view`, fed by `GET /api/hv6/v1/logs?since=<seq>` which taps the ESPHome logger via `add_log_callback`) plus device-level diagnostics, the manual **Motor Control** card (`diag-zone-motor-card`, for fault situations), the **Device Control** actions card (`settings-control-card` — probe-map reset, 1-Wire dump, restart), `diag-manual-badge`, `diag-i2c`, `diag-activity`.
+
+Preheat-absorption episodes are surfaced two ways: the live `ESP_LOGI` lines appear in the Logs view, and the on/off history is drawn as a band on the Monitor zone-state timeline (the `/history` ring carries a trailing `absorbing` flag per sample). Global typography scales from `html { font-size }` (12px) in [app-root.js](web/dashboard-src/app/app-root.js).
 
 ### Helios command path (internal)
 
@@ -139,7 +157,7 @@ The external `hv6_helios_client` component was **removed** — whole-house MPC i
 
 ### Forecast Preload (wind-aware)
 
-`hv6_forecast` fetches a 48 h Open-Meteo forecast (HTTPS, cached in its own `hv6f` NVS namespace) and issues per-zone setpoint preload offsets through the **existing Helios command path** (so all per-zone clamps apply). Per forecast hour each zone gets a dimensionless weather load = wind hitting its `exterior_walls` (direction-matched) × cold × exposure − solar relief; when the peak load inside the zone's `thermal_lead_h` window exceeds `load_threshold`, an offset is applied so the slab charges before the storm. The producer **auto-quiesces while an external Helios service is enabled**. The load/preload math lives in [components/hv6_forecast/forecast_model.cpp](components/hv6_forecast/forecast_model.cpp) (namespace `hv6fc`, no ESP deps) and is host-tested via `make test-forecast`. Configured via the dashboard Forecast card (`ForecastConfig` + per-zone `wind_exposure`/`solar_gain_factor`/`thermal_lead_h`). See [docs/forecast_preload.md](docs/forecast_preload.md).
+`hv6_forecast` fetches a 48 h Open-Meteo forecast (HTTPS, cached in its own `hv6f` NVS namespace) and issues per-zone setpoint preload offsets through the **existing Helios command path** (so all per-zone clamps apply). Per forecast hour each zone gets a dimensionless weather load = wind hitting its `exterior_walls` (direction-matched) × cold × exposure − solar relief; when the peak load inside the zone's `thermal_lead_h` window exceeds `load_threshold`, an offset is applied so the slab charges before the storm. The producer **auto-quiesces while an external Helios service is enabled**. The load/preload math lives in [components/hv6_forecast/forecast_model.cpp](components/hv6_forecast/forecast_model.cpp) (namespace `hv6fc`, no ESP deps) and is host-tested via `make test-forecast`. Global settings (`ForecastConfig`) live in the dashboard Forecast card, which also shows each zone's live preload offset; the per-zone `wind_exposure`/`solar_gain_factor`/`thermal_lead_h` are edited in the Zone card next to `exterior_walls`. `wind_exposure` is auto-seeded from the `exterior_walls` bitmask (via `default_wind_exposure()` in [hv6_types.h](components/hv6_config_store/hv6_types.h)) whenever the walls change, and stays user-editable. See [docs/forecast_preload.md](docs/forecast_preload.md).
 
 ### BLE Temperature Sources
 

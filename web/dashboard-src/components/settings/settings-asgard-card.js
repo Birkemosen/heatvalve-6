@@ -1,5 +1,6 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
+import { cardForm } from '../../core/ui-kit.js';
 import { es, ev, isEntityOn, setEntity } from '../../core/store.js';
 import { setGlobalSelect, setGlobalNumber, setGlobalText } from '../../core/api.js';
 import { gkey } from '../../utils/keys.js';
@@ -8,29 +9,6 @@ import { gkey } from '../../utils/keys.js';
 // CSS — reuses the helios card visual language
 // ========================================
 const css = `
-.settings-asgard-card {
-  background: var(--panel-bg-vibrant);
-  border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  padding: 20px;
-  box-shadow: var(--panel-shadow);
-}
-
-.settings-asgard-card .card-title {
-  font-size: .84rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 1.1px;
-  color: var(--accent);
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--panel-border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
 .settings-asgard-card .asgard-role-badge {
   font-size: .72rem;
   font-weight: 800;
@@ -40,136 +18,15 @@ const css = `
   border-radius: 8px;
   flex-shrink: 0;
 }
-
 .settings-asgard-card .asgard-role-badge.master {
   background: rgba(45,110,45,.36);
   color: #CBFFD0;
   border: 1px solid rgba(100,255,100,.35);
 }
-
 .settings-asgard-card .asgard-role-badge.slave {
   background: rgba(70,70,70,.28);
   color: #ADADAD;
   border: 1px solid rgba(150,150,150,.25);
-}
-
-.settings-asgard-card .cfg-row {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.settings-asgard-card .lbl {
-  color: var(--text-secondary);
-  font-size: .78rem;
-  font-weight: 700;
-  letter-spacing: .45px;
-  text-transform: uppercase;
-  line-height: 1.2;
-}
-
-.settings-asgard-card .inp {
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid var(--control-border);
-  background: var(--control-bg);
-  color: var(--text);
-  border-radius: 10px;
-  padding: 9px 10px;
-  font-size: .88rem;
-  transition: border-color .15s ease;
-}
-
-.settings-asgard-card .inp:focus {
-  outline: 2px solid rgba(83,168,255,.6);
-  outline-offset: 1px;
-  border-color: rgba(83,168,255,.55);
-}
-
-.settings-asgard-card .row-2col {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-bottom: 12px;
-  align-items: start;
-}
-
-.settings-asgard-card .row-2col .cfg-row {
-  margin-bottom: 0;
-}
-
-.settings-asgard-card .enable-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 14px;
-  padding: 10px 14px;
-  border: 1px solid var(--control-border);
-  border-radius: 12px;
-  background: var(--control-bg);
-}
-
-.settings-asgard-card .enable-label {
-  font-size: .88rem;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.settings-asgard-card .enable-row.is-on {
-  border-color: rgba(100,255,100,.4);
-  background: rgba(45,110,45,.2);
-}
-
-.settings-asgard-card .enable-toggle {
-  width: 48px;
-  height: 26px;
-  border-radius: 999px;
-  background: var(--control-bg-hover);
-  position: relative;
-  cursor: pointer;
-  border: 1px solid var(--control-border);
-  transition: background .2s ease, border-color .2s ease;
-  flex-shrink: 0;
-}
-
-.settings-asgard-card .enable-toggle::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  background: #dbe8ff;
-  border-radius: 999px;
-  transition: transform .2s ease;
-}
-
-.settings-asgard-card .enable-row.is-on .enable-toggle {
-  background: rgba(121, 209, 126, 0.25);
-  border-color: rgba(121, 209, 126, 0.5);
-}
-
-.settings-asgard-card .enable-row.is-on .enable-toggle::after {
-  transform: translateX(22px);
-  background: #0f213c;
-}
-
-.settings-asgard-card .section-title {
-  color: var(--text-secondary);
-  font-size: .76rem;
-  font-weight: 700;
-  letter-spacing: .8px;
-  text-transform: uppercase;
-  margin: 16px 0 10px;
-}
-
-.settings-asgard-card .note {
-  color: var(--text-secondary);
-  font-size: .75rem;
-  margin-top: 4px;
-  line-height: 1.4;
 }
 
 .settings-asgard-card .setpoint-box {
@@ -180,47 +37,27 @@ const css = `
   border: 1px solid var(--control-border);
   border-radius: 12px;
   background: var(--control-bg);
+  margin-top: 8px;
 }
-
-.settings-asgard-card .setpoint-box .note {
-  margin-top: 0;
-}
-
 .settings-asgard-card .setpoint-val {
   font-size: 1.6rem;
   font-weight: 800;
   letter-spacing: .3px;
   color: var(--accent);
   line-height: 1;
+  font-family: var(--mono);
 }
 
 .settings-asgard-card .status-grid {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 4px 14px;
+  gap: 6px 14px;
   font-size: .82rem;
   color: var(--text-secondary);
+  margin-top: 8px;
 }
-
-.settings-asgard-card .status-grid .val {
-  color: var(--text);
-  font-weight: 600;
-}
-
-.settings-asgard-card .status-grid .val.warn {
-  color: #FFE9A0;
-}
-
-@media (max-width: 980px) {
-  .settings-asgard-card .row-2col {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .settings-asgard-card .row-2col .cfg-row {
-    margin-bottom: 0;
-  }
-}
+.settings-asgard-card .status-grid .val { color: var(--text); font-weight: 600; }
+.settings-asgard-card .status-grid .val.warn { color: #FFE9A0; }
 `;
 
 injectStyle('settings-asgard-card', css);
@@ -229,63 +66,66 @@ injectStyle('settings-asgard-card', css);
 // TEMPLATE
 // ========================================
 const template = () => `
-  <div class="settings-asgard-card">
-    <div class="card-title">
+  <div class="ui-card settings-asgard-card">
+    <div class="ui-card-title">
       <span>Asgard / Ecodan Bridge</span>
       <span class="asgard-role-badge slave">slave</span>
     </div>
 
-    <div class="enable-row is-off">
-      <span class="enable-label">Bridge enabled</span>
-      <div class="enable-toggle sa-enable" role="switch" aria-label="Toggle Asgard bridge"></div>
+    <div class="ui-row">
+      <span class="ui-label">Bridge enabled</span>
+      <span class="ui-field"><div class="ui-toggle sa-enable" role="switch" aria-label="Toggle Asgard bridge"></div></span>
     </div>
 
-    <div class="enable-row is-off">
-      <span class="enable-label">Coordinator (pushes to Asgard)</span>
-      <div class="enable-toggle sa-coord" role="switch" aria-label="Toggle coordinator role"></div>
-    </div>
-
-    <div class="section-title">Asgard</div>
-    <div class="row-2col">
-      <div class="cfg-row">
-        <span class="lbl">Host</span>
-        <input class="inp sa-host" type="text" placeholder="ecodan-heatpump.local" maxlength="63" />
+    <div class="gated-body sa-body">
+      <div class="ui-row">
+        <span class="ui-label">Coordinator <span class="ui-sublabel">pushes to Asgard</span></span>
+        <span class="ui-field"><div class="ui-toggle sa-coord" role="switch" aria-label="Toggle coordinator role"></div></span>
       </div>
-      <div class="cfg-row">
-        <span class="lbl">Port</span>
-        <input class="inp sa-port" type="number" min="1" max="65535" step="1" placeholder="80" />
-      </div>
-    </div>
-    <div class="cfg-row">
-      <span class="lbl">Number entity</span>
-      <input class="inp sa-entity" type="text" maxlength="47" placeholder="virtual_thermostat_input_z1" />
-      <span class="note">Asgard REST object_id receiving the weighted house temperature</span>
-    </div>
 
-    <div class="section-title">Peer board</div>
-    <div class="row-2col">
-      <div class="cfg-row">
-        <span class="lbl">Peer host</span>
-        <input class="inp sa-peer" type="text" placeholder="empty = single board" maxlength="63" />
+      <div class="ui-section">Asgard</div>
+      <div class="ui-row">
+        <span class="ui-label">Host</span>
+        <span class="ui-field"><input class="ui-input wide sa-host" type="text" placeholder="ecodan-heatpump.local" maxlength="63" /></span>
       </div>
-      <div class="cfg-row">
-        <span class="lbl">Push interval (s)</span>
-        <input class="inp sa-interval" type="number" min="5" max="3600" step="1" placeholder="30" />
+      <div class="ui-row">
+        <span class="ui-label">Port</span>
+        <span class="ui-field"><input class="ui-input sa-port" type="number" min="1" max="65535" step="1" placeholder="80" /></span>
       </div>
-    </div>
+      <div class="ui-row">
+        <span class="ui-label">Number entity <span class="ui-sublabel">REST object_id for the weighted house temp</span></span>
+        <span class="ui-field"><input class="ui-input wide sa-entity" type="text" maxlength="47" placeholder="virtual_thermostat_input_z1" /></span>
+      </div>
 
-    <div class="section-title">Recommended setpoint</div>
-    <div class="setpoint-box">
-      <span class="setpoint-val sa-st-setpoint">—</span>
-      <span class="note">Fixed value to set as the virtual thermostat setpoint in Asgard — the area-weighted target of all enabled zones (derived from static zone settings, not live status).</span>
-    </div>
+      <div class="ui-section">Peer board</div>
+      <div class="ui-row">
+        <span class="ui-label">Peer host</span>
+        <span class="ui-field"><input class="ui-input wide sa-peer" type="text" placeholder="empty = single board" maxlength="63" /></span>
+      </div>
+      <div class="ui-row">
+        <span class="ui-label">Push interval (s)</span>
+        <span class="ui-field"><input class="ui-input sa-interval" type="number" min="5" max="3600" step="1" placeholder="30" /></span>
+      </div>
 
-    <div class="section-title">Status</div>
-    <div class="status-grid">
-      <span>Peer</span><span class="val sa-st-peer">n/a</span>
-      <span>Last push</span><span class="val sa-st-push">—</span>
-      <span>Zones weighted</span><span class="val sa-st-zones">—</span>
-      <span>Last error</span><span class="val sa-st-err">—</span>
+      <div class="ui-section">Minimum zone flow</div>
+      <div class="ui-row">
+        <span class="ui-label">Min valve opening (%) <span class="ui-sublabel">floor held on every enabled zone so the heat pump always has flow</span></span>
+        <span class="ui-field"><input class="ui-input sa-minflow" type="number" min="0" max="50" step="1" placeholder="15" /></span>
+      </div>
+
+      <div class="ui-section">Recommended setpoint</div>
+      <div class="setpoint-box">
+        <span class="setpoint-val sa-st-setpoint">—</span>
+        <span class="ui-note">Fixed value to set as the virtual thermostat setpoint in Asgard — the area-weighted target of all enabled zones (derived from static zone settings, not live status).</span>
+      </div>
+
+      <div class="ui-section">Status</div>
+      <div class="status-grid">
+        <span>Peer</span><span class="val sa-st-peer">n/a</span>
+        <span>Last push</span><span class="val sa-st-push">—</span>
+        <span>Zones weighted</span><span class="val sa-st-zones">—</span>
+        <span>Last error</span><span class="val sa-st-err">—</span>
+      </div>
     </div>
   </div>
 `;
@@ -298,8 +138,6 @@ export default component({
   render: template,
   onMount(ctx, el) {
     const badge     = el.querySelector('.asgard-role-badge');
-    const enableRow = el.querySelector('.sa-enable').closest('.enable-row');
-    const coordRow  = el.querySelector('.sa-coord').closest('.enable-row');
     const enableBtn = el.querySelector('.sa-enable');
     const coordBtn  = el.querySelector('.sa-coord');
     const hostEl    = el.querySelector('.sa-host');
@@ -307,64 +145,51 @@ export default component({
     const entityEl  = el.querySelector('.sa-entity');
     const peerEl    = el.querySelector('.sa-peer');
     const intervalEl = el.querySelector('.sa-interval');
+    const minFlowEl  = el.querySelector('.sa-minflow');
     const stPeer    = el.querySelector('.sa-st-peer');
     const stPush    = el.querySelector('.sa-st-push');
     const stSetpoint = el.querySelector('.sa-st-setpoint');
     const stZones   = el.querySelector('.sa-st-zones');
     const stErr     = el.querySelector('.sa-st-err');
+    const body      = el.querySelector('.sa-body');
 
-    function bindToggle(btn, row, key, settingKey, label) {
-      btn.addEventListener('click', () => {
-        const current = isEntityOn(key);
-        const nextState = current ? 'off' : 'on';
-        setEntity(key, { state: nextState });
-        setGlobalSelect(settingKey, nextState)
+    const form = cardForm(el);
+
+    function commitToggle(key, settingKey, label) {
+      return (on) => {
+        const next = on ? 'on' : 'off';
+        setEntity(key, { state: next });
+        setGlobalSelect(settingKey, next)
           .catch(err => {
             console.error(`[Asgard] Failed to update ${label}:`, err);
-            setEntity(key, { state: current ? 'on' : 'off' });
+            setEntity(key, { state: on ? 'off' : 'on' });
           });
-      });
-      return () => {
-        const on = isEntityOn(key);
-        row.classList.toggle('is-on', on);
-        row.classList.toggle('is-off', !on);
-        btn.setAttribute('aria-checked', on ? 'true' : 'false');
       };
     }
+    // Fade + lock the rest of the card based on the *staged* bridge toggle.
+    const gate = (on) => body.classList.toggle('is-disabled', !on);
+    form.toggle(enableBtn, { read: () => isEntityOn(gkey.asgardEnabled), commit: commitToggle(gkey.asgardEnabled, 'asgard_enabled', 'enabled'), onChange: gate });
+    form.toggle(coordBtn,  { read: () => isEntityOn(gkey.asgardCoordinator), commit: commitToggle(gkey.asgardCoordinator, 'asgard_coordinator', 'coordinator') });
 
-    const updateEnable = bindToggle(enableBtn, enableRow, gkey.asgardEnabled, 'asgard_enabled', 'enabled');
-    const updateCoord  = bindToggle(coordBtn, coordRow, gkey.asgardCoordinator, 'asgard_coordinator', 'coordinator');
-
-    function bindText(input, key, settingKey) {
-      input.addEventListener('blur', () => {
-        const v = input.value.trim();
+    function commitText(key, settingKey) {
+      return (v) => {
         setEntity(key, { state: v });
-        setGlobalText(settingKey, v)
-          .catch(err => console.error(`[Asgard] Failed to update ${settingKey}:`, err));
-      });
+        setGlobalText(settingKey, v).catch(err => console.error(`[Asgard] Failed to update ${settingKey}:`, err));
+      };
     }
+    form.text(hostEl,   { read: () => es(gkey.asgardHost), commit: commitText(gkey.asgardHost, 'asgard_host') });
+    form.text(entityEl, { read: () => es(gkey.asgardEntityName), commit: commitText(gkey.asgardEntityName, 'asgard_entity_name') });
+    form.text(peerEl,   { read: () => es(gkey.asgardPeerHost), commit: commitText(gkey.asgardPeerHost, 'asgard_peer_host') });
 
-    bindText(hostEl, gkey.asgardHost, 'asgard_host');
-    bindText(entityEl, gkey.asgardEntityName, 'asgard_entity_name');
-    bindText(peerEl, gkey.asgardPeerHost, 'asgard_peer_host');
-
-    portEl.addEventListener('blur', () => {
-      const v = parseInt(portEl.value, 10);
-      if (v >= 1 && v <= 65535) {
-        setEntity(gkey.asgardPort, { value: v });
-        setGlobalNumber('asgard_port', v)
-          .catch(err => console.error('[Asgard] Failed to update port:', err));
-      }
-    });
-
-    intervalEl.addEventListener('blur', () => {
-      const v = parseInt(intervalEl.value, 10);
-      if (v >= 5 && v <= 3600) {
-        setEntity(gkey.asgardPushIntervalS, { value: v });
-        setGlobalNumber('asgard_push_interval_s', v)
-          .catch(err => console.error('[Asgard] Failed to update push_interval_s:', err));
-      }
-    });
+    function commitNum(key, settingKey) {
+      return (v) => {
+        setEntity(key, { value: v });
+        setGlobalNumber(settingKey, v).catch(err => console.error(`[Asgard] Failed to update ${settingKey}:`, err));
+      };
+    }
+    form.num(portEl,     { read: () => ev(gkey.asgardPort), commit: commitNum(gkey.asgardPort, 'asgard_port') });
+    form.num(intervalEl, { read: () => ev(gkey.asgardPushIntervalS), commit: commitNum(gkey.asgardPushIntervalS, 'asgard_push_interval_s') });
+    form.num(minFlowEl,  { read: () => ev(gkey.minZoneFlowPct), commit: commitNum(gkey.minZoneFlowPct, 'min_zone_flow_pct') });
 
     function updateStatus() {
       const role = es(gkey.asgardRole) || 'slave';
@@ -398,21 +223,8 @@ export default component({
       stErr.classList.toggle('warn', !!err);
     }
 
-    function populateInputs() {
-      const host = es(gkey.asgardHost);
-      const entity = es(gkey.asgardEntityName);
-      const peer = es(gkey.asgardPeerHost);
-      const port = ev(gkey.asgardPort);
-      const interval = ev(gkey.asgardPushIntervalS);
-      if (document.activeElement !== hostEl && host != null) hostEl.value = host;
-      if (document.activeElement !== entityEl && entity != null) entityEl.value = entity;
-      if (document.activeElement !== peerEl && peer != null) peerEl.value = peer;
-      if (document.activeElement !== portEl && port != null) portEl.value = port || 80;
-      if (document.activeElement !== intervalEl && interval != null) intervalEl.value = interval || 30;
-    }
-
-    subscribe(gkey.asgardEnabled,       updateEnable);
-    subscribe(gkey.asgardCoordinator,   updateCoord);
+    subscribe(gkey.asgardEnabled,       form.refresh);
+    subscribe(gkey.asgardCoordinator,   form.refresh);
     subscribe(gkey.asgardRole,          updateStatus);
     subscribe(gkey.asgardPeerStatus,    updateStatus);
     subscribe(gkey.asgardLastPushC,     updateStatus);
@@ -421,15 +233,14 @@ export default component({
     subscribe(gkey.asgardLocalZones,    updateStatus);
     subscribe(gkey.asgardPeerZones,     updateStatus);
     subscribe(gkey.asgardLastError,     updateStatus);
-    subscribe(gkey.asgardHost,          populateInputs);
-    subscribe(gkey.asgardEntityName,    populateInputs);
-    subscribe(gkey.asgardPeerHost,      populateInputs);
-    subscribe(gkey.asgardPort,          populateInputs);
-    subscribe(gkey.asgardPushIntervalS, populateInputs);
+    subscribe(gkey.asgardHost,          form.refresh);
+    subscribe(gkey.asgardEntityName,    form.refresh);
+    subscribe(gkey.asgardPeerHost,      form.refresh);
+    subscribe(gkey.asgardPort,          form.refresh);
+    subscribe(gkey.asgardPushIntervalS, form.refresh);
+    subscribe(gkey.minZoneFlowPct,      form.refresh);
 
-    updateEnable();
-    updateCoord();
+    form.refresh();
     updateStatus();
-    populateInputs();
   }
 });

@@ -19,7 +19,20 @@ itself is still served at `/dashboard` + `/dashboard.js`.
 
 - Read endpoints (raw JSON, no envelope yet — see "Planned"):
   - `GET /api/hv6/v1/state` — full dashboard snapshot (entity-id → value map consumed by the frontend store)
-  - `GET /api/hv6/v1/history` — 24 h zone-state ring buffer
+  - `GET /api/hv6/v1/history` — 24 h zone-state ring buffer. Each entry is
+    `[uptime_s, z0, z1, z2, z3, z4, z5, absorbing]` where `z0..z5` are `ZoneDisplayState`
+    codes (`0xFF` = unknown) and the trailing `absorbing` is `1` when preheat absorption was
+    active at that sample, else `0`. Shape:
+    `{"interval_s":300,"uptime_s":N,"count":N,"entries":[[…],…]}`
+  - `GET /api/hv6/v1/logs?since=<seq>` — live device-log ring (last ~96 lines). Returns only lines
+    newer than `<seq>`. Shape: `{"next_seq":N,"lines":[[seq,level,"tag","msg"],…]}` where `level`
+    is the ESPHome log level (1=ERROR … 7=VERY_VERBOSE). Pass the previous `next_seq` (or the
+    highest seen `seq`) back as `?since=` to append only new lines. RAM-only; reset on reboot.
+  - `GET /api/hv6/v1/forecast` — the raw fetched Open-Meteo hourly forecast (read-only, for
+    validating data freshness). Shape:
+    `{"base_epoch":N,"age_s":N,"count":N,"hours":[[temp_c,wind_speed_ms,wind_dir_deg],…]}`
+    where `hours[0]` ≈ "now" and `wind_dir_deg` is the meteorological direction the wind comes
+    *from*. `count`/`base_epoch` are `0` when no forecast has been fetched.
   - `GET /api/hv6/v1/ble-scan` — discovered BTHome sensors
   - `GET /api/hv6/v1/peer` — compact board-to-board zone snapshot
     (`{"ok":true,"zones":[{"t":21.4,"sp":21.0,"area":18.5,"en":true},…]}`) consumed by the peer

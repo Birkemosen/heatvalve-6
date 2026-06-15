@@ -1,8 +1,6 @@
-import { component, subscribe } from '../../core/component.js';
+import { component } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { command, setDriversEnabled } from '../../core/api.js';
-import { isEntityOn } from '../../core/store.js';
-import { gkey } from '../../utils/keys.js';
+import { command } from '../../core/api.js';
 
 // ========================================
 // CSS
@@ -144,22 +142,12 @@ injectStyle('settings-control-card', css);
 // TEMPLATE
 // ========================================
 const template = () => `
-  <div class="settings-control-stack">
-    <div class="settings-card settings-functionality-card">
-      <div class="card-title">Functionality</div>
-      <div class="toggle-row">
-        <span class="toggle-label">Motor Drivers</span>
-        <div class="ui-toggle drivers-toggle" role="switch" aria-label="Toggle motor drivers"></div>
-      </div>
-    </div>
-
-    <div class="settings-card settings-action-card">
-      <div class="card-title">Control</div>
-      <div class="btn-row">
-        <button class="btn sc-reset-probe-map">Reset 1-Wire Probe Map</button>
-        <button class="btn sc-dump-1wire">Dump 1-Wire Diagnostics</button>
-        <button class="btn warn sc-restart">Restart Device</button>
-      </div>
+  <div class="settings-card settings-action-card">
+    <div class="card-title">Device Control</div>
+    <div class="btn-row">
+      <button class="btn sc-reset-probe-map">Reset 1-Wire Probe Map</button>
+      <button class="btn sc-dump-1wire">Dump 1-Wire Diagnostics</button>
+      <button class="btn warn sc-restart">Restart Device</button>
     </div>
   </div>
 `;
@@ -171,26 +159,6 @@ export default component({
   tag: 'settings-control-card',
   render: template,
   onMount(ctx, el) {
-    const motorToggle = el.querySelector('.drivers-toggle');
-    const motorRow = motorToggle.closest('.toggle-row');
-
-    function isMotorDriversEnabled() {
-      return isEntityOn(gkey.drivers);
-    }
-
-    function updateMotorToggle() {
-      const enabled = isMotorDriversEnabled();
-      motorToggle.classList.toggle('on', enabled);
-      motorRow.classList.toggle('is-on', enabled);
-      motorToggle.setAttribute('aria-checked', enabled ? 'true' : 'false');
-    }
-
-    motorToggle.addEventListener('click', () => {
-      setDriversEnabled(!isMotorDriversEnabled());
-    });
-    subscribe(gkey.drivers, updateMotorToggle);
-    updateMotorToggle();
-
     el.querySelector('.sc-reset-probe-map').addEventListener('click', () => {
       command('reset_1wire_probe_map_reboot');
     });

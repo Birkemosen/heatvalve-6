@@ -1,6 +1,6 @@
 import { component } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { getDashboardValue } from '../../core/store.js';
+import { getDashboardValue, subscribeDashboard, zoneLabel } from '../../core/store.js';
 import { resetMotorFault, resetMotorLearnedFactors, resetMotorAndRelearn } from '../../core/api.js';
 
 // ========================================
@@ -24,6 +24,12 @@ const css = `
   margin-bottom: 12px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--panel-border);
+}
+.diag-zone-recovery .recovery-note {
+  color: var(--text-secondary);
+  font-size: .76rem;
+  line-height: 1.4;
+  margin-bottom: 12px;
 }
 .diag-zone-recovery .btn-row {
   display: flex;
@@ -92,19 +98,10 @@ injectStyle('diag-zone-recovery', css);
 // ========================================
 // TEMPLATE
 // ========================================
-const template = (ctx) => {
-  const zone = ctx.zone || getDashboardValue('selectedZone') || 1;
-  let zoneOptions = '';
-  for (let z = 1; z <= 6; z++) {
-    zoneOptions += '<option value="' + z + '"' + (z === zone ? ' selected' : '') + '>Zone ' + z + '</option>';
-  }
-  return `
+const template = () => `
     <div class="diag-zone-recovery">
-      <div class="card-title">Motor Recovery</div>
-      <div class="cfg-row">
-        <span class="lbl">Motor</span>
-        <select class="sel recovery-zone-select">${zoneOptions}</select>
-      </div>
+      <div class="card-title">Faults &amp; Relearn</div>
+      <div class="recovery-note">Recover the selected zone's motor after a fault or bad calibration.</div>
       <div class="btn-row">
         <button class="btn recovery-fault-btn">Reset Fault</button>
         <button class="btn warn recovery-factors-btn">Reset Factors</button>
@@ -112,23 +109,21 @@ const template = (ctx) => {
       </div>
     </div>
   `;
-};
 
 // ========================================
-// COMPONENT
+// COMPONENT — operates on the currently selected zone
 // ========================================
 export default component({
   tag: 'diag-zone-recovery-card',
   render: template,
   onMount(ctx, el) {
-    let zone = Number(ctx.zone || getDashboardValue('selectedZone') || 1);
-    const zoneSelect = el.querySelector('.recovery-zone-select');
+    let zone = Number(getDashboardValue('selectedZone') || 1);
     const faultBtn = el.querySelector('.recovery-fault-btn');
     const factorsBtn = el.querySelector('.recovery-factors-btn');
     const relearnBtn = el.querySelector('.recovery-relearn-btn');
 
-    zoneSelect?.addEventListener('change', () => {
-      zone = Number(zoneSelect.value || 1);
+    subscribeDashboard('selectedZone', () => {
+      zone = Number(getDashboardValue('selectedZone') || 1);
     });
 
     faultBtn?.addEventListener('click', () => {
@@ -136,13 +131,13 @@ export default component({
     });
 
     factorsBtn?.addEventListener('click', () => {
-      if (confirm('Reset learned factors for Zone ' + zone + '?')) {
+      if (confirm('Reset learned factors for ' + zoneLabel(zone) + '?')) {
         resetMotorLearnedFactors(zone);
       }
     });
 
     relearnBtn?.addEventListener('click', () => {
-      if (confirm('Reset + relearn motor for Zone ' + zone + '?')) {
+      if (confirm('Reset + relearn motor for ' + zoneLabel(zone) + '?')) {
         resetMotorAndRelearn(zone);
       }
     });

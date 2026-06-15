@@ -1,6 +1,6 @@
 // core/api.js
 
-import { beginPendingWrite, endPendingWrite, setEntity, setI2cResult, setLive, addActivity, setDashboardValue, setZoneStateHistory } from './store.js';
+import { beginPendingWrite, endPendingWrite, setEntity, setI2cResult, setLive, addActivity, setDashboardValue, setZoneStateHistory, appendDeviceLog, getDeviceLogSeq, setForecastHours } from './store.js';
 import { handleMockPost } from './mock.js';
 import { key, gkey } from '../utils/keys.js';
 
@@ -206,4 +206,23 @@ export function fetchHistory() {
     .then((response) => response.ok ? response.json() : null)
     .then((data) => { if (data) setZoneStateHistory(data); })
     .catch(() => { /* history fetch errors are non-fatal */ });
+}
+
+// Live device logs: only request lines newer than the last seq we've stored.
+export function fetchLogs() {
+  if (isMock()) return;
+  const since = getDeviceLogSeq();
+  fetch(BASE + '/logs?since=' + since, { cache: 'no-store' })
+    .then((response) => response.ok ? response.json() : null)
+    .then((data) => { if (data) appendDeviceLog(data.lines, data.next_seq); })
+    .catch(() => { /* log fetch errors are non-fatal */ });
+}
+
+// Fetched Open-Meteo forecast (read-only preview to prove data freshness).
+export function fetchForecastHours() {
+  if (isMock()) return;
+  fetch(BASE + '/forecast', { cache: 'no-store' })
+    .then((response) => response.ok ? response.json() : null)
+    .then((data) => { if (data) setForecastHours(data); })
+    .catch(() => { /* forecast fetch errors are non-fatal */ });
 }

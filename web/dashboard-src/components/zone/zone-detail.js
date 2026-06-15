@@ -149,74 +149,65 @@ const css = `
   color: var(--text);
 }
 
-.zone-detail .zd-toggle-row.is-on {
-  border-color: rgba(100,255,100,.4);
-  background: rgba(45,110,45,.2);
-}
+/* Toggle uses the canonical .ui-toggle from the shared ui-kit. */
 
-.zone-detail .sw {
-  width: 48px;
-  height: 26px;
-  border-radius: 999px;
-  background: var(--control-bg-hover);
-  position: relative;
-  cursor: pointer;
-  flex-shrink: 0;
-  border: 1px solid var(--control-border);
-  transition: background .2s ease, border-color .2s ease;
-}
-
-.zone-detail .sw::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  background: #dbe8ff;
-  border-radius: 999px;
-  transition: transform .2s ease;
-}
-
-.zone-detail .sw.on {
-  background: rgba(121, 209, 126, 0.25);
-  border-color: rgba(121, 209, 126, 0.5);
-}
-
-.zone-detail .sw.on::after {
-  transform: translateX(22px);
-  background: #0f213c;
-}
-
+/* Temperatures on a single row: small uppercase label above a large value. */
 .zone-detail .zd-stats {
   display: flex;
-  flex-direction: column;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 12px 28px;
 }
 
 .zone-detail .zd-stat {
-  padding: 2px 0 6px;
-  border-bottom: 1px solid rgba(120,168,255,.22);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .zone-detail .zd-stat-label {
-  font-size: .62rem;
+  font-size: .64rem;
   color: var(--text-secondary);
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .5px;
+  letter-spacing: 1px;
 }
 
 .zone-detail .zd-stat-value {
   font-family: var(--mono);
-  font-size: 1.3rem;
+  font-size: 1.5rem;
   font-weight: 800;
   color: var(--text-strong);
   line-height: 1;
 }
+
+.zone-detail .zd-motor {
+  border-top: 1px solid var(--panel-border);
+  padding-top: 12px;
+  margin-top: 2px;
+}
+.zone-detail .zd-motor-title {
+  font-size: .64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .7px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+.zone-detail .zd-motor .zd-stats { margin-top: 2px; }
+.zone-detail .zd-fault {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: rgba(255,118,118,.1);
+  border: 1px solid rgba(255,100,100,.25);
+  font-size: .76rem;
+}
+.zone-detail .zd-fault-label { color: var(--text-secondary); }
+.zone-detail .zd-fault-val { color: var(--state-danger); font-weight: 700; font-family: var(--mono); }
 `;
 
 // inject once
@@ -240,15 +231,30 @@ const template = (ctx) => `
           <button class="spb btn-inc">+</button>
         </div>
       </div>
-      <div class="zd-toggle-row"><span class="zd-toggle-label">Zone Enabled</span><div class="sw btn-toggle"></div></div>
+      <div class="zd-toggle-row"><span class="zd-toggle-label">Zone Enabled</span><div class="ui-toggle btn-toggle"></div></div>
       <div class="zd-stats">
         <div class="zd-stat"><div class="zd-stat-label">Current Temp</div><div class="zd-stat-value zd-temp">---</div></div>
         <div class="zd-stat"><div class="zd-stat-label">Return Temp</div><div class="zd-stat-value zd-ret">---</div></div>
         <div class="zd-stat"><div class="zd-stat-label">Flow %</div><div class="zd-stat-value zd-valve">---</div></div>
       </div>
+      <div class="zd-motor">
+        <div class="zd-motor-title">Motor learned parameters</div>
+        <div class="zd-stats">
+          <div class="zd-stat"><div class="zd-stat-label">Open Ripples</div><div class="zd-stat-value zd-orip">---</div></div>
+          <div class="zd-stat"><div class="zd-stat-label">Close Ripples</div><div class="zd-stat-value zd-crip">---</div></div>
+          <div class="zd-stat"><div class="zd-stat-label">Open Factor</div><div class="zd-stat-value zd-ofac">---</div></div>
+          <div class="zd-stat"><div class="zd-stat-label">Close Factor</div><div class="zd-stat-value zd-cfac">---</div></div>
+          <div class="zd-stat"><div class="zd-stat-label">Preheat Adv.</div><div class="zd-stat-value zd-ph">---</div></div>
+        </div>
+        <div class="zd-fault" hidden><span class="zd-fault-label">Last fault</span><span class="zd-fault-val">NONE</span></div>
+      </div>
     </div>
   </div>
 `;
+
+function fmtFactor(v) { return v != null ? Number(v).toFixed(2) + 'x' : '---'; }
+function fmtRipples(v) { return v != null ? Number(v).toFixed(0) : '---'; }
+function fmtPreheat(v) { return v != null ? Number(v).toFixed(2) + 'C' : '---'; }
 
 // ========================================
 // COMPONENT
@@ -285,6 +291,17 @@ export default component({
       badge.className = 'zd-badge' + (badgeClass ? ' ' + badgeClass : '');
       refs.toggleRow.classList.toggle('is-on', enabled);
       refs.toggle.classList.toggle('on', enabled);
+
+      // Merged motor-snapshot data
+      refs.orip.textContent = fmtRipples(ev(key.motorOpenRipples(zone)));
+      refs.crip.textContent = fmtRipples(ev(key.motorCloseRipples(zone)));
+      refs.ofac.textContent = fmtFactor(ev(key.motorOpenFactor(zone)));
+      refs.cfac.textContent = fmtFactor(ev(key.motorCloseFactor(zone)));
+      refs.ph.textContent = fmtPreheat(ev(key.preheatAdvance(zone)));
+      const fault = String(es(key.motorLastFault(zone)) || '').toUpperCase();
+      const hasFault = fault && fault !== 'NONE' && fault !== 'OK';
+      refs.fault.hidden = !hasFault;
+      if (hasFault) refs.faultVal.textContent = fault;
     },
 
     incSetpoint() {
@@ -317,7 +334,14 @@ export default component({
       toggleRow: el.querySelector('.zd-toggle-row'),
       toggle: el.querySelector('.btn-toggle'),
       inc: el.querySelector('.btn-inc'),
-      dec: el.querySelector('.btn-dec')
+      dec: el.querySelector('.btn-dec'),
+      orip: el.querySelector('.zd-orip'),
+      crip: el.querySelector('.zd-crip'),
+      ofac: el.querySelector('.zd-ofac'),
+      cfac: el.querySelector('.zd-cfac'),
+      ph: el.querySelector('.zd-ph'),
+      fault: el.querySelector('.zd-fault'),
+      faultVal: el.querySelector('.zd-fault-val')
     };
 
     refs.inc.onclick = () => ctx.incSetpoint();
@@ -344,6 +368,13 @@ export default component({
       subscribe(key.valve(zone), updateIfSelectedZone);
       subscribe(key.state(zone), updateIfSelectedZone);
       subscribe(key.enabled(zone), updateIfSelectedZone);
+      // Merged motor-snapshot fields (update() re-reads the selected zone).
+      subscribe(key.motorOpenRipples(zone), update);
+      subscribe(key.motorCloseRipples(zone), update);
+      subscribe(key.motorOpenFactor(zone), update);
+      subscribe(key.motorCloseFactor(zone), update);
+      subscribe(key.preheatAdvance(zone), update);
+      subscribe(key.motorLastFault(zone), update);
     }
     subscribe('sensor-manifold_return_temperature', update);
     subscribeDashboard('selectedZone', update);

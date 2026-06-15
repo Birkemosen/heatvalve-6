@@ -1,5 +1,6 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
+import { cardForm } from '../../core/ui-kit.js';
 import { es, getDashboardValue, subscribeDashboard } from '../../core/store.js';
 import { key } from '../../utils/keys.js';
 import { setZoneSelect, setZoneText } from '../../core/api.js';
@@ -8,75 +9,30 @@ import { setZoneSelect, setZoneText } from '../../core/api.js';
 // CSS
 // ========================================
 const css = `
-.zone-sensor-card {
-  background: var(--panel-bg-vibrant);
-  border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  padding: 20px;
-  box-shadow: var(--panel-shadow);
-  height: 100%;
-  box-sizing: border-box;
-}
+.zone-sensor-card { height: 100%; }
 
-.zone-sensor-card .card-title {
-  font-size: .84rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 1.1px;
-  color: var(--accent);
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--panel-border);
-}
-
-.zone-sensor-card .cfg-row {
-  display: grid;
-  grid-template-columns: 1fr;
+.zone-sensor-card .ble-row {
+  display: flex;
   gap: 6px;
-  margin-bottom: 10px;
+  align-items: center;
+  margin-top: 8px;
 }
-
-.zone-sensor-card .lbl {
-  color: var(--text-secondary);
-  font-size: .78rem;
-  font-weight: 700;
-  letter-spacing: .45px;
-  text-transform: uppercase;
-}
-
-.zone-sensor-card .lbl-help {
-  margin-top: -2px;
-  color: var(--text-faint);
-  font-size: .74rem;
-  font-style: italic;
-}
-
-.zone-sensor-card .sel,
-.zone-sensor-card .txt {
-  width: 100%;
+.zone-sensor-card .ble-row .ble-input {
+  flex: 1;
+  min-width: 0;
   border: 1px solid var(--control-border);
   background: var(--control-bg);
   color: var(--text);
   border-radius: 10px;
   padding: 9px 10px;
   font-size: .88rem;
+  font-family: var(--mono);
   transition: border-color .15s ease;
 }
-
-.zone-sensor-card .sel:focus,
-.zone-sensor-card .txt:focus {
+.zone-sensor-card .ble-row .ble-input:focus {
   outline: 2px solid rgba(83,168,255,.6);
   outline-offset: 1px;
   border-color: rgba(83,168,255,.55);
-}
-
-.zone-sensor-card .ble-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-.zone-sensor-card .ble-row .txt {
-  flex: 1;
 }
 .zone-sensor-card .btn-scan {
   flex-shrink: 0;
@@ -156,29 +112,29 @@ const template = () => {
   for (let probe = 1; probe <= 8; probe++) probeOptions += '<option>Probe ' + probe + '</option>';
 
   return `
-    <div class="zone-sensor-card">
-      <div class="card-title">Temperature Sensors / Connectivity</div>
-      <div class="cfg-row">
-        <span class="lbl">Zone Return Temperature Sensor</span>
-        <select class="sel zs-probe">${probeOptions}</select>
+    <div class="ui-card zone-sensor-card">
+      <div class="ui-card-title">Temperature Sensors / Connectivity</div>
+      <div class="ui-row">
+        <span class="ui-label">Zone Return Temperature Sensor</span>
+        <span class="ui-field"><select class="ui-select zs-probe">${probeOptions}</select></span>
       </div>
-      <div class="cfg-row">
-        <span class="lbl">Temperature Source</span>
-        <select class="sel zs-source"></select>
+      <div class="ui-row">
+        <span class="ui-label">Temperature Source</span>
+        <span class="ui-field"><select class="ui-select zs-source"></select></span>
       </div>
-      <div class="cfg-row zs-row-ble">
-        <span class="lbl">BLE Sensor</span>
-        <span class="lbl-help">Pair a nearby BTHome sensor (Shelly BLU H&T) or enter MAC manually.</span>
+      <div class="zs-row-ble">
+        <div class="ui-section">BLE Sensor</div>
+        <div class="ui-note">Pair a nearby BTHome sensor (Shelly BLU H&T) or enter MAC manually.</div>
         <div class="ble-row">
-          <input class="txt zs-ble" maxlength="17" placeholder="AA:BB:CC:DD:EE:FF">
+          <input class="ble-input zs-ble" maxlength="17" placeholder="AA:BB:CC:DD:EE:FF">
           <button class="btn-scan zs-scan">Scan</button>
         </div>
         <div class="ble-scan-list zs-scan-list" style="display:none"></div>
       </div>
-      <div class="cfg-row">
-        <span class="lbl">Sync To Zone</span>
-        <span class="lbl-help">Mirror target and control state from another zone.</span>
-        <select class="sel zs-sync"></select>
+      <div class="ui-divider"></div>
+      <div class="ui-row">
+        <span class="ui-label">Sync To Zone <span class="ui-sublabel">mirror target &amp; control from another zone</span></span>
+        <span class="ui-field"><select class="ui-select zs-sync"></select></span>
       </div>
     </div>
   `;
@@ -233,25 +189,31 @@ export default component({
       return getDashboardValue('selectedZone');
     }
 
+    // BLE row visibility follows the *staged* source so picking "BLE Sensor"
+    // reveals the field immediately, before Apply.
+    function paintBleRow() {
+      rowBle.style.display = sourceEl.value === 'BLE Sensor' ? '' : 'none';
+    }
+
+    const form = cardForm(el);
+    setSourceOptions(sourceEl, 'Local Probe');
+    form.select(probeEl, { read: () => es(key.probe(selectedZone())) || undefined, commit: (v) => setZoneSelect(selectedZone(), 'zone_probe', v) });
+    form.select(sourceEl, { read: () => sourceToUiValue(String(es(key.tempSource(selectedZone())) || '')), commit: (v) => setZoneSelect(selectedZone(), 'zone_temp_source', uiValueToApiValue(v)) });
+    form.select(syncEl, { read: () => es(key.syncTo(selectedZone())) || 'None', commit: (v) => setZoneSelect(selectedZone(), 'zone_sync_to', v) });
+    const bleField = form.text(bleEl, { read: () => es(key.ble(selectedZone())) || '', commit: (v) => setZoneText(selectedZone(), 'zone_ble_mac', v) });
+    sourceEl.addEventListener('change', paintBleRow);
+
     function update() {
       const zone = selectedZone();
       if (syncZone !== zone) {
         buildSyncOptions(syncEl, zone);
         syncZone = zone;
         scanList.style.display = 'none';
+        form.discard();   // drop staged edits from the previous zone
+      } else {
+        form.refresh();
       }
-
-      const probe = es(key.probe(zone));
-      const sourceRaw = String(es(key.tempSource(zone)) || '');
-      const sourceUi = sourceToUiValue(sourceRaw);
-      const syncTo = es(key.syncTo(zone)) || 'None';
-      const ble = es(key.ble(zone)) || '';
-
-      if (probe) probeEl.value = probe;
-      setSourceOptions(sourceEl, sourceUi);
-      syncEl.value = syncTo;
-      if (document.activeElement !== bleEl) bleEl.value = ble;
-      rowBle.style.display = sourceUi === 'BLE Sensor' ? '' : 'none';
+      paintBleRow();
     }
 
     function updateIfSelectedZone(id) {
@@ -262,7 +224,8 @@ export default component({
         id === key.syncTo(zone) ||
         id === key.ble(zone)
       ) {
-        update();
+        form.refresh();
+        paintBleRow();
       }
     }
 
@@ -321,9 +284,8 @@ export default component({
 
           scanList.querySelectorAll('.btn-assign').forEach(btn => {
             btn.addEventListener('click', () => {
-              const mac = btn.dataset.mac;
-              bleEl.value = mac;
-              setZoneText(zone, 'zone_ble_mac', mac);
+              bleEl.value = btn.dataset.mac;
+              bleField.markDirty();   // staged — committed on Apply
               scanList.style.display = 'none';
             });
           });
@@ -337,19 +299,6 @@ export default component({
             : 'Scan failed. Check device connectivity.';
           scanList.innerHTML = '<div class="scan-msg">' + msg + '</div>';
         });
-    });
-
-    probeEl.addEventListener('change', () => {
-      setZoneSelect(selectedZone(), 'zone_probe', probeEl.value);
-    });
-    sourceEl.addEventListener('change', () => {
-      setZoneSelect(selectedZone(), 'zone_temp_source', uiValueToApiValue(sourceEl.value));
-    });
-    syncEl.addEventListener('change', () => {
-      setZoneSelect(selectedZone(), 'zone_sync_to', syncEl.value);
-    });
-    bleEl.addEventListener('change', () => {
-      setZoneText(selectedZone(), 'zone_ble_mac', bleEl.value);
     });
 
     subscribeDashboard('selectedZone', update);

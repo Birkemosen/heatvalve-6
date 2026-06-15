@@ -1,6 +1,9 @@
 #include "hv6_dashboard.h"
 
 #include "esphome/core/log.h"
+#ifdef USE_LOGGER
+#include "esphome/components/logger/logger.h"
+#endif
 #ifdef USE_HV6_ASGARD_BRIDGE
 #include "../hv6_asgard_bridge/hv6_asgard_bridge.h"
 #endif
@@ -40,6 +43,24 @@ bool appendf(char *buffer, size_t capacity, size_t &offset, const char *fmt, ...
 
   offset += static_cast<size_t>(written);
   return true;
+}
+
+// Append `s` as the body of a JSON string (without surrounding quotes),
+// escaping the characters JSON requires. Control chars become spaces.
+void append_json_escaped(char *buffer, size_t capacity, size_t &offset, const char *s) {
+  for (const char *p = s; p != nullptr && *p != '\0'; ++p) {
+    if (offset + 2 >= capacity)
+      return;
+    const unsigned char c = static_cast<unsigned char>(*p);
+    if (c == '"' || c == '\\') {
+      buffer[offset++] = '\\';
+      buffer[offset++] = static_cast<char>(c);
+    } else if (c < 0x20) {
+      buffer[offset++] = ' ';
+    } else {
+      buffer[offset++] = static_cast<char>(c);
+    }
+  }
 }
 
 void format_float_token(char *buffer, size_t capacity, float value, int decimals = 1) {
@@ -294,6 +315,7 @@ void HV6Dashboard::update_snapshot_() {
     s.preheat_detect_delta_c = ctrl_cfg.preheat_detect_delta_c;
     s.preheat_absorbing = this->zone_controller_ && this->zone_controller_->is_preheat_absorbing();
     s.asgard                 = this->config_store_->get_asgard_config();
+    s.min_zone_flow_pct      = this->config_store_->get_config().balancing.minimum_flow_pct;
     s.forecast               = this->config_store_->get_forecast_config();
     for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
       s.zones[i]            = this->config_store_->get_zone_config(i);
@@ -318,6 +340,14 @@ void HV6Dashboard::setup() {
   this->action_lock_ = xSemaphoreCreateMutex();
   this->snapshot_lock_ = xSemaphoreCreateMutex();
   this->history_lock_ = xSemaphoreCreateMutex();
+  this->log_lock_ = xSemaphoreCreateMutex();
+
+#ifdef USE_LOGGER
+  // Tap the ESPHome logger so the dashboard Logs view can stream device logs.
+  // The callback runs on arbitrary tasks; it must stay non-blocking (see on_log_).
+  if (logger::global_logger != nullptr)
+    logger::global_logger->add_log_callback(this, &HV6Dashboard::on_log_static_);
+#endif
 
   // Prime snapshot so the first GET doesn't return 503.
   this->update_snapshot_();
@@ -725,6 +755,10 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
       static_cast<unsigned>(snap->asgard.peer_port),
       static_cast<unsigned>(snap->asgard.push_interval_s),
       static_cast<unsigned>(snap->asgard.peer_stale_after_s));
+  format_float_token(num_buf, sizeof(num_buf), snap->min_zone_flow_pct, 1);
+  appendf(buf, BUF_SIZE, offset,
+      "\"number-min_zone_flow_pct\":{\"value\":%s},",
+      num_buf);
   format_float_token(num_buf, sizeof(num_buf), snap->asgard_last_push_c, 2);
   char sp_buf[16];
   format_float_token(sp_buf, sizeof(sp_buf), snap->asgard_setpoint_c, 1);
@@ -884,6 +918,14 @@ void HV6Dashboard::handle_v1_(AsyncWebServerRequest *request, const char *path) 
   }
   if (strcmp(path, "/history") == 0) {
     this->handle_history_(request);
+    return;
+  }
+  if (strcmp(path, "/logs") == 0) {
+    this->handle_logs_(request);
+    return;
+  }
+  if (strcmp(path, "/forecast") == 0) {
+    this->handle_forecast_(request);
     return;
   }
   if (strcmp(path, "/ble-scan") == 0) {
@@ -1234,6 +1276,12 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
     asgard_cfg.peer_stale_after_s = static_cast<uint16_t>(std::max(30.0f, std::min(3600.0f, num_val)));
     this->config_store_->update_asgard(asgard_cfg);
 
+  // ---- min_zone_flow_pct (per-zone minimum valve opening while bridge active) ----
+  } else if (strcmp(key, "min_zone_flow_pct") == 0 && has_num && this->config_store_) {
+    auto bal = this->config_store_->get_config().balancing;
+    bal.minimum_flow_pct = std::max(0.0f, std::min(50.0f, num_val));
+    this->config_store_->update_balancing(bal);
+
   // ---- forecast_enabled ----
   } else if (strcmp(key, "forecast_enabled") == 0 && has_str && this->config_store_) {
     auto fc = this->config_store_->get_forecast_config();
@@ -1339,6 +1387,8 @@ void HV6Dashboard::sample_history_() {
   entry.uptime_s = millis() / 1000UL;
   for (uint8_t i = 0; i < hv6::NUM_ZONES; i++)
     entry.zone_state[i] = HISTORY_STATE_UNKNOWN;
+  entry.absorbing = (this->zone_controller_ != nullptr &&
+                     this->zone_controller_->is_preheat_absorbing()) ? 1 : 0;
 
   if (snapshot_lock_ != nullptr && snapshot_ready_ &&
       xSemaphoreTake(snapshot_lock_, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -1413,8 +1463,8 @@ void HV6Dashboard::handle_history_(AsyncWebServerRequest *request) {
     const HistoryEntry &e = ring_copy[slot];
 
     // Flush before entries that might overflow the 2 KB buffer.
-    // Each entry is at most ~35 bytes: "[4294967295,7,7,7,7,7,7]," → 28 chars.
-    if (offset + 40 >= BUF_SIZE) {
+    // Each entry is at most ~37 bytes: "[4294967295,7,7,7,7,7,7,1]," → 31 chars.
+    if (offset + 44 >= BUF_SIZE) {
       if (!flush()) { free(ring_copy); return; }
     }
 
@@ -1423,21 +1473,217 @@ void HV6Dashboard::handle_history_(AsyncWebServerRequest *request) {
     }
     first_entry = false;
 
+    // Trailing field is the preheat-absorption flag (1 = active at sample time).
     offset += static_cast<size_t>(snprintf(buf + offset, BUF_SIZE - offset,
-        "[%lu,%u,%u,%u,%u,%u,%u]",
+        "[%lu,%u,%u,%u,%u,%u,%u,%u]",
         static_cast<unsigned long>(e.uptime_s),
         static_cast<unsigned>(e.zone_state[0]),
         static_cast<unsigned>(e.zone_state[1]),
         static_cast<unsigned>(e.zone_state[2]),
         static_cast<unsigned>(e.zone_state[3]),
         static_cast<unsigned>(e.zone_state[4]),
-        static_cast<unsigned>(e.zone_state[5])));
+        static_cast<unsigned>(e.zone_state[5]),
+        static_cast<unsigned>(e.absorbing ? 1u : 0u)));
   }
 
   appendf(buf, BUF_SIZE, offset, "]}");
   flush();
   httpd_resp_send_chunk(req, nullptr, 0);
   free(ring_copy);
+}
+
+// =============================================================================
+// Live device-log stream
+// =============================================================================
+
+void HV6Dashboard::on_log_static_(void *self, uint8_t level, const char *tag,
+                                  const char *message, size_t message_len) {
+  static_cast<HV6Dashboard *>(self)->on_log_(level, tag, message, message_len);
+}
+
+void HV6Dashboard::on_log_(uint8_t level, const char *tag, const char *message,
+                           size_t /*message_len*/) {
+  if (log_lock_ == nullptr || message == nullptr)
+    return;
+  // Never stall the logging path: skip ISR context and drop on contention.
+  if (xPortInIsrContext())
+    return;
+  if (xSemaphoreTake(log_lock_, 0) != pdTRUE)
+    return;
+
+  LogLine &slot = log_ring_[log_head_];
+  slot.seq = log_next_seq_++;
+  slot.level = level;
+
+  if (tag != nullptr) {
+    strncpy(slot.tag, tag, LOG_TAG_LEN - 1);
+    slot.tag[LOG_TAG_LEN - 1] = '\0';
+  } else {
+    slot.tag[0] = '\0';
+  }
+
+  // Copy the message, stripping ANSI color escapes (\x1b[ ... m) and flattening
+  // whitespace so each ring entry is a single clean line.
+  size_t o = 0;
+  for (const char *p = message; *p != '\0' && o < LOG_MSG_LEN - 1; ++p) {
+    if (*p == '\x1b') {
+      while (*p != '\0' && *p != 'm')
+        ++p;
+      if (*p == '\0')
+        break;
+      continue;  // also skip the terminating 'm'
+    }
+    char c = *p;
+    if (c == '\n' || c == '\r' || c == '\t')
+      c = ' ';
+    slot.msg[o++] = c;
+  }
+  slot.msg[o] = '\0';
+
+  log_head_ = static_cast<uint16_t>((log_head_ + 1) % LOG_SLOTS);
+  xSemaphoreGive(log_lock_);
+}
+
+// GET /api/hv6/v1/logs?since=<seq> — returns log lines newer than <seq>.
+void HV6Dashboard::handle_logs_(AsyncWebServerRequest *request) {
+  uint32_t since = 0;
+  const std::string since_arg = request->arg("since");
+  if (!since_arg.empty())
+    since = static_cast<uint32_t>(strtoul(since_arg.c_str(), nullptr, 10));
+
+  auto *ring_copy = static_cast<LogLine *>(malloc(sizeof(LogLine) * LOG_SLOTS));
+  if (!ring_copy) {
+    httpd_req_t *req_err = *request;
+    httpd_resp_set_status(req_err, "503 Service Unavailable");
+    httpd_resp_set_type(req_err, "text/plain");
+    httpd_resp_send(req_err, "Out of memory", HTTPD_RESP_USE_STRLEN);
+    return;
+  }
+
+  uint16_t head = 0;
+  uint32_t next_seq = 1;
+  if (log_lock_ != nullptr &&
+      xSemaphoreTake(log_lock_, pdMS_TO_TICKS(50)) == pdTRUE) {
+    memcpy(ring_copy, log_ring_, sizeof(LogLine) * LOG_SLOTS);
+    head = log_head_;
+    next_seq = log_next_seq_;
+    xSemaphoreGive(log_lock_);
+  } else {
+    memset(ring_copy, 0, sizeof(LogLine) * LOG_SLOTS);
+  }
+
+  httpd_req_t *req = *request;
+  httpd_resp_set_status(req, "200 OK");
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
+  constexpr size_t BUF_SIZE = 2048;
+  char *buf = this->json_buf_;
+  size_t offset = 0;
+  auto flush = [&]() -> bool {
+    if (offset == 0) return true;
+    bool ok = (httpd_resp_send_chunk(req, buf, offset) == ESP_OK);
+    offset = 0;
+    return ok;
+  };
+
+  appendf(buf, BUF_SIZE, offset, "{\"next_seq\":%lu,\"lines\":[",
+          static_cast<unsigned long>(next_seq));
+
+  bool first = true;
+  // Oldest-to-newest: chronological order is (head + i) around the ring.
+  for (uint16_t i = 0; i < LOG_SLOTS; i++) {
+    const LogLine &l = ring_copy[(head + i) % LOG_SLOTS];
+    if (l.seq == 0 || l.seq <= since)
+      continue;
+
+    // A full entry can approach LOG_TAG_LEN + LOG_MSG_LEN plus escaping; flush
+    // whenever the remaining buffer can't safely hold one.
+    if (offset + (LOG_TAG_LEN + LOG_MSG_LEN) * 2 + 32 >= BUF_SIZE) {
+      if (!flush()) { free(ring_copy); return; }
+    }
+
+    if (!first)
+      buf[offset++] = ',';
+    first = false;
+
+    appendf(buf, BUF_SIZE, offset, "[%lu,%u,\"",
+            static_cast<unsigned long>(l.seq), static_cast<unsigned>(l.level));
+    append_json_escaped(buf, BUF_SIZE, offset, l.tag);
+    appendf(buf, BUF_SIZE, offset, "\",\"");
+    append_json_escaped(buf, BUF_SIZE, offset, l.msg);
+    appendf(buf, BUF_SIZE, offset, "\"]");
+  }
+
+  appendf(buf, BUF_SIZE, offset, "]}");
+  flush();
+  httpd_resp_send_chunk(req, nullptr, 0);
+  free(ring_copy);
+}
+
+// GET /api/hv6/v1/forecast — the raw fetched hourly forecast, so the dashboard
+// can prove Open-Meteo data is actually available.
+void HV6Dashboard::handle_forecast_(AsyncWebServerRequest *request) {
+  httpd_req_t *req = *request;
+  httpd_resp_set_status(req, "200 OK");
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
+  constexpr size_t BUF_SIZE = 2048;
+  char *buf = this->json_buf_;
+  size_t offset = 0;
+  char num_buf[24];
+  auto flush = [&]() -> bool {
+    if (offset == 0) return true;
+    bool ok = (httpd_resp_send_chunk(req, buf, offset) == ESP_OK);
+    offset = 0;
+    return ok;
+  };
+
+  uint8_t count = 0;
+  uint32_t base_epoch = 0;
+  uint32_t age_s = 0;
+
+#ifdef USE_HV6_FORECAST
+  static hv6_forecast::ForecastHour hours[hv6_forecast::FORECAST_HOURS];
+  if (this->forecast_ != nullptr) {
+    auto *fc = static_cast<hv6_forecast::Hv6Forecast *>(this->forecast_);
+    count = fc->copy_hours(hours, hv6_forecast::FORECAST_HOURS, &base_epoch, &age_s);
+  }
+#else
+  hv6_forecast::ForecastHour *hours = nullptr;
+  (void) hours;
+#endif
+
+  appendf(buf, BUF_SIZE, offset,
+          "{\"base_epoch\":%lu,\"age_s\":%lu,\"count\":%u,\"hours\":[",
+          static_cast<unsigned long>(base_epoch),
+          static_cast<unsigned long>(age_s),
+          static_cast<unsigned>(count));
+
+#ifdef USE_HV6_FORECAST
+  for (uint8_t i = 0; i < count; i++) {
+    if (offset + 80 >= BUF_SIZE) {
+      if (!flush()) return;
+    }
+    if (i != 0)
+      buf[offset++] = ',';
+    format_float_token(num_buf, sizeof(num_buf), hours[i].temp_c, 1);
+    appendf(buf, BUF_SIZE, offset, "[%s,", num_buf);
+    format_float_token(num_buf, sizeof(num_buf), hours[i].wind_speed_ms, 1);
+    appendf(buf, BUF_SIZE, offset, "%s,", num_buf);
+    format_float_token(num_buf, sizeof(num_buf), hours[i].wind_dir_deg, 0);
+    appendf(buf, BUF_SIZE, offset, "%s]", num_buf);
+  }
+#else
+  (void) num_buf;
+#endif
+
+  appendf(buf, BUF_SIZE, offset, "]}");
+  flush();
+  httpd_resp_send_chunk(req, nullptr, 0);
 }
 
 // Compact board-to-board snapshot consumed by the peer board's Asgard bridge
