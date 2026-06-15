@@ -115,12 +115,11 @@ I2C_SCAN: ----- end -----`),N("I2C scan complete");return}if(a==="calibrate_all_
    double-clicking it reveals the editable input. */
 .ui-stepper { display: inline-flex; align-items: center; gap: 6px; }
 .ui-stepper .ui-input {
-  width: 54px;
+  width: 74px;
   text-align: center;
   border-color: transparent;
   background: transparent;
   color: var(--accent);
-  font-size: 12px;
   font-weight: 700;
   cursor: default;
   -moz-appearance: textfield;
@@ -270,7 +269,7 @@ I2C_SCAN: ----- end -----`),N("I2C scan complete");return}if(a==="calibrate_all_
 .top-brand {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   gap: 4px;
 }
@@ -292,7 +291,7 @@ I2C_SCAN: ----- end -----`),N("I2C scan complete");return}if(a==="calibrate_all_
 }
 
 .mode-pill {
-  display: none;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 6px 10px;
@@ -382,7 +381,7 @@ I2C_SCAN: ----- end -----`),N("I2C scan complete");return}if(a==="calibrate_all_
   color: var(--text-strong);
 }
 
-.meta-chip-state.saved {
+.meta-chip-state.synced {
   color: var(--state-ok);
   border-color: rgba(121,209,126,.25);
   background: linear-gradient(180deg, rgba(20,52,34,.46), rgba(13,39,27,.36));
@@ -434,12 +433,6 @@ I2C_SCAN: ----- end -----`),N("I2C scan complete");return}if(a==="calibrate_all_
 `;z("hv6-header",Zo);var Wo=()=>`
   <header class="topbar">
     <div class="topbar-head">
-      <nav class="top-menu">
-        <a href="#" class="menu-link active" data-section="overview">Monitor</a>
-        <a href="#" class="menu-link" data-section="zones">Zones</a>
-        <a href="#" class="menu-link" data-section="settings">Settings</a>
-        <a href="#" class="menu-link" data-section="logs">Logs</a>
-      </nav>
       <div class="top-brand">
         <div class="brand-row">
           <div class="side-brand">HeatValve-6</div>
@@ -447,11 +440,16 @@ I2C_SCAN: ----- end -----`),N("I2C scan complete");return}if(a==="calibrate_all_
         </div>
         <span class="brand-fw" id="hdr-fw"></span>
       </div>
-
+      <nav class="top-menu">
+        <a href="#" class="menu-link active" data-section="overview">Monitor</a>
+        <a href="#" class="menu-link" data-section="zones">Zones</a>
+        <a href="#" class="menu-link" data-section="settings">Settings</a>
+        <a href="#" class="menu-link" data-section="logs">Logs</a>
+      </nav>
       <div class="top-meta">
         <div class="meta-row">
           <div class="top-dot" id="hdr-dot"></div>
-          <span id="hdr-sync" class="meta-chip meta-chip-state saved">saved</span>
+          <span id="hdr-sync" class="meta-chip meta-chip-state synced">Synced</span>
           <span class="meta-chip"><span class="meta-chip-label">Uptime</span><span class="meta-chip-value" id="hdr-up">---</span></span>
           <span class="meta-chip"><span class="meta-chip-label">WiFi</span><span class="meta-chip-value" id="hdr-wifi">---</span></span>
           <span class="meta-chip" id="hdr-asgard" hidden><span class="meta-chip-label">Asgard</span><span class="meta-chip-value" id="hdr-asgard-val">---</span></span>
@@ -459,7 +457,7 @@ I2C_SCAN: ----- end -----`),N("I2C scan complete");return}if(a==="calibrate_all_
       </div>
     </div>
   </header>
-`,dn=E({tag:"hv6-header",render:Wo,onMount(e,t){let r=t.querySelector("#hdr-mode"),o=t.querySelector("#hdr-dot"),i=t.querySelector("#hdr-sync"),a=t.querySelector("#hdr-up"),s=t.querySelector("#hdr-wifi"),l=t.querySelector("#hdr-asgard"),m=t.querySelector("#hdr-asgard-val"),u=t.querySelector("#hdr-fw"),v=t.querySelectorAll(".menu-link");function w(){let S=M("section");v.forEach(h=>{h.classList.toggle("active",h.getAttribute("data-section")===S)})}function y(){let S=M("live"),h=M("pendingWrites"),b=window.HV6_DASHBOARD_CONFIG&&window.HV6_DASHBOARD_CONFIG.mock?window.HV6_DASHBOARD_CONFIG.mockLabel||"Mock":S?"Live":"Offline";r.textContent=b,o.classList.toggle("on",!!S),i.textContent=h>0?"Saving...":S?"saved":"Offline";let c=h>0?"saving":S?"saved":"offline";i.className="meta-chip meta-chip-state "+c,a.textContent=je(_(n.uptime)),s.textContent=Xt(_(n.wifi));let d=_(n.asgardLastPushC),x=I(n.asgardEnabled)&&d!=null&&Number.isFinite(d);l.hidden=!x,x&&(m.textContent=d.toFixed(2)+"\xB0C");let T=M("firmwareVersion")||A(n.firmware);u.textContent=T?"FW "+T:""}v.forEach(S=>{S.addEventListener("click",h=>{h.preventDefault(),yt(S.getAttribute("data-section"))})}),L("section",w),L("live",y),L("pendingWrites",y),L("firmwareVersion",y),f(n.uptime,y),f(n.wifi,y),f(n.asgardLastPushC,y),f(n.asgardEnabled,y),f(n.firmware,y),w(),y()}});var jo=`
+`,dn=E({tag:"hv6-header",render:Wo,onMount(e,t){let r=t.querySelector("#hdr-mode"),o=t.querySelector("#hdr-dot"),i=t.querySelector("#hdr-sync"),a=t.querySelector("#hdr-up"),s=t.querySelector("#hdr-wifi"),l=t.querySelector("#hdr-asgard"),m=t.querySelector("#hdr-asgard-val"),u=t.querySelector("#hdr-fw"),v=t.querySelectorAll(".menu-link");function w(){let S=M("section");v.forEach(h=>{h.classList.toggle("active",h.getAttribute("data-section")===S)})}function y(){let S=M("live"),h=M("pendingWrites"),b=window.HV6_DASHBOARD_CONFIG&&window.HV6_DASHBOARD_CONFIG.mock?window.HV6_DASHBOARD_CONFIG.mockLabel||"Mock":S?"Live":"Offline";r.textContent=b,o.classList.toggle("on",!!S),i.textContent=h>0?"Saving...":S?"Synced":"Offline";let c=h>0?"saving":S?"synced":"offline";i.className="meta-chip meta-chip-state "+c,a.textContent=je(_(n.uptime)),s.textContent=Xt(_(n.wifi));let d=_(n.asgardLastPushC),x=I(n.asgardEnabled)&&d!=null&&Number.isFinite(d);l.hidden=!x,x&&(m.textContent=d.toFixed(2)+"\xB0C");let T=M("firmwareVersion")||A(n.firmware);u.textContent=T?"FW "+T:""}v.forEach(S=>{S.addEventListener("click",h=>{h.preventDefault(),yt(S.getAttribute("data-section"))})}),L("section",w),L("live",y),L("pendingWrites",y),L("firmwareVersion",y),f(n.uptime,y),f(n.wifi,y),f(n.asgardLastPushC,y),f(n.asgardEnabled,y),f(n.firmware,y),w(),y()}});var jo=`
 .status-card {
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
@@ -993,10 +991,10 @@ I2C_SCAN: ----- end -----`),N("I2C scan complete");return}if(a==="calibrate_all_
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 0px;
-  //border: 1px solid var(--control-border);
-  //border-radius: 12px;
-  //background: var(--control-bg);
+  padding: 10px 14px;
+  border: 1px solid var(--control-border);
+  border-radius: 12px;
+  background: var(--control-bg);
 }
 
 .zone-detail .zd-toggle-label {
@@ -1070,7 +1068,6 @@ I2C_SCAN: ----- end -----`),N("I2C scan complete");return}if(a==="calibrate_all_
       <div class="zd-title">${re(e.zone)}</div>
       <span class="zd-badge">---</span>
     </div>
-    <div class="zd-toggle-row"><span class="zd-toggle-label">Zone Enabled</span><div class="ui-toggle btn-toggle"></div></div>
     <div class="zd-body">
       <div>
         <div class="zd-kicker">Target Temperature</div>
@@ -1080,6 +1077,7 @@ I2C_SCAN: ----- end -----`),N("I2C scan complete");return}if(a==="calibrate_all_
           <button class="spb btn-inc">+</button>
         </div>
       </div>
+      <div class="zd-toggle-row"><span class="zd-toggle-label">Zone Enabled</span><div class="ui-toggle btn-toggle"></div></div>
       <div class="zd-stats">
         <div class="zd-stat"><div class="zd-stat-label">Current Temp</div><div class="zd-stat-value zd-temp">---</div></div>
         <div class="zd-stat"><div class="zd-stat-label">Return Temp</div><div class="zd-stat-value zd-ret">---</div></div>
@@ -1906,16 +1904,16 @@ I2C_SCAN: ----- end -----`),N("I2C scan complete");return}if(a==="calibrate_all_
   `,ni=E({tag:"diag-zone-recovery-card",render:ba,onMount(e,t){let r=Number(M("selectedZone")||1),o=t.querySelector(".recovery-fault-btn"),i=t.querySelector(".recovery-factors-btn"),a=t.querySelector(".recovery-relearn-btn");L("selectedZone",()=>{r=Number(M("selectedZone")||1)}),o==null||o.addEventListener("click",()=>{Bt(r)}),i==null||i.addEventListener("click",()=>{confirm("Reset learned factors for "+re(r)+"?")&&It(r)}),a==null||a.addEventListener("click",()=>{confirm("Reset + relearn motor for "+re(r)+"?")&&Zt(r)})}});var va=`
 .settings-manifold-card .probe-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-top: 12px;
 }
 
 .settings-manifold-card .probe-cell {
-  border: 0px solid var(--control-border);
+  border: 1px solid var(--control-border);
   border-radius: 10px;
   padding: 10px;
-  //background: var(--control-bg);
+  background: var(--control-bg);
 }
 
 .settings-manifold-card .probe-name {
@@ -1927,7 +1925,7 @@ I2C_SCAN: ----- end -----`),N("I2C scan complete");return}if(a==="calibrate_all_
 
 .settings-manifold-card .probe-temp {
   margin-top: 4px;
-  font-size: 12px;
+  font-size: 1rem;
   font-weight: 800;
   font-family: var(--mono);
 }
