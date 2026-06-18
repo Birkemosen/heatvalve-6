@@ -14,6 +14,7 @@ export const key = {
   area: (zone) => 'number-zone_' + zone + '_area_m2',
   spacing: (zone) => 'number-zone_' + zone + '_pipe_spacing_mm',
   ble: (zone) => 'text-zone_' + zone + '_ble_mac',
+  name: (zone) => 'text-zone_' + zone + '_name',
   exteriorWalls: (zone) => 'text-zone_' + zone + '_exterior_walls',
   motorTarget: (zone) => 'number-motor_' + zone + '_target_position',
   motorOpenRipples: (zone) => 'sensor-motor_' + zone + '_learned_open_ripples',

@@ -144,6 +144,21 @@ export function setEntity(id, patch) {
   if (id === 'text_sensor-firmware_version') {
     setDashboardValue('firmwareVersion', es(id) || '');
   }
+
+  // Bridge device-side friendly zone names (text-zone_<n>_name) into D.zoneNames
+  // so the existing zoneTag/zoneLabel consumers stay in sync without changes.
+  // Only act on a real change — this runs for every entity on every 1 Hz poll.
+  if (id.startsWith('text-zone_') && id.endsWith('_name')) {
+    const n = parseInt(id.slice(10, -5), 10);
+    if (n >= 1 && n <= NZ) {
+      const v = es(id) || '';
+      if (D.zoneNames[n - 1] !== v) {
+        D.zoneNames[n - 1] = v;
+        persistZoneNames();  // keep the load-time cache fresh from the device
+        notify(dashboardKey('zoneNames'));
+      }
+    }
+  }
 }
 
 export function subscribeDashboard(key, fn) {
@@ -195,12 +210,9 @@ export function shouldSuppressStateUpdate() {
   return (Date.now() - D.lastWriteAt) < 2000;
 }
 
-export function setZoneName(zone, value) {
-  const index = normalizeZone(zone) - 1;
-  D.zoneNames[index] = String(value || '').trim();
-  persistZoneNames();
-  notify(dashboardKey('zoneNames'));
-}
+// Zone names are device-persistent: the UI commits via api.applyZoneName() →
+// POST /settings/text(zone_name), and the device echo flows back through the
+// text-zone_<n>_name bridge in setEntity() above (which updates D.zoneNames).
 
 export function zoneTag(zone) {
   return D.zoneNames[normalizeZone(zone) - 1] || '';

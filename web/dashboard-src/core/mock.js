@@ -52,6 +52,7 @@ function seed() {
     setEntity(key.area(zone), { value: 8 + zone * 3.5 });
     setEntity(key.spacing(zone), { value: [150, 200, 150, 100, 200, 150][index] });
     setEntity(key.ble(zone), { state: 'AA:BB:CC:DD:EE:0' + zone });
+    setEntity(key.name(zone), { state: ['Living Room', 'Kitchen', 'Bedroom', 'Bathroom', 'Office', 'Hallway'][index] || '' });
     setEntity(key.exteriorWalls(zone), { state: ['N', 'E', 'S', 'W', 'N,E', 'S,W'][index] });
     setEntity(key.windExposure(zone), { value: [0.5, 0.5, 0.5, 0.5, 0.7, 0.7][index] });
     setEntity(key.solarGain(zone), { value: 0.3 });
@@ -356,6 +357,7 @@ export function handleMockPost(body) {
   if (k === 'balance_mode') { setEntity(gkey.balanceMode, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
 
   // Text settings
+  if (k === 'zone_name' && zone >= 1) { setEntity(key.name(zone), { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
   if (k === 'zone_ble_mac' && zone >= 1) { setEntity(key.ble(zone), { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
   if (k === 'zone_exterior_walls' && zone >= 1) {
     const walls = String(v) || 'None';

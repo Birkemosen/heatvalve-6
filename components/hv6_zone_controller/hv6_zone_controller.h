@@ -125,6 +125,7 @@ class Hv6ZoneController : public esphome::Component {
   uint8_t get_ble_discovered(BleSensorSeen *out, uint8_t max) const;
 
   // Zone physical properties
+  void set_zone_name(uint8_t zone, const std::string &name);  ///< Friendly name (persisted in ZoneConfig)
   void set_zone_area_m2(uint8_t zone, float area_m2);
   float get_zone_area_m2(uint8_t zone) const;
   void set_zone_pipe_spacing_mm(uint8_t zone, float spacing_mm);

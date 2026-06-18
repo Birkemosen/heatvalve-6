@@ -508,6 +508,21 @@ int8_t Hv6ZoneController::match_ble_mac(const char *mac) const {
   return -1;
 }
 
+void Hv6ZoneController::set_zone_name(uint8_t zone, const std::string &name) {
+  if (zone >= NUM_ZONES || !config_store_)
+    return;
+  auto cfg = config_store_->get_config();
+  char buf[sizeof(cfg.zones[zone].name)];
+  strncpy(buf, name.c_str(), sizeof(buf) - 1);
+  buf[sizeof(buf) - 1] = '\0';
+  if (strncmp(cfg.zones[zone].name, buf, sizeof(buf)) == 0)
+    return;  // unchanged — skip the NVS write
+  strncpy(cfg.zones[zone].name, buf, sizeof(cfg.zones[zone].name));
+  cfg.zones[zone].name[sizeof(cfg.zones[zone].name) - 1] = '\0';
+  config_store_->update_zone(zone, cfg.zones[zone]);  // persists in the durable zones blob
+  ESP_LOGI(TAG, "Zone %d name: '%s'", zone + 1, buf);
+}
+
 void Hv6ZoneController::set_zone_area_m2(uint8_t zone, float area_m2) {
   if (zone >= NUM_ZONES || !config_store_)
     return;

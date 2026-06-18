@@ -752,6 +752,18 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
     appendf(buf, BUF_SIZE, offset,
         "\"text-zone_%u_ble_mac\":{\"state\":\"%s\"},", zn, snap->zone_ble_mac[i]);
 
+    // Friendly zone name — JSON-escape quotes/backslashes/control chars.
+    char name_esc[2 * sizeof(z.name)];
+    size_t nesc = 0;
+    for (size_t j = 0; z.name[j] != '\0' && nesc < sizeof(name_esc) - 2; j++) {
+      char c = z.name[j];
+      if (c == '"' || c == '\\') name_esc[nesc++] = '\\';
+      name_esc[nesc++] = (c >= 0x20) ? c : ' ';
+    }
+    name_esc[nesc] = '\0';
+    appendf(buf, BUF_SIZE, offset,
+        "\"text-zone_%u_name\":{\"state\":\"%s\"},", zn, name_esc);
+
     const uint8_t walls = z.exterior_walls;
     if (walls == hv6::ExteriorWall::NONE) {
       appendf(buf, BUF_SIZE, offset,
@@ -1308,6 +1320,10 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
     if (parse_pipe_type(str_val, &pt))
       this->zone_controller_->set_zone_pipe_type(zi, pt);
 
+  // ---- zone_name (friendly name, persisted device-side in ZoneConfig) ----
+  } else if (strcmp(key, "zone_name") == 0 && has_str && zone_valid && this->zone_controller_) {
+    this->zone_controller_->set_zone_name(zi, std::string(str_val));
+
   // ---- zone_ble_mac ----
   } else if (strcmp(key, "zone_ble_mac") == 0 && has_str && zone_valid && this->zone_controller_) {
     this->zone_controller_->set_zone_ble_mac(zi, std::string(str_val));
@@ -1770,7 +1786,13 @@ void HV6Dashboard::handle_logs_(AsyncWebServerRequest *request) {
   if (!since_arg.empty())
     since = static_cast<uint32_t>(strtoul(since_arg.c_str(), nullptr, 10));
 
-  auto *ring_copy = static_cast<LogLine *>(malloc(sizeof(LogLine) * LOG_SLOTS));
+  // The ring copy is ~12.8 KB; take it from PSRAM so a busy /logs poll never
+  // spikes the (scarce) internal heap. Fall back to internal heap on no-PSRAM
+  // boards. free() routes back to the correct heap for either allocation.
+  auto *ring_copy = static_cast<LogLine *>(
+      heap_caps_malloc(sizeof(LogLine) * LOG_SLOTS, MALLOC_CAP_SPIRAM));
+  if (!ring_copy)
+    ring_copy = static_cast<LogLine *>(malloc(sizeof(LogLine) * LOG_SLOTS));
   if (!ring_copy) {
     httpd_req_t *req_err = *request;
     httpd_resp_set_status(req_err, "503 Service Unavailable");

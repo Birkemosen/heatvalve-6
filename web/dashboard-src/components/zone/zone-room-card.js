@@ -1,9 +1,9 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
 import { cardForm } from '../../core/ui-kit.js';
-import { ev, es, getDashboardValue, setZoneName, subscribeDashboard, zoneTag } from '../../core/store.js';
+import { ev, es, getDashboardValue, subscribeDashboard, zoneTag } from '../../core/store.js';
 import { key } from '../../utils/keys.js';
-import { setZoneNumber, setZoneSelect, setZoneText } from '../../core/api.js';
+import { applyZoneName, setZoneNumber, setZoneSelect, setZoneText } from '../../core/api.js';
 
 // Mirror firmware default_wind_exposure(): wind exposure seeded from wall count.
 const WIND_EXPOSURE_BY_WALLS = [0, 0.5, 0.7, 0.85, 1];
@@ -133,7 +133,7 @@ export default component({
 
     const form = cardForm(el);
 
-    form.text(nameEl, { read: () => zoneTag(zone()) || '', commit: (v) => setZoneName(zone(), v) });
+    form.text(nameEl, { read: () => zoneTag(zone()) || '', commit: (v) => applyZoneName(zone(), v) });
     form.num(areaEl, { read: () => ev(key.area(zone())), commit: (v) => setZoneNumber(zone(), 'zone_area_m2', v) });
     form.num(spacingEl, { read: () => ev(key.spacing(zone())), commit: (v) => setZoneNumber(zone(), 'zone_pipe_spacing_mm', v || 200) });
     form.select(pipeEl, { read: () => es(key.pipeType(zone())) || 'Unknown', commit: (v) => setZoneSelect(zone(), 'zone_pipe_type', v) });
