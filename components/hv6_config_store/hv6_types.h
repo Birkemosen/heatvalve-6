@@ -279,6 +279,21 @@ static constexpr uint32_t SENSOR_CONFIG_VERSION = 1;
 /// v2 adds balance_adapt (learned adaptive-balancing multiplier).
 static constexpr uint32_t ZONE_CONFIG_VERSION = 2;
 
+/// Per-section durable NVS blob versions. Each global-settings section is mirrored
+/// to its own NVS key (like zones/sensors above) so it survives the version-based
+/// discard of the main `config` blob on a CONFIG_VERSION bump. Bump an individual
+/// constant ONLY when that one struct's layout changes — that resets just that
+/// section, not the user's whole configuration. See hv6_config_store.cpp.
+static constexpr uint32_t SYSTEM_CONFIG_VERSION = 1;
+static constexpr uint32_t CONTROL_CONFIG_VERSION = 1;
+static constexpr uint32_t PROBE_CONFIG_VERSION = 1;
+static constexpr uint32_t PID_CONFIG_VERSION = 1;
+static constexpr uint32_t MOTOR_CONFIG_VERSION = 1;
+static constexpr uint32_t MANIFOLD_CONFIG_VERSION = 1;
+static constexpr uint32_t BALANCING_CONFIG_VERSION = 1;
+static constexpr uint32_t ASGARD_CONFIG_VERSION = 1;
+static constexpr uint32_t FORECAST_CONFIG_VERSION = 1;
+
 struct BalancingConfig {
   bool dynamic_balancing_enabled = false;   ///< Back-compat alias: true ⇒ mode == RETURN_TEMP
   bool modulating_heat_source = false;      ///< True when heat source can modulate flow temp (e.g. Ecodan)

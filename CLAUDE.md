@@ -107,9 +107,11 @@ All 6 IPROPI outputs are wire-ORed to a single ADC pin (GPIO7). The valve contro
 
 ### NVS Config Store
 
-`Hv6ConfigStore` wraps the entire `DeviceConfig` struct in a single NVS key. When the struct layout or a default value changes, increment `CONFIG_VERSION` in [components/hv6_config_store/hv6_types.h](components/hv6_config_store/hv6_types.h). On version mismatch, NVS is discarded and C++ defaults apply.
+`Hv6ConfigStore` wraps the entire `DeviceConfig` struct in a single NVS key. When the struct layout or a default value changes, increment `CONFIG_VERSION` in [components/hv6_config_store/hv6_types.h](components/hv6_config_store/hv6_types.h). On version mismatch, the **main** blob is discarded and C++ defaults apply — but the per-section durable blobs below are overlaid back on top, so user settings survive.
 
 Motor calibration telemetry is stored separately per-motor under keys `mot0`–`mot5`.
+
+**Every user-configurable section is mirrored to its own versioned durable NVS key** so it survives a `CONFIG_VERSION` bump (not just zones/sensors): `system`, `control`, `probes`, `pid`, `motorcfg`, `manifold`, `balancing`, `asgard`, `forecast` (plus `zones` and `sensors`, described below). Each carries its own `*_CONFIG_VERSION` in [hv6_types.h](components/hv6_config_store/hv6_types.h) — **bump only the one whose struct layout changed**, which resets just that section instead of the user's whole config. `save_config_()` writes all sections via the generic `save_section()` helper on every commit; `load_config_()` overlays them via `load_section()` on boot (a missing durable copy is seeded automatically). `erase-nvs` clears everything. Note: a section's settings still reset once on the firmware update that *first introduces or layout-changes* its durable blob (no prior copy exists), then persist across all later updates.
 
 Zone configuration (`ZoneConfig[NUM_ZONES]`: area, pipe type/spacing, exterior walls,
 setpoint, per-zone forecast tuning, etc.) is **also mirrored to its own `zones` NVS
@@ -132,7 +134,7 @@ changes).
 
 ### Dashboard
 
-Source files live under `web/dashboard-src/` and are bundled by esbuild into `web/dashboard.js`. The bundled artifact is committed and embedded into the firmware at build time via ESPHome's `web_server` component. The C++ `hv6_dashboard` component serves the app at `/dashboard` and exposes a JSON API at `/api/hv6/v1` on the device web server (port 80). The API contract is documented in [docs/hv6_api_v1.md](docs/hv6_api_v1.md).
+Source files live under `web/dashboard-src/` and are bundled by esbuild into `web/dashboard.js`. The bundled artifact is committed and embedded into the firmware at build time. The stock ESPHome `web_server` UI was removed (it kept per-entity JSON + SSE in scarce internal heap); the C++ `hv6_dashboard` component registers its handler on `web_server_base` directly (auto-loaded, port 80), serves the app at `/dashboard`, and exposes a JSON API at `/api/hv6/v1`. The API contract is documented in [docs/hv6_api_v1.md](docs/hv6_api_v1.md).
 
 The dashboard **must not** call ESPHome entity REST routes (`/climate`, `/switch`, `/number`, etc.) — all dashboard traffic goes through `/api/hv6/v1`.
 
