@@ -62,17 +62,17 @@ const css = `
   left: 3px;
   width: 14px;
   height: 14px;
-  background: #dbe8ff;
+  background: #efe6dd;
   border-radius: 999px;
   transition: .2s ease;
 }
 .status-card .sw.on {
   background: var(--blue);
-  border-color: rgba(83,168,255,.4);
+  border-color: rgba(124,155,208,.4);
 }
 .status-card .sw.on::after {
   transform: translateX(16px);
-  background: #0f213c;
+  background: #042a3b;
 }
 .status-card .sw.off {
   background: var(--state-danger);
@@ -82,14 +82,14 @@ const css = `
   width: 10px;
   height: 10px;
   border-radius: 999px;
-  background: rgba(120,168,255,.35);
+  background: rgba(120,146,200,.35);
   transition: .2s ease;
   flex-shrink: 0;
   display: inline-block;
 }
 .status-card .dot.on {
   background: var(--blue);
-  box-shadow: 0 0 12px rgba(83,168,255,.55);
+  box-shadow: 0 0 12px rgba(124,155,208,.55);
 }
 `;
 injectStyle('status-card', css);

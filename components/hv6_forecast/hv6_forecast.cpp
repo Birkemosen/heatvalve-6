@@ -13,6 +13,7 @@
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
 #include "esp_timer.h"
+#include "esp_heap_caps.h"
 #include "nvs.h"
 #include <cstdio>
 #include <cstring>
@@ -29,6 +30,28 @@ static const char *const TAG = "hv6_forecast";
 static const char *const NVS_NS = "hv6f";
 static const char *const NVS_KEY_HOURS = "hours";
 static const char *const NVS_KEY_META = "meta";
+
+// Minimum free *internal* (DMA-capable) heap required before attempting a fetch.
+// The TLS handshake to Open-Meteo needs ~40 KB of internal heap; if we're already
+// below this, starting it would starve WiFi/lwIP and stall the device. Skip and
+// retry later instead. The large body + JSON buffers go to PSRAM (see below) so
+// this guard only has to cover TLS + WiFi headroom.
+static constexpr size_t MIN_INTERNAL_HEAP_B = 48 * 1024;
+
+// ArduinoJson allocator that prefers PSRAM (keeps the parse pool off the internal
+// heap that TLS and WiFi need), falling back to internal heap when no PSRAM is
+// present so the build still works on non-PSRAM modules.
+struct PsRamAllocator : ArduinoJson::Allocator {
+  void *allocate(size_t n) override {
+    void *p = heap_caps_malloc(n, MALLOC_CAP_SPIRAM);
+    return p ? p : heap_caps_malloc(n, MALLOC_CAP_INTERNAL);
+  }
+  void deallocate(void *p) override { heap_caps_free(p); }
+  void *reallocate(void *p, size_t n) override {
+    void *q = heap_caps_realloc(p, n, MALLOC_CAP_SPIRAM);
+    return q ? q : heap_caps_realloc(p, n, MALLOC_CAP_INTERNAL);
+  }
+};
 
 struct CacheMeta {
   uint32_t base_epoch;
@@ -122,6 +145,7 @@ void Hv6Forecast::run_() {
   vTaskDelay(pdMS_TO_TICKS(30000));
 
   uint32_t last_fetch_attempt_s = 0;
+  uint32_t last_gate_log_s = 0;
 
   while (true) {
     hv6::ForecastConfig cfg = config_store_->get_forecast_config();
@@ -137,10 +161,20 @@ void Hv6Forecast::run_() {
       continue;
     }
     const bool config_ok = cfg.enabled && (cfg.latitude != 0.0f || cfg.longitude != 0.0f);
-    if (!config_ok || !esphome::network::is_connected()) {
+    const bool net_ok = esphome::network::is_connected();
+    if (!config_ok || !net_ok) {
       if (!config_ok) {
         status_ = Status::DISABLED;
         fetch_fail_streak_ = 0;
+      }
+      // Explain why no Open-Meteo call is happening (throttled to once/60 s) — otherwise
+      // a disabled flag, an unset location, or a down network looks identical to silence.
+      const uint32_t now_s = epoch_s_();
+      if (now_s - last_gate_log_s >= 60) {
+        last_gate_log_s = now_s;
+        ESP_LOGI(TAG, "No fetch: enabled=%s location=%.4f,%.4f network=%s",
+                 cfg.enabled ? "yes" : "no", cfg.latitude, cfg.longitude,
+                 net_ok ? "up" : "down");
       }
       clear_offsets_();
       vTaskDelay(pdMS_TO_TICKS(5000));
@@ -257,6 +291,8 @@ bool Hv6Forecast::fetch_forecast_(const hv6::ForecastConfig &cfg) {
            "&forecast_days=3&timeformat=unixtime&wind_speed_unit=ms&timezone=UTC",
            cfg.latitude, cfg.longitude);
 
+  ESP_LOGI(TAG, "Open-Meteo GET %s", url);
+
   esp_http_client_config_t http_cfg{};
   http_cfg.url = url;
   http_cfg.method = HTTP_METHOD_GET;
@@ -264,15 +300,30 @@ bool Hv6Forecast::fetch_forecast_(const hv6::ForecastConfig &cfg) {
   http_cfg.crt_bundle_attach = esp_crt_bundle_attach;
   http_cfg.buffer_size = 2048;
 
+  // Pre-flight: don't start a TLS handshake when internal heap is already low —
+  // it would starve WiFi/lwIP and stall the device. Retry on a later cycle.
+  size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+  if (free_internal < MIN_INTERNAL_HEAP_B) {
+    snprintf(last_error_, sizeof(last_error_), "low heap %uKB", (unsigned) (free_internal / 1024));
+    ESP_LOGW(TAG, "Skipping fetch: internal heap %u B < %u B", (unsigned) free_internal,
+             (unsigned) MIN_INTERNAL_HEAP_B);
+    return false;
+  }
+
   esp_http_client_handle_t client = esp_http_client_init(&http_cfg);
   if (!client) {
     snprintf(last_error_, sizeof(last_error_), "http init failed");
     return false;
   }
 
-  // 72 h × 4 hourly arrays + unixtime stamps ≈ 8–10 KB of JSON.
+  // 72 h × 4 hourly arrays + unixtime stamps ≈ 8–10 KB of JSON. Allocate the
+  // response body in PSRAM (free() routes back to the right heap) so the fetch's
+  // internal-heap footprint is essentially just the TLS session.
   constexpr size_t BODY_CAP = 16384;
-  std::unique_ptr<char[]> body(new (std::nothrow) char[BODY_CAP]);
+  char *body_buf = static_cast<char *>(heap_caps_malloc(BODY_CAP, MALLOC_CAP_SPIRAM));
+  if (body_buf == nullptr)
+    body_buf = static_cast<char *>(malloc(BODY_CAP));  // no PSRAM → internal heap
+  std::unique_ptr<char[], void (*)(void *)> body(body_buf, free);
   bool ok = false;
 
   esp_err_t err = body ? esp_http_client_open(client, 0) : ESP_ERR_NO_MEM;
@@ -280,18 +331,21 @@ bool Hv6Forecast::fetch_forecast_(const hv6::ForecastConfig &cfg) {
     esp_http_client_fetch_headers(client);
     int status = esp_http_client_get_status_code(client);
     int len = esp_http_client_read_response(client, body.get(), BODY_CAP - 1);
+    ESP_LOGI(TAG, "Open-Meteo response: http %d, %d bytes", status, len);
     if (status == 200 && len > 0) {
       body[len] = '\0';
 
-      // Parse with a heap document; only the hourly arrays are kept.
-      StaticJsonDocument<256> filter;
+      // Parse with an elastic PSRAM-backed document; only the hourly arrays are
+      // kept (filter), so the pool stays small and never touches internal heap.
+      JsonDocument filter;
       filter["hourly"]["time"] = true;
       filter["hourly"]["temperature_2m"] = true;
       filter["hourly"]["wind_speed_10m"] = true;
       filter["hourly"]["wind_direction_10m"] = true;
       filter["hourly"]["shortwave_radiation"] = true;
 
-      DynamicJsonDocument doc(20480);
+      PsRamAllocator psram_alloc;
+      JsonDocument doc(&psram_alloc);
       DeserializationError jerr = deserializeJson(doc, body.get(), len, DeserializationOption::Filter(filter));
       if (!jerr) {
         JsonArrayConst times = doc["hourly"]["time"].as<JsonArrayConst>();

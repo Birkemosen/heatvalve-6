@@ -1150,13 +1150,22 @@ bool Hv6ValveController::start_motor_(uint8_t zone, MotorDirection dir, bool ove
   debounce_count_ = 0;
   endstop_high_count_ = 0;
   hard_cap_high_count_ = 0;
+  open_fast_cap_armed_ = false;
+  open_fast_cap_count_ = 0;
   low_current_count_ = 0;
+  oc_last_ripple_count_ = 0;
+  stall_last_ripple_count_ = 0;
+  stall_last_advance_ms_ = 0;
+  stall_initialized_ = false;
+  cal_baseline_ma_ = 0.0f;
+  cal_baseline_set_ = false;
   // Conservative defaults — execute_move_() overrides these for normal moves.
-  // Calibration passes call start_motor_() directly and keep the fixed blind
-  // window / full-force drive so calibration behavior is unchanged.
+  // Calibration passes call start_motor_() directly and keep this blind window:
+  // just past boost + settle (not the old ~1.2 s) so the high-current close endstop
+  // is detected quickly even when the valve starts already closed (pop-off safety).
   drive_to_endstop_active_ = false;
   soft_approach_active_ = false;
-  endstop_guard_ms_ = ENDSTOP_MIN_RUNTIME_MS;
+  endstop_guard_ms_ = motor_cfg_.pwm_boost_ms + ENDSTOP_SETTLE_MS;
   approach_stroke_ripples_ = 0;
   approach_stroke_ms_ = 0;
   slope_prev_current_ma_ = 0.0f;
@@ -1301,16 +1310,19 @@ void Hv6ValveController::process_tick_() {
 
   uint32_t adaptive_cap = 0;
   bool adaptive_applied = false;
-  // During calibration passes, always use the full runtime safety window.
-  // Adaptive caps based on previous learned times can be too tight and cause
-  // false TIMEOUTs while relearning a drifting or slow valve.
-  if (!calibrating_ && lo > 0 && lc > 0) {
+  if (calibrating_) {
+    // During calibration use the full profile window — a short prior from an
+    // interrupted/failed run must not cap the pass below the real stroke length.
+    // Endstop detection (current threshold/slope) handles early stop; the profile
+    // limit (hmip_vdmot_runtime_limit_s = 40 s) is the fallback for missed detection.
+    // adaptive_cap stays 0 → not applied.
+  } else if (lo > 0 && lc > 0) {
     uint32_t learned_max = std::max(lo, lc);
     adaptive_cap = learned_max + motor_cfg_.adaptive_runtime_margin_ms;
-    if (adaptive_cap > 1000 && static_cast<float>(adaptive_cap) < max_runtime_ms) {
-      max_runtime_ms = static_cast<float>(adaptive_cap);
-      adaptive_applied = true;
-    }
+  }
+  if (adaptive_cap > 1000 && static_cast<float>(adaptive_cap) < max_runtime_ms) {
+    max_runtime_ms = static_cast<float>(adaptive_cap);
+    adaptive_applied = true;
   }
 
   if (motor_run_time_ms_ >= static_cast<uint32_t>(max_runtime_ms)) {
@@ -1353,6 +1365,32 @@ void Hv6ValveController::process_tick_() {
   current_count_++;
   if (debounce_count_ < 255)
     debounce_count_++;
+
+  // Early already-at-stop — evaluated DURING boost, before the current-filter debounce,
+  // so it can fire before sustained boost force pops an already-closed actuator off its
+  // pin. The motor commutates within the first tens of ms of the 100%-duty boost, so
+  // zero ripples by EARLY_STALL_MS means it never moved → it is already against the stop
+  // it was commanded toward. Current presence (boost current) confirms it is connected,
+  // not missing. Gated to endstop-seeking moves; a moving motor (any ripples) is exempt.
+  if ((calibrating_ || drive_to_endstop_active_) && ripple_enabled_ &&
+      motor_run_time_ms_ >= EARLY_STALL_MS &&
+      live_ripple_count_.load(std::memory_order_relaxed) == 0 &&
+      current_raw_ma_ >= motor_cfg_.low_current_threshold_ma) {
+    ESP_LOGI(TAG, "Motor %d endstop (at_stop_early: raw=%.1f mA, t=%" PRIu32 "ms)",
+             current_zone_ + 1, current_raw_ma_, motor_run_time_ms_);
+    xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
+    auto &t = telemetry_[current_zone_];
+    if (current_dir_ == MotorDirection::OPEN) {
+      t.last_open_endstop_ms = motor_run_time_ms_;
+      t.current_position_pct = 100.0f;
+    } else {
+      t.last_close_endstop_ms = motor_run_time_ms_;
+      t.current_position_pct = 0.0f;
+    }
+    xSemaphoreGive(telemetry_mutex_);
+    stop_motor_(true);
+    return;
+  }
 
   if (debounce_count_ < DEBOUNCE_TICKS)
     return;
@@ -1404,6 +1442,16 @@ void Hv6ValveController::apply_drive_output_() {
 }
 
 uint8_t Hv6ValveController::effective_hold_duty_() {
+  // Full-duty calibration: drive 100% (continuous, no coast off-phase) so the motor
+  // makes full torque and IPROPI is never coast-zeroed. The 70% hold both weakens the
+  // stall and dilutes the EMA current ~0.7×, which can hide the endstop stall current on
+  // weaker motors; at full duty the stall current is strong and undiluted, so the
+  // self-referential threshold detects the stop instead of grinding to the safety cap.
+  if (calibrating_) {
+    soft_approach_active_ = false;
+    return CALIBRATION_DUTY_PCT;
+  }
+
   uint8_t hold = motor_cfg_.pwm_hold_duty_pct;
   uint8_t approach = motor_cfg_.pwm_approach_duty_pct;
   uint8_t zone_pct = motor_cfg_.approach_zone_pct;
@@ -1446,23 +1494,40 @@ void Hv6ValveController::detect_endstop_() {
   // vulnerable near-stop region even before the slope/threshold guard opens.
   bool hard_cap_endstop = false;
   if (past_boost) {
-    // Close stall reaches the fixed catastrophic ceiling; the gentle open stall
-    // (~25 mA) does not, so derive a lower open cap from the learned open mean —
-    // a fast raw-current belt for the open endstop, floored so an under-learned
-    // mean can't trip mid-travel and capped by the absolute ceiling.
-    float hard_cap = ENDSTOP_HARD_CAP_MA;
-    if (current_dir_ == MotorDirection::OPEN && motor_cfg_.open_hard_cap_factor > 0.0f) {
-      float open_cap = std::max(motor_cfg_.open_hard_cap_floor_ma,
-                                mean_open_currents_[current_zone_] * motor_cfg_.open_hard_cap_factor);
-      hard_cap = std::min(ENDSTOP_HARD_CAP_MA, open_cap);
-    }
-    if (current_raw_ma_ > hard_cap) {
+    // Absolute catastrophic ceiling only (shorted winding / hard stall). A lower,
+    // direction-aware open cap was tried but fired on the open breakaway/early-travel
+    // current (~45 mA) — well above the gentle open stall — killing the open pass at
+    // ~600 ms. The open endstop is instead handled by the threshold/slope and the
+    // magnitude-independent rotation-stall path, so the hard cap stays a pure safety net.
+    if (current_raw_ma_ > ENDSTOP_HARD_CAP_MA) {
       if (hard_cap_high_count_ < 255)
         hard_cap_high_count_++;
     } else {
       hard_cap_high_count_ = 0;
     }
     hard_cap_endstop = hard_cap_high_count_ >= HARD_CAP_TICKS;
+  }
+
+  // --- Fast open hard-stop cap (low latency, self-gated past breakaway) ---
+  // The open retract stop is a sharp ~47-52 mA raw bite, but the slope path only updates
+  // once per 500 ms window — the gears grind for up to ~500 ms (1-3 ticks) before it
+  // reacts. Trip on the raw current in ~30 ms instead. The ~45 mA open breakaway current
+  // (first ~600 ms) would false-fire a naive cap, so arm only AFTER the current has
+  // settled back into the low free-travel band; from then on only the end-stop bite trips
+  // it. If the current never settles low, this never arms and the slope path still covers.
+  bool open_fast_endstop = false;
+  if (current_dir_ == MotorDirection::OPEN && past_boost) {
+    if (!open_fast_cap_armed_ && current_filtered_ma_ < OPEN_FAST_CAP_ARM_BELOW_MA)
+      open_fast_cap_armed_ = true;
+    if (open_fast_cap_armed_) {
+      if (current_raw_ma_ > OPEN_FAST_CAP_MA) {
+        if (open_fast_cap_count_ < 255)
+          open_fast_cap_count_++;
+      } else {
+        open_fast_cap_count_ = 0;
+      }
+      open_fast_endstop = open_fast_cap_count_ >= OPEN_FAST_CAP_TICKS;
+    }
   }
 
   // Threshold and slope detection only run after the (adaptive) inrush guard —
@@ -1478,10 +1543,20 @@ void Hv6ValveController::detect_endstop_() {
     float cfg_slope_cur_fac  = is_opening ? motor_cfg_.open_slope_current_factor
                                           : motor_cfg_.close_slope_current_factor;
 
-    // While soft-approach has reduced the drive duty, the running current is
-    // proportionally lower than the learned mean (captured at full hold duty),
-    // so scale the comparison mean to preserve detection sensitivity.
-    float detect_mean = mean_current_(current_zone_, current_dir_);
+    // Detection reference current. During calibration this is SELF-REFERENTIAL: the
+    // running current measured fresh in this very pass (first settled reading past the
+    // guard), never the stored mean — a corrupted prior (e.g. an inflated mean) must not
+    // break a fresh re-learn. Normal moves use the learned per-direction mean.
+    float detect_mean;
+    if (calibrating_) {
+      if (!cal_baseline_set_) {
+        cal_baseline_ma_ = std::max(current_filtered_ma_, 1.0f);
+        cal_baseline_set_ = true;
+      }
+      detect_mean = cal_baseline_ma_;
+    } else {
+      detect_mean = mean_current_(current_zone_, current_dir_);
+    }
     if (soft_approach_active_ && motor_cfg_.pwm_hold_duty_pct > 0) {
       detect_mean *= static_cast<float>(motor_cfg_.pwm_approach_duty_pct) /
                      static_cast<float>(motor_cfg_.pwm_hold_duty_pct);
@@ -1536,10 +1611,61 @@ void Hv6ValveController::detect_endstop_() {
     slope_endstop = slope_endstop_windows_ >= slope_windows_req;
   }
 
-  if (!threshold_endstop && !slope_endstop && !hard_cap_endstop)
+  // --- Path 5: rotation stall (ripple plateau) — magnitude-independent ---
+  // A motor pressed against the mechanical stop can no longer commutate, so its
+  // ripple count stops advancing. This catches low-current motors whose open
+  // stall never reaches the current-referenced thresholds above (which on a fresh
+  // calibration — before a real mean_open is learned — would otherwise grind to
+  // the runtime-safety cap).
+  //
+  // "Connected" arms on EITHER observed rotation (≥ MIN_COUNT ripples) OR current
+  // present: a motor energized and pressed against a stop draws current but never
+  // turns, which is the "valve already at this endstop" case — e.g. homing open a
+  // valve that reset to fully open. Like VdMot, we treat current (not rotation) as
+  // proof the motor is connected, so already-at-endstop reads as endstop-reached,
+  // not a false OPEN_CIRCUIT. A truly disconnected motor (no current AND no ripples)
+  // never arms and is left to the open-circuit / no-ripple paths. The window is
+  // baselined from the guard (not motor start) so a slow breakaway gets a full
+  // RIPPLE_STALL_MS to show its first ripple before being declared stalled.
+  bool stall_endstop = false;
+  if (ripple_enabled_ && (calibrating_ || drive_to_endstop_active_) &&
+      motor_run_time_ms_ >= endstop_guard_ms_) {
+    uint32_t rip = live_ripple_count_.load(std::memory_order_relaxed);
+    if (!stall_initialized_) {
+      stall_last_ripple_count_ = rip;
+      stall_last_advance_ms_ = motor_run_time_ms_;
+      stall_initialized_ = true;
+    } else if (rip > stall_last_ripple_count_) {
+      stall_last_ripple_count_ = rip;
+      stall_last_advance_ms_ = motor_run_time_ms_;
+    }
+    bool connected = rip >= RIPPLE_STALL_MIN_COUNT ||
+                     current_filtered_ma_ >= motor_cfg_.low_current_threshold_ma;
+    if (connected && (motor_run_time_ms_ - stall_last_advance_ms_) >= RIPPLE_STALL_MS)
+      stall_endstop = true;
+  }
+
+  // --- Fast already-at-endstop (never moved off the stop) ---
+  // The motor commutates during the boost phase, so zero ripples shortly after boost
+  // while drawing current means it is already pressed against the stop it was driven
+  // toward (closing an already-closed valve, or a valve that reset fully open). Stop
+  // now — this is what avoids driving full force into an engaged stop for the whole
+  // blind window (the actuator pop-off), without trial-and-error current tuning. A
+  // disconnected motor draws no current here, so it is left to the open-circuit path.
+  bool already_at_stop = ripple_enabled_ && (calibrating_ || drive_to_endstop_active_) &&
+      motor_run_time_ms_ >= motor_cfg_.pwm_boost_ms + ALREADY_AT_STOP_MS &&
+      live_ripple_count_.load(std::memory_order_relaxed) == 0 &&
+      current_filtered_ma_ >= motor_cfg_.low_current_threshold_ma;
+
+  if (!threshold_endstop && !slope_endstop && !hard_cap_endstop && !stall_endstop &&
+      !already_at_stop && !open_fast_endstop)
     return;
 
-  const char *trigger = hard_cap_endstop ? "hard_cap" : threshold_endstop ? "threshold" : "slope";
+  const char *trigger = hard_cap_endstop ? "hard_cap"
+                        : open_fast_endstop ? "open_fast"
+                        : threshold_endstop ? "threshold"
+                        : slope_endstop ? "slope"
+                        : already_at_stop ? "at_stop" : "stall";
   ESP_LOGI(TAG, "Motor %d endstop (%s: filt=%.1f mA, raw=%.1f mA, mean=%.1f, slope=%.2f mA/s, t=%" PRIu32 "ms%s)",
            current_zone_ + 1, trigger, current_filtered_ma_, current_raw_ma_,
            mean_current_(current_zone_, current_dir_), current_slope_ma_per_s_, motor_run_time_ms_,
@@ -1563,7 +1689,17 @@ void Hv6ValveController::detect_open_circuit_() {
   if (motor_cfg_.low_current_threshold_ma <= 0.0f)
     return;
 
-  if (current_filtered_ma_ < motor_cfg_.low_current_threshold_ma) {
+  // A disconnected valve shows BOTH no current AND no rotation. A real motor merely
+  // opening slowly under low load (spring-assisted, low torque) draws little current
+  // while still turning, so any commutation-ripple progress proves it is connected —
+  // reset the low-current timer on rotation and only accumulate when the motor is
+  // both starved of current and not turning. Prevents false OPEN_CIRCUIT on the
+  // gentle, low-current open stroke.
+  uint32_t rip = live_ripple_count_.load(std::memory_order_relaxed);
+  bool turning = rip > oc_last_ripple_count_;
+  oc_last_ripple_count_ = rip;
+
+  if (current_filtered_ma_ < motor_cfg_.low_current_threshold_ma && !turning) {
     low_current_count_++;
     uint32_t window_ticks = motor_cfg_.low_current_window_ms / TICK_MS;
     if (static_cast<uint32_t>(low_current_count_) >= window_ticks) {
@@ -1615,6 +1751,23 @@ void Hv6ValveController::detect_pin_engagement_() {
              " (baseline=%.1f mA, current=%.1f mA)",
              current_zone_ + 1, pin_detected_ripples_,
              pin_detect_baseline_ma_, current_filtered_ma_);
+
+    // Re-baseline the close endstop detection to the seating onset. The detection
+    // baseline was captured during pre-engagement free travel (~13-15 mA), so the
+    // gentle current rise right at pin contact trips the slope path within ~1s and
+    // stops the valve barely seated ("caught on pin engagement"). Re-anchoring the
+    // threshold/slope to the engagement current — and clearing the debouncers so the
+    // contact step itself can't fire — forces detection onto the HARD-seat ramp that
+    // climbs ABOVE contact, so the valve compresses fully onto its seat. Only runs
+    // when a real pin step was seen (an already-engaged start never gets here and
+    // keeps the prior behavior). Safety nets (hard cap, runtime cap) are unchanged.
+    if (calibrating_) {
+      cal_baseline_set_ = false;
+      endstop_high_count_ = 0;
+      hard_cap_high_count_ = 0;
+      slope_initialized_ = false;
+      slope_endstop_windows_ = 0;
+    }
   }
 }
 
@@ -1846,22 +1999,12 @@ uint32_t Hv6ValveController::calibration_pass_(uint8_t zone, MotorDirection dir)
   if (!start_motor_(zone, dir))
     return 0;
 
-  // Coast into the stop on re-learns: start_motor_() disables soft-approach for
-  // calibration, but when the stroke is already known from a prior learn, seed the
-  // time-based approach so the actuator eases off before the (re-measured) endstop.
-  // The first-ever learn (no learned travel) keeps full force and relies on the
-  // per-direction threshold + open hard cap for a clean stop. Safe to set here —
-  // calibration_pass_ drives motor_loop_() synchronously in this same task.
-  {
-    xSemaphoreTake(telemetry_mutex_, portMAX_DELAY);
-    uint32_t learned = (dir == MotorDirection::OPEN) ? telemetry_[zone].learned_open_ms
-                                                     : telemetry_[zone].learned_close_ms;
-    xSemaphoreGive(telemetry_mutex_);
-    if (learned > 0) {
-      drive_to_endstop_active_ = true;
-      approach_stroke_ms_ = learned;
-    }
-  }
+  // Calibration runs at full hold duty the whole way — NO soft-approach. Soft-approach
+  // drops to ~40% duty near the stop, which these low-torque valve motors cannot push
+  // through, so the pass stalls short and runs to the runtime cap (MECHANICAL_OVERRUN).
+  // It also engaged off stale learned strokes (progress jumped to 80% immediately on a
+  // short stored value). The rotation-stall + already-at-stop paths ease the endstop
+  // contact instead, and soft-approach remains active only for normal operating moves.
 
   while (motor_turning_) {
     motor_loop_();
@@ -1975,24 +2118,12 @@ void Hv6ValveController::run_calibration_(uint8_t zone) {
   uint32_t min_travel = motor_cfg_.calibration_min_travel_ms;
 
   for (uint8_t attempt = 0; attempt <= max_retries; attempt++) {
-    // Homing: drive OPEN to the endstop first. Opening is the safe, spring-assisted
-    // direction — the actuator-socket pop-off is a CLOSE-direction over-force failure.
-    // At boot/after a flash the valve is usually already closed, so the old "close
-    // first" pass drove a fully-closed valve into its stop for the entire ~1.2 s
-    // detection blind window with zero travel → pop-off. Homing open first guarantees
-    // the following close pass travels a full stroke before it contacts the closed
-    // stop, so detection has already armed by the moment of contact. Re-homed on every
-    // retry too, since a failed attempt can leave the valve closed. Position is not
-    // persisted (avoids per-move NVS wear over the 10–15 yr service life), so we always
-    // home rather than trust a stored position.
-    uint32_t home_ms = calibration_pass_(zone, MotorDirection::OPEN);
-    if (home_ms == 0) {
-      ESP_LOGW(TAG, "Calibration zone %d: homing open failed", zone + 1);
-      break;
-    }
-
-    // Pass 1: close fully from the open endstop (establishes the closed reference;
-    // safe now that the valve starts a full stroke away from the closed stop)
+    // Pass 1: close fully (reach the known closed reference). Closing is the
+    // high-current direction, so its endstop is the reliable one to detect — VdMot
+    // calibrates close-first for the same reason. A valve already at the closed stop
+    // is caught fast by the already-at-stop path (zero ripples after boost + current
+    // present) so we no longer over-drive a closed valve into its stop and pop the
+    // actuator socket off the pin.
     uint32_t close1_ms = calibration_pass_(zone, MotorDirection::CLOSE);
     if (close1_ms == 0) {
       ESP_LOGW(TAG, "Calibration zone %d: initial close failed", zone + 1);

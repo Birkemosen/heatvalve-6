@@ -83,8 +83,8 @@ const css = `
 @media (max-width: 560px) { .dz-grid { grid-template-columns: 1fr; } }
 
 .dz-zone-card {
-  background: linear-gradient(180deg, rgba(20,44,79,.30), rgba(13,31,58,.24));
-  border: 1px solid rgba(120,168,255,.30);
+  background: linear-gradient(180deg, rgba(0,63,92,.30), rgba(0,32,46,.24));
+  border: 1px solid rgba(120,146,200,.30);
   border-radius: 14px;
   padding: 12px 14px;
   display: flex;
@@ -117,9 +117,9 @@ const css = `
   color: var(--state-disabled);
 }
 .dz-state-badge.s-heating {
-  background: rgba(238,161,17,.15);
+  background: rgba(255,133,49,.15);
   color: var(--state-warn);
-  border-color: rgba(238,161,17,.3);
+  border-color: rgba(255,133,49,.3);
 }
 .dz-state-badge.s-idle {
   background: rgba(121,209,126,.12);
@@ -140,7 +140,7 @@ const css = `
 .dz-stat {
   border-radius: 0;
   padding: 2px 0 6px;
-  border-bottom: 1px solid rgba(120,168,255,.22);
+  border-bottom: 1px solid rgba(120,146,200,.22);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -183,7 +183,7 @@ const css = `
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px dashed rgba(120,168,255,.24);
+  border-bottom: 1px dashed rgba(120,146,200,.24);
   padding: 2px 0 5px;
   font-size: .76rem;
   gap: 4px;

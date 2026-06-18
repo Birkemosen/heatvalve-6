@@ -107,9 +107,9 @@ const css = `
 
 .ui-input:focus,
 .ui-select:focus {
-  outline: 2px solid rgba(83,168,255,.6);
+  outline: 2px solid rgba(124,155,208,.6);
   outline-offset: 1px;
-  border-color: rgba(83,168,255,.55);
+  border-color: rgba(124,155,208,.55);
 }
 
 .ui-unit { color: var(--text-faint); font-size: .72rem; font-weight: 600; }
@@ -119,11 +119,12 @@ const css = `
    double-clicking it reveals the editable input. */
 .ui-stepper { display: inline-flex; align-items: center; gap: 6px; }
 .ui-stepper .ui-input {
-  width: 74px;
+  width: 54px;
   text-align: center;
   border-color: transparent;
   background: transparent;
   color: var(--accent);
+  font-size: 1.04rem;
   font-weight: 700;
   cursor: default;
   -moz-appearance: textfield;
@@ -164,8 +165,8 @@ const css = `
   margin: 0 0 6px;
   padding: 8px 12px;
   border-radius: 10px;
-  background: rgba(238,161,17,.12);
-  border: 1px solid rgba(238,161,17,.4);
+  background: rgba(255,166,0,.12);
+  border: 1px solid rgba(255,166,0,.42);
 }
 .ui-form-banner.show { display: flex; }
 .ui-form-banner-msg { color: var(--state-warn); font-size: .76rem; font-weight: 700; }
@@ -182,7 +183,7 @@ const css = `
 }
 .ui-form-discard { background: transparent; color: var(--text-secondary); }
 .ui-form-discard:hover { color: var(--text); border-color: var(--text-secondary); }
-.ui-form-apply { background: var(--accent); color: #0f213c; border-color: var(--accent); }
+.ui-form-apply { background: var(--accent); color: #042a3b; border-color: var(--accent); }
 .ui-form-apply:hover { filter: brightness(1.08); }
 
 /* ---- Green pill toggle (canonical) ---- */
@@ -204,12 +205,12 @@ const css = `
   left: 3px;
   width: 18px;
   height: 18px;
-  background: #dbe8ff;
+  background: #efe6dd;
   border-radius: 999px;
   transition: transform .2s ease;
 }
 .ui-toggle.on { background: rgba(121,209,126,.25); border-color: rgba(121,209,126,.5); }
-.ui-toggle.on::after { transform: translateX(22px); background: #0f213c; }
+.ui-toggle.on::after { transform: translateX(22px); background: #042a3b; }
 
 /* ---- Notes & dividers ---- */
 .ui-note {
@@ -239,7 +240,7 @@ const css = `
   font-size: .82rem;
   transition: .18s ease;
 }
-.ui-btn:hover { background: var(--control-bg-hover); border-color: rgba(120,168,255,.52); }
+.ui-btn:hover { background: var(--control-bg-hover); border-color: rgba(120,146,200,.52); }
 .ui-btn.warn { border-color: rgba(255,118,118,.5); background: rgba(255,118,118,.2); color: #FFD9D9; }
 .ui-btn.warn:hover { background: rgba(255,100,100,.3); border-color: rgba(255,100,100,.6); }
 

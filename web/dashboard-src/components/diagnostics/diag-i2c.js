@@ -37,7 +37,7 @@ const css = `
 }
 .btn-row { margin-top: 12px; }
 .btn { padding: 7px 14px; border-radius: 10px; border: 1px solid var(--control-border); background: var(--control-bg); color: var(--text-strong); font-weight: 700; cursor: pointer; }
-.btn:hover { background: var(--control-bg-hover); border-color: rgba(238,161,17,.5); color: #ffe7b9; }
+.btn:hover { background: var(--control-bg-hover); border-color: rgba(255,133,49,.5); color: #ffe7b9; }
 .diag-i2c .fault {
     color: var(--red);
     font-weight: bold;

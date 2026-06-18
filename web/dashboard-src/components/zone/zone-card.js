@@ -15,7 +15,7 @@ const css = `
 	padding: 7px 10px;
 	border-radius: 12px;
 	border: 1px solid var(--panel-border);
-	border-left: 3px solid rgba(120,168,255,.45);
+	border-left: 3px solid rgba(120,146,200,.45);
 	background: var(--panel-bg);
 	cursor: pointer;
 	transition: .18s ease;
@@ -23,24 +23,25 @@ const css = `
 	overflow: hidden;
 }
 .zone-card:hover {
-	border-color: rgba(83,168,255,.42);
-	border-left-color: rgba(83,168,255,.7);
+	border-color: rgba(124,155,208,.42);
+	border-left-color: rgba(124,155,208,.7);
 	background: linear-gradient(180deg, rgba(28,58,103,.52), rgba(18,39,72,.46));
 }
 .zone-card.active {
-	border-color: rgba(238,161,17,.44);
-	border-left-color: rgba(238,161,17,.84);
-	background: linear-gradient(180deg, rgba(238,161,17,.12), rgba(238,161,17,.04));
+	border-color: rgba(255,133,49,.44);
+	border-left-color: rgba(255,133,49,.84);
+	background: linear-gradient(180deg, rgba(255,133,49,.12), rgba(255,133,49,.04));
 }
 
 .zone-card.disabled {
 	opacity: .72;
-	border-left-color: rgba(120,168,255,.35);
+	border-left-color: rgba(120,146,200,.35);
 }
 
-.zone-card.zs-heating { border-left-color: #EEA111; }
-.zone-card.zs-idle { border-left-color: #53A8FF; }
-.zone-card.zs-off { border-left-color: rgba(120,168,255,.4); }
+.zone-card.zs-heating { border-left-color: #ff8531; }
+.zone-card.zs-idle { border-left-color: #8a508f; }
+.zone-card.zs-fault { border-left-color: #ff6361; }
+.zone-card.zs-off { border-left-color: rgba(120,146,200,.4); }
 
 .zone-card .zc-state-row {
 	display: flex;
@@ -54,7 +55,7 @@ const css = `
 	height: 6px;
 	border-radius: 50%;
 	flex-shrink: 0;
-	background: rgba(120,168,255,.4);
+	background: rgba(120,146,200,.4);
 }
 
 .zone-card .zc-state-label {
@@ -119,35 +120,42 @@ export default component({
 
 			function update() {
 				const enabled = isEntityOn(enabledKey);
-				const state = String(es(stateKey) || '').toUpperCase() || 'OFF';
+				const rawState = String(es(stateKey) || '').toUpperCase() || 'OFF';
+				// A persisted motor fault (cleared via the Faults & Relearn card)
+				// promotes the card to FAULT even if the FSM has moved on.
+				const lastFault = String(es(key.motorLastFault(zone)) || '').toUpperCase();
+				const hasFault = lastFault && lastFault !== 'NONE' && lastFault !== 'OK';
+				const state = (enabled && (rawState === 'FAULT' || hasFault)) ? 'FAULT' : rawState;
 				const active = getDashboardValue('selectedZone') === zone;
 				const friendlyTag = zoneTag(zone);
 
 				nameEl.textContent = zoneLabel(zone);
 				friendlyEl.textContent = friendlyTag || fmtT(ev(tempKey));
 				stateEl.textContent = enabled ? state : 'OFF';
+				el.title = hasFault ? ('Fault: ' + lastFault) : '';
 
 				const displayState = enabled ? state : 'OFF';
 				const stateColor =
-					displayState === 'HEATING' ? '#f2c77b' :
+					displayState === 'HEATING' ? '#ffd380' :
 					displayState === 'IDLE'    ? '#79d17e' :
-					displayState === 'FAULT'   ? '#ff7676' :
-					'#7D8BA7';
+					displayState === 'FAULT'   ? '#ff6361' :
+					'#6E7E96';
 				const dotColor =
-					displayState === 'HEATING' ? '#EEA111' :
+					displayState === 'HEATING' ? '#ff8531' :
 					displayState === 'IDLE'    ? '#79d17e' :
-					displayState === 'FAULT'   ? '#ff6464' :
-					'rgba(120,168,255,.35)';
+					displayState === 'FAULT'   ? '#ff6361' :
+					'rgba(120,146,200,.35)';
 				stateEl.style.color = stateColor;
 				dotEl.style.background = dotColor;
 				dotEl.style.boxShadow =
-					displayState === 'HEATING' ? '0 0 5px rgba(238,161,17,.6)' :
+					displayState === 'HEATING' ? '0 0 5px rgba(255,133,49,.6)' :
 					displayState === 'FAULT'   ? '0 0 5px rgba(255,100,100,.6)' :
 					'';
 				el.classList.toggle('active', active);
 				el.classList.toggle('disabled', !enabled);
-				el.classList.toggle('zs-heating', enabled && state === 'HEATING');
-				el.classList.toggle('zs-idle', enabled && state !== 'HEATING');
+				el.classList.toggle('zs-heating', enabled && displayState === 'HEATING');
+				el.classList.toggle('zs-fault', enabled && displayState === 'FAULT');
+				el.classList.toggle('zs-idle', enabled && displayState !== 'HEATING' && displayState !== 'FAULT');
 				el.classList.toggle('zs-off', !enabled);
 			}
 
@@ -158,6 +166,7 @@ export default component({
 			subscribe(tempKey, update);
 			subscribe(stateKey, update);
 			subscribe(enabledKey, update);
+			subscribe(key.motorLastFault(zone), update);
 			subscribeDashboard('selectedZone', update);
 			subscribeDashboard('zoneNames', update);
 			update();

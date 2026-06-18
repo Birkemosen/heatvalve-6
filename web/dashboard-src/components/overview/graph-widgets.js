@@ -1,17 +1,26 @@
 import { component } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { getDashboardValue, subscribeDashboard } from '../../core/store.js';
+import { getDashboardValue, subscribeDashboard, NZ } from '../../core/store.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const CHART_W = 220;
-const CHART_H = 132;
-const PAD_TOP = 10;
-const PAD_RIGHT = 10;
-const PAD_BOTTOM = 24;
-const PAD_LEFT = 34;
+// Wide viewBox scaled to 100% width with a uniform aspect ratio (meet) so axis
+// text stays crisp and proportional instead of stretching with the column width.
+const CHART_W = 480;
+const CHART_H = 200;
+const PAD_TOP = 14;
+const PAD_RIGHT = 16;
+const PAD_BOTTOM = 34;
+const PAD_LEFT = 44;
 const PLOT_W = CHART_W - PAD_LEFT - PAD_RIGHT;
 const PLOT_H = CHART_H - PAD_TOP - PAD_BOTTOM;
-const HISTORY_WINDOW_MINUTES = 360;
+
+// 24 h display window — fed by the device's server-side /history ring (sampled
+// every 5 min, 288 slots). Entry shape:
+//   [uptime_s, z0..z5, absorbing, flow_c, return_c, demand_pct]
+const WINDOW_S = 24 * 3600;
+const FLOW_INDEX = NZ + 2;     // 8
+const RETURN_INDEX = NZ + 3;   // 9
+const DEMAND_INDEX = NZ + 4;   // 10
 
 // ========================================
 // CSS
@@ -78,12 +87,11 @@ const css = `
 
 .graph-card svg {
   width: 100%;
-  height: 132px;
+  height: auto;
   flex: 1;
-  min-height: 132px;
   display: block;
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(83,168,255,.12), rgba(15,33,60,.4));
+  background: linear-gradient(180deg, rgba(138,80,143,.12), rgba(0,32,46,.4));
 }
 
 .graph-axis,
@@ -92,17 +100,23 @@ const css = `
 }
 
 .graph-tick-label {
-  fill: var(--text-faint);
-  font-size: 8px;
+  fill: var(--chart-axis);
+  font-size: 11px;
   letter-spacing: .4px;
 }
 
 .graph-axis-label {
-  fill: var(--text-faint);
-  font-size: 6px;
+  fill: var(--chart-axis);
+  font-size: 9px;
   letter-spacing: .8px;
   text-transform: uppercase;
-  opacity: .7;
+  opacity: .85;
+}
+
+.graph-empty {
+  fill: var(--text-faint);
+  font-size: 12px;
+  letter-spacing: .3px;
 }
 `;
 
@@ -113,26 +127,13 @@ injectStyle('graph-widgets', css);
 // ========================================
 const template = (ctx) => {
   if (ctx.variant === 'flow-return') {
-    return '<div class="graph-widgets"><div class="graph-card"><div class="graph-head"><span>Flow / Return</span><strong class="gw-dt">---</strong></div><div class="graph-legend"><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--accent)"></span>Flow</span><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--blue)"></span>Return</span></div><svg class="gw-flow"></svg></div></div>';
+    return '<div class="graph-widgets"><div class="graph-card"><div class="graph-head"><span>Flow / Return</span><strong class="gw-dt">---</strong></div><div class="graph-legend"><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--series-warm)"></span>Flow</span><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--series-cool)"></span>Return</span></div><svg class="gw-flow"></svg></div></div>';
   }
   if (ctx.variant === 'demand') {
     return '<div class="graph-widgets"><div class="graph-card"><div class="graph-head"><span>Demand Index</span><strong class="gw-demand-text">---</strong></div><svg class="gw-demand"></svg></div></div>';
   }
-  return '<div class="graph-widgets"><div class="graph-card"><div class="graph-head"><span>Flow / Return</span><strong class="gw-dt">---</strong></div><div class="graph-legend"><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--accent)"></span>Flow</span><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--blue)"></span>Return</span></div><svg class="gw-flow"></svg></div><div class="graph-card"><div class="graph-head"><span>Demand Index</span><strong class="gw-demand-text">---</strong></div><svg class="gw-demand"></svg></div></div>';
+  return '<div class="graph-widgets"><div class="graph-card"><div class="graph-head"><span>Flow / Return</span><strong class="gw-dt">---</strong></div><div class="graph-legend"><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--series-warm)"></span>Flow</span><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--series-cool)"></span>Return</span></div><svg class="gw-flow"></svg></div><div class="graph-card"><div class="graph-head"><span>Demand Index</span><strong class="gw-demand-text">---</strong></div><svg class="gw-demand"></svg></div></div>';
 };
-
-function linePath(values, min, max) {
-  if (!values.length) return '';
-  const span = Math.max(0.001, max - min);
-  const step = values.length > 1 ? PLOT_W / (values.length - 1) : 0;
-  let out = '';
-  for (let index = 0; index < values.length; index++) {
-    const x = PAD_LEFT + step * index;
-    const y = PAD_TOP + (1 - (values[index] - min) / span) * PLOT_H;
-    out += (index ? ' L ' : 'M ') + x.toFixed(2) + ' ' + y.toFixed(2);
-  }
-  return out;
-}
 
 function createSvgNode(tag, attrs, text) {
   const node = document.createElementNS(SVG_NS, tag);
@@ -151,83 +152,50 @@ function formatTick(value, unit) {
   return value.toFixed(1) + 'C';
 }
 
-function formatTimeLabel(minutes) {
-  if (minutes <= 0) return 'now';
-  if (minutes >= 60) return '-' + Math.round(minutes / 60) + 'h';
-  return '-' + Math.round(minutes) + 'm';
-}
-
-function appendAxes(svg, min, max, unit) {
-  const axisColor = 'rgba(143, 176, 230, 0.42)';
-  const gridColor = 'rgba(143, 176, 230, 0.16)';
-  const yTickCount = 3;
-  const xTicks = [
-    { x: PAD_LEFT, ratio: 0 },
-    { x: PAD_LEFT + PLOT_W / 2, ratio: 0.5 },
-    { x: PAD_LEFT + PLOT_W, ratio: 1 }
-  ];
-
-  svg.appendChild(createSvgNode('line', {
-    x1: PAD_LEFT,
-    y1: PAD_TOP,
-    x2: PAD_LEFT,
-    y2: PAD_TOP + PLOT_H,
-    stroke: axisColor,
-    'stroke-width': '1',
-    class: 'graph-axis'
-  }));
-  svg.appendChild(createSvgNode('line', {
-    x1: PAD_LEFT,
-    y1: PAD_TOP + PLOT_H,
-    x2: PAD_LEFT + PLOT_W,
-    y2: PAD_TOP + PLOT_H,
-    stroke: axisColor,
-    'stroke-width': '1',
-    class: 'graph-axis'
-  }));
-
-  for (let tick = 0; tick < yTickCount; tick++) {
-    const ratio = yTickCount === 1 ? 0 : tick / (yTickCount - 1);
-    const y = PAD_TOP + ratio * PLOT_H;
-    const value = max - (max - min) * ratio;
-    svg.appendChild(createSvgNode('line', {
-      x1: PAD_LEFT,
-      y1: y,
-      x2: PAD_LEFT + PLOT_W,
-      y2: y,
-      stroke: gridColor,
-      'stroke-width': '1',
-      class: 'graph-grid'
-    }));
-    svg.appendChild(createSvgNode('text', {
-      x: PAD_LEFT - 5,
-      y: y + 3,
-      'text-anchor': 'end',
-      class: 'graph-tick-label'
-    }, formatTick(value, unit)));
+// Build {t, v} points for one value column of the history entries, skipping
+// null/undefined samples (a sensor with no reading at that time).
+function seriesFromHistory(entries, valueIndex, windowStart) {
+  const out = [];
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    if (!e || e[0] < windowStart) continue;
+    const v = e[valueIndex];
+    if (v == null || !Number.isFinite(v)) continue;
+    out.push({ t: e[0], v });
   }
-
-  xTicks.forEach((tick) => {
-    const minutes = HISTORY_WINDOW_MINUTES * (1 - tick.ratio);
-    svg.appendChild(createSvgNode('text', {
-      x: tick.x,
-      y: CHART_H - 6,
-      'text-anchor': tick.ratio === 0 ? 'start' : (tick.ratio === 1 ? 'end' : 'middle'),
-      class: 'graph-tick-label'
-    }, formatTimeLabel(minutes)));
-  });
-
-  svg.appendChild(createSvgNode('text', {
-    x: 5,
-    y: PAD_TOP + PLOT_H / 2,
-    transform: 'rotate(-90 5 ' + (PAD_TOP + PLOT_H / 2).toFixed(2) + ')',
-    'text-anchor': 'middle',
-    class: 'graph-axis-label'
-  }, unit === '%' ? 'Demand' : 'Temp'));
+  return out;
 }
 
-function getRange(valuesA, valuesB, unit) {
-  const values = valuesA.concat(valuesB || []).filter((value) => Number.isFinite(value));
+function xAt(t, windowStart) {
+  const ratio = (t - windowStart) / WINDOW_S;
+  return PAD_LEFT + Math.max(0, Math.min(1, ratio)) * PLOT_W;
+}
+
+function linePath(points, windowStart, min, max) {
+  if (!points.length) return '';
+  const span = Math.max(0.001, max - min);
+  let out = '';
+  for (let i = 0; i < points.length; i++) {
+    const x = xAt(points[i].t, windowStart);
+    const y = PAD_TOP + (1 - (points[i].v - min) / span) * PLOT_H;
+    out += (i ? ' L ' : 'M ') + x.toFixed(2) + ' ' + y.toFixed(2);
+  }
+  return out;
+}
+
+function areaPath(points, windowStart, min, max) {
+  const line = linePath(points, windowStart, min, max);
+  if (!line) return '';
+  const baseline = (PAD_TOP + PLOT_H).toFixed(2);
+  const xEnd = xAt(points[points.length - 1].t, windowStart).toFixed(2);
+  const xStart = xAt(points[0].t, windowStart).toFixed(2);
+  return line + ' L ' + xEnd + ' ' + baseline + ' L ' + xStart + ' ' + baseline + ' Z';
+}
+
+function getRange(pointsA, pointsB, unit) {
+  const values = [];
+  pointsA.forEach((p) => values.push(p.v));
+  if (pointsB) pointsB.forEach((p) => values.push(p.v));
   if (!values.length) {
     return unit === '%' ? { min: 0, max: 100 } : { min: 0, max: 10 };
   }
@@ -235,7 +203,7 @@ function getRange(valuesA, valuesB, unit) {
   let min = Math.min.apply(null, values);
   let max = Math.max.apply(null, values);
   if (unit === '%') {
-    min = Math.max(0, min);
+    min = 0;                       // demand anchored at 0
     max = Math.min(100, max);
   }
   if (min === max) {
@@ -244,7 +212,7 @@ function getRange(valuesA, valuesB, unit) {
     max += delta;
   }
   const padding = (max - min) * 0.08;
-  min -= padding;
+  if (unit !== '%') min -= padding;
   max += padding;
   if (unit === '%') {
     min = Math.max(0, min);
@@ -253,41 +221,93 @@ function getRange(valuesA, valuesB, unit) {
   return { min, max };
 }
 
-function renderSpark(svg, valuesA, colorA, valuesB, colorB, unit) {
+function appendAxes(svg, min, max, unit, windowStart, uptime) {
+  const axisColor = 'rgba(150,168,205,0.40)';
+  const gridColor = 'rgba(150,168,205,0.16)';
+  const yTickCount = 3;
+  const xTicks = [24, 12, 0];   // hours ago
+
+  svg.appendChild(createSvgNode('line', {
+    x1: PAD_LEFT, y1: PAD_TOP, x2: PAD_LEFT, y2: PAD_TOP + PLOT_H,
+    stroke: axisColor, 'stroke-width': '1', class: 'graph-axis'
+  }));
+  svg.appendChild(createSvgNode('line', {
+    x1: PAD_LEFT, y1: PAD_TOP + PLOT_H, x2: PAD_LEFT + PLOT_W, y2: PAD_TOP + PLOT_H,
+    stroke: axisColor, 'stroke-width': '1', class: 'graph-axis'
+  }));
+
+  for (let tick = 0; tick < yTickCount; tick++) {
+    const ratio = yTickCount === 1 ? 0 : tick / (yTickCount - 1);
+    const y = PAD_TOP + ratio * PLOT_H;
+    const value = max - (max - min) * ratio;
+    svg.appendChild(createSvgNode('line', {
+      x1: PAD_LEFT, y1: y, x2: PAD_LEFT + PLOT_W, y2: y,
+      stroke: gridColor, 'stroke-width': '1', class: 'graph-grid'
+    }));
+    svg.appendChild(createSvgNode('text', {
+      x: PAD_LEFT - 6, y: y + 4, 'text-anchor': 'end', class: 'graph-tick-label'
+    }, formatTick(value, unit)));
+  }
+
+  xTicks.forEach((hoursAgo) => {
+    const x = xAt(uptime - hoursAgo * 3600, windowStart);
+    svg.appendChild(createSvgNode('text', {
+      x, y: CHART_H - 10,
+      'text-anchor': hoursAgo === 24 ? 'start' : (hoursAgo === 0 ? 'end' : 'middle'),
+      class: 'graph-tick-label'
+    }, hoursAgo === 0 ? 'now' : '-' + hoursAgo + 'h'));
+  });
+
+  svg.appendChild(createSvgNode('text', {
+    x: 8, y: PAD_TOP + PLOT_H / 2,
+    transform: 'rotate(-90 8 ' + (PAD_TOP + PLOT_H / 2).toFixed(2) + ')',
+    'text-anchor': 'middle', class: 'graph-axis-label'
+  }, unit === '%' ? 'Demand' : 'Temp'));
+}
+
+function appendLine(svg, points, windowStart, min, max, color, width, fill) {
+  const d = linePath(points, windowStart, min, max);
+  if (!d) return;
+  if (fill) {
+    const area = createSvgNode('path', {
+      d: areaPath(points, windowStart, min, max), fill, stroke: 'none'
+    });
+    svg.appendChild(area);
+  }
+  svg.appendChild(createSvgNode('path', {
+    d, fill: 'none', stroke: color, 'stroke-width': String(width),
+    'stroke-linecap': 'round', 'stroke-linejoin': 'round'
+  }));
+}
+
+function renderSpark(svg, pointsA, colorA, pointsB, colorB, unit, windowStart, uptime, fillA) {
   svg.innerHTML = '';
   svg.setAttribute('viewBox', '0 0 ' + CHART_W + ' ' + CHART_H);
-  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
-  const range = getRange(valuesA, valuesB, unit);
-  appendAxes(svg, range.min, range.max, unit);
-
-  const pathA = linePath(valuesA, range.min, range.max);
-  if (pathA) {
-    const p1 = document.createElementNS(SVG_NS, 'path');
-    p1.setAttribute('d', pathA);
-    p1.setAttribute('fill', 'none');
-    p1.setAttribute('stroke', colorA);
-    p1.setAttribute('stroke-width', '2.2');
-    p1.setAttribute('stroke-linecap', 'round');
-    p1.setAttribute('stroke-linejoin', 'round');
-    svg.appendChild(p1);
+  if (!pointsA.length && !(pointsB && pointsB.length)) {
+    svg.appendChild(createSvgNode('text', {
+      x: CHART_W / 2, y: CHART_H / 2, 'text-anchor': 'middle', class: 'graph-empty'
+    }, 'Collecting history…'));
+    return;
   }
-  const pathB = valuesB && valuesB.length ? linePath(valuesB, range.min, range.max) : '';
-  if (pathB) {
-    const p2 = document.createElementNS(SVG_NS, 'path');
-    p2.setAttribute('d', pathB);
-    p2.setAttribute('fill', 'none');
-    p2.setAttribute('stroke', colorB);
-    p2.setAttribute('stroke-width', '2');
-    p2.setAttribute('stroke-linecap', 'round');
-    p2.setAttribute('stroke-linejoin', 'round');
-    svg.appendChild(p2);
+
+  const range = getRange(pointsA, pointsB, unit);
+  appendAxes(svg, range.min, range.max, unit, windowStart, uptime);
+
+  appendLine(svg, pointsA, windowStart, range.min, range.max, colorA, 2.4, fillA);
+  if (pointsB && pointsB.length) {
+    appendLine(svg, pointsB, windowStart, range.min, range.max, colorB, 2);
   }
 }
 
-const FLOW_LINE = 'var(--accent)';
-const RETURN_LINE = 'var(--blue)';
-const DEMAND_LINE = 'var(--blue)';
+const FLOW_LINE = 'var(--series-warm)';
+const RETURN_LINE = 'var(--series-cool)';
+const DEMAND_LINE = 'var(--series-cool)';
+
+function lastVal(points) {
+  return points.length ? points[points.length - 1].v : null;
+}
 
 // ========================================
 // COMPONENT
@@ -305,26 +325,29 @@ export default component({
     const demandSvg = el.querySelector('.gw-demand');
 
     function update() {
-      const flow = getDashboardValue('historyFlow');
-      const ret = getDashboardValue('historyReturn');
-      const demand = getDashboardValue('historyDemand');
-      const lastFlow = flow.length ? flow[flow.length - 1] : null;
-      const lastRet = ret.length ? ret[ret.length - 1] : null;
-      const lastDemand = demand.length ? demand[demand.length - 1] : null;
+      const hist = getDashboardValue('zoneStateHistory');
+      const entries = hist && Array.isArray(hist.entries) ? hist.entries : [];
+      const uptime = (hist && hist.uptime_s) || (Number(Date.now() / 1000) | 0);
+      const windowStart = uptime - WINDOW_S;
+
+      const flow = seriesFromHistory(entries, FLOW_INDEX, windowStart);
+      const ret = seriesFromHistory(entries, RETURN_INDEX, windowStart);
+      const demand = seriesFromHistory(entries, DEMAND_INDEX, windowStart);
 
       if (dtEl && flowSvg) {
-        dtEl.textContent = lastFlow != null && lastRet != null ? (lastFlow - lastRet).toFixed(1) + ' C' : '---';
-        renderSpark(flowSvg, flow, FLOW_LINE, ret, RETURN_LINE, 'C');
+        const lf = lastVal(flow);
+        const lr = lastVal(ret);
+        dtEl.textContent = lf != null && lr != null ? (lf - lr).toFixed(1) + ' C' : '---';
+        renderSpark(flowSvg, flow, FLOW_LINE, ret, RETURN_LINE, 'C', windowStart, uptime);
       }
       if (demandTextEl && demandSvg) {
-        demandTextEl.textContent = lastDemand != null ? Math.round(lastDemand) + '%' : '---';
-        renderSpark(demandSvg, demand, DEMAND_LINE, null, null, '%');
+        const ld = lastVal(demand);
+        demandTextEl.textContent = ld != null ? Math.round(ld) + '%' : '---';
+        renderSpark(demandSvg, demand, DEMAND_LINE, null, null, '%', windowStart, uptime, 'var(--series-cool-fill)');
       }
     }
 
-    subscribeDashboard('historyFlow', update);
-    subscribeDashboard('historyReturn', update);
-    subscribeDashboard('historyDemand', update);
+    subscribeDashboard('zoneStateHistory', update);
     update();
   }
 });

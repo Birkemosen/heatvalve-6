@@ -34,16 +34,16 @@ const css = `
   border: 1px solid var(--control-border);
   padding: 4px 0;
   scrollbar-width: thin;
-  scrollbar-color: rgba(83,168,255,.25) transparent;
+  scrollbar-color: rgba(124,155,208,.25) transparent;
 }
 .diag-log::-webkit-scrollbar { width: 5px; }
-.diag-log::-webkit-scrollbar-thumb { background: rgba(83,168,255,.25); border-radius: 999px; }
+.diag-log::-webkit-scrollbar-thumb { background: rgba(124,155,208,.25); border-radius: 999px; }
 .diag-log::-webkit-scrollbar-track { background: transparent; }
 
-.diag-log-empty { color: var(--text-secondary); font-size: .78rem; text-align: center; padding: 16px; }
-.diag-log-item { display: flex; gap: 8px; padding: 5px 10px; border-bottom: 1px solid rgba(255,255,255,.08); font-size: .78rem; line-height: 1.4; }
+.diag-log-empty { color: var(--text-secondary); font-size: .84rem; text-align: center; padding: 16px; }
+.diag-log-item { display: flex; gap: 8px; padding: 5px 10px; border-bottom: 1px solid rgba(255,255,255,.08); font-size: .84rem; line-height: 1.5; }
 .diag-log-item:last-child { border-bottom: none; }
-.diag-log-time { font-family: var(--mono); color: var(--accent); font-size: .7rem; white-space: nowrap; flex-shrink: 0; }
+.diag-log-time { font-family: var(--mono); color: var(--accent); font-size: .76rem; white-space: nowrap; flex-shrink: 0; }
 .diag-log-msg { color: var(--text-strong); opacity: .9; }
 `;
 

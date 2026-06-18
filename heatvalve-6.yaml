@@ -133,6 +133,17 @@ logger:
     text_sensor: WARN   # suppress text-sensor state-change noise (IP/SSID/zone state)
 
 # =============================================================================
+# Flash-write batching for ESPHome `restore_value` state (preferences)
+# =============================================================================
+# The only restore_value users here are the DS18B20 ROM map globals below, which
+# change at most once (auto-learn) and self-heal if lost. ESPHome's 60 s default
+# would re-arm a flash commit every minute; 15 min caps worst-case flash wear on
+# a board already at ~92 % flash. The custom Hv6ConfigStore NVS path is separate
+# (its own debounced commit task) and unaffected by this.
+preferences:
+  flash_write_interval: 15min
+
+# =============================================================================
 # Control Parameters — Tune these for your heating system
 # =============================================================================
 globals:

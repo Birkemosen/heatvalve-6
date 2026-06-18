@@ -10,8 +10,8 @@ import { key } from '../../utils/keys.js';
 // ========================================
 const css = `
 .zone-detail {
-  background: linear-gradient(180deg, rgba(20,44,79,.30), rgba(13,31,58,.24));
-  border: 1px solid rgba(120,168,255,.30);
+  background: linear-gradient(180deg, rgba(0,63,92,.30), rgba(0,32,46,.24));
+  border: 1px solid rgba(120,146,200,.30);
   border-radius: 18px;
   padding: 16px 18px;
   box-shadow: var(--panel-shadow);
@@ -37,6 +37,13 @@ const css = `
   color: var(--text-strong);
 }
 
+/* Header-right cluster: enable toggle sits next to the state pill. */
+.zone-detail .zd-head-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .zone-detail .zd-badge {
   border-radius: 999px;
   padding: 3px 9px;
@@ -51,9 +58,9 @@ const css = `
 }
 
 .zone-detail .zd-badge.badge-heating {
-  background: rgba(238,161,17,.15);
+  background: rgba(255,133,49,.15);
   color: var(--state-warn);
-  border-color: rgba(238,161,17,.3);
+  border-color: rgba(255,133,49,.3);
 }
 
 .zone-detail .zd-badge.badge-idle {
@@ -74,13 +81,12 @@ const css = `
   border-color: rgba(255,100,100,.3);
 }
 
-/* Body layout */
+/* Body layout — the header's border-bottom is the only divider (no second
+   border-top here, which previously read as a doubled horizontal line). */
 .zone-detail .zd-body {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(120,168,255,.18);
 }
 
 .zone-detail .zd-kicker {
@@ -127,26 +133,9 @@ const css = `
 }
 
 .zone-detail .spb:hover {
-  border-color: rgba(238,161,17,.55);
+  border-color: rgba(255,133,49,.55);
   color: var(--accent);
-  background: rgba(238,161,17,.1);
-}
-
-.zone-detail .zd-toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 14px;
-  border: 1px solid var(--control-border);
-  border-radius: 12px;
-  background: var(--control-bg);
-}
-
-.zone-detail .zd-toggle-label {
-  font-size: .88rem;
-  font-weight: 700;
-  color: var(--text);
+  background: rgba(255,133,49,.1);
 }
 
 /* Toggle uses the canonical .ui-toggle from the shared ui-kit. */
@@ -206,6 +195,9 @@ const css = `
   border: 1px solid rgba(255,100,100,.25);
   font-size: .76rem;
 }
+/* The [hidden] attribute must beat the display:flex above, or the row shows
+   "Last fault NONE" even when there is no fault. */
+.zone-detail .zd-fault[hidden] { display: none; }
 .zone-detail .zd-fault-label { color: var(--text-secondary); }
 .zone-detail .zd-fault-val { color: var(--state-danger); font-weight: 700; font-family: var(--mono); }
 `;
@@ -220,7 +212,10 @@ const template = (ctx) => `
   <div class="zone-detail" data-zone="${ctx.zone}">
     <div class="zd-head">
       <div class="zd-title">${zoneLabel(ctx.zone)}</div>
-      <span class="zd-badge">---</span>
+      <div class="zd-head-ctrl">
+        <div class="ui-toggle btn-toggle" role="switch" aria-label="Zone enabled" title="Zone enabled"></div>
+        <span class="zd-badge">---</span>
+      </div>
     </div>
     <div class="zd-body">
       <div>
@@ -231,7 +226,6 @@ const template = (ctx) => `
           <button class="spb btn-inc">+</button>
         </div>
       </div>
-      <div class="zd-toggle-row"><span class="zd-toggle-label">Zone Enabled</span><div class="ui-toggle btn-toggle"></div></div>
       <div class="zd-stats">
         <div class="zd-stat"><div class="zd-stat-label">Current Temp</div><div class="zd-stat-value zd-temp">---</div></div>
         <div class="zd-stat"><div class="zd-stat-label">Return Temp</div><div class="zd-stat-value zd-ret">---</div></div>
@@ -289,7 +283,6 @@ export default component({
       badge.textContent = enabled ? (state || 'IDLE') : 'DISABLED';
       const badgeClass = !enabled ? 'badge-disabled' : state === 'HEATING' ? 'badge-heating' : state === 'IDLE' ? 'badge-idle' : state === 'FAULT' ? 'badge-fault' : '';
       badge.className = 'zd-badge' + (badgeClass ? ' ' + badgeClass : '');
-      refs.toggleRow.classList.toggle('is-on', enabled);
       refs.toggle.classList.toggle('on', enabled);
 
       // Merged motor-snapshot data
@@ -331,7 +324,6 @@ export default component({
       ret: el.querySelector('.zd-ret'),
       valve: el.querySelector('.zd-valve'),
       badge: el.querySelector('.zd-badge'),
-      toggleRow: el.querySelector('.zd-toggle-row'),
       toggle: el.querySelector('.btn-toggle'),
       inc: el.querySelector('.btn-inc'),
       dec: el.querySelector('.btn-dec'),

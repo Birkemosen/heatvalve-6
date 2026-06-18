@@ -1,6 +1,6 @@
 // core/mock.js
 
-import { setEntity, setLive, sampleHistory, setI2cResult, addActivity, setDashboardValue, setZoneStateHistory, getDashboardValue, setForecastHours, appendDeviceLog } from './store.js';
+import { setEntity, ev, setLive, sampleHistory, setI2cResult, addActivity, setDashboardValue, setZoneStateHistory, getDashboardValue, setForecastHours, appendDeviceLog } from './store.js';
 import { key, gkey } from '../utils/keys.js';
 
 const ZONES = 6;
@@ -57,6 +57,13 @@ function seed() {
     setEntity(key.solarGain(zone), { value: 0.3 });
     setEntity(key.thermalLeadH(zone), { value: 4 });
     setEntity(key.preheatAdvance(zone), { value: 0.08 + (index * 0.03) });
+    // Adaptive balancing telemetry: prior, learned multiplier, effective, error.
+    const sf = [0.62, 0.78, 1.0, 0.55, 0.88, 0.7][index];
+    const ad = [1.08, 0.95, 1.0, 1.15, 0.9, 1.02][index];
+    setEntity(key.staticFactor(zone), { value: sf });
+    setEntity(key.balanceAdapt(zone), { value: ad });
+    setEntity(key.balanceFactor(zone), { value: Math.min(1, sf * ad) });
+    setEntity(key.adaptErr(zone), { value: [0.12, -0.05, 0.0, 0.22, -0.10, 0.03][index] });
   }
 
   for (let probe = 1; probe <= PROBES; probe++) {
@@ -93,6 +100,16 @@ function seed() {
   setEntity(gkey.learnedFactorMinSamples, { value: 3 });
   setEntity(gkey.learnedFactorMaxDeviationPct, { value: 12 });
   setEntity(gkey.simplePreheatEnabled, { state: 'on' });
+  setEntity(gkey.balanceMode, { state: 'Adaptive' });
+  setEntity(gkey.adaptIntervalS, { value: 3600 });
+  setEntity(gkey.adaptStep, { value: 0.02 });
+  setEntity(gkey.adaptMin, { value: 0.5 });
+  setEntity(gkey.adaptMax, { value: 1.5 });
+  setEntity(gkey.minZoneFlowPct, { value: 15 });
+  setEntity(gkey.cpuLoadCore0, { value: 18.5 });
+  setEntity(gkey.cpuLoadCore1, { value: 7.2 });
+  setEntity(gkey.freeInternalKb, { value: 142 });
+  setEntity(gkey.freePsramKb, { value: 7800 });
   sampleHistory(true);
 
   // Generate 24 h of mock zone-state history (5-min intervals = 288 entries).
@@ -123,7 +140,13 @@ function seed() {
     // Mock a couple of absorption episodes (~3 h and ~9 h ago) so the band shows.
     const hoursAgo = age_s / 3600;
     const absorbing = (hoursAgo > 2.5 && hoursAgo < 3.5) || (hoursAgo > 8.5 && hoursAgo < 9.5) ? 1 : 0;
-    mockEntries.push([t, ...states, absorbing]);
+    // Mock flow/return/demand so the 24 h graphs have data: more heating zones →
+    // higher demand, warmer flow, wider flow/return delta.
+    const heating = states.filter((s) => s === 5).length;
+    const demandPct = Math.round(Math.min(100, heating * 15 + Math.abs(Math.sin(i / 8)) * 6));
+    const flowC = Number((30 + heating * 1.4 + Math.sin(i / 11) * 1.5).toFixed(1));
+    const returnC = Number((flowC - (1.4 + heating * 0.35)).toFixed(1));
+    mockEntries.push([t, ...states, absorbing, flowC, returnC, demandPct]);
   }
   setZoneStateHistory({ interval_s: INTERVAL_S, uptime_s: NOW_S, count: TOTAL, entries: mockEntries });
 
@@ -302,6 +325,19 @@ export function handleMockPost(body) {
       addActivity('Motor ' + zone + ' reset and relearn started', zone);
       return;
     }
+    if (cmd === 'dump_task_stats') {
+      addActivity('Task stats dumped to device log (mock)');
+      return;
+    }
+    if (cmd === 'reset_balancing') {
+      for (let z = 1; z <= ZONES; z++) {
+        setEntity(key.balanceAdapt(z), { value: 1.0 });
+        setEntity(key.balanceFactor(z), { value: ev(key.staticFactor(z)) ?? 1.0 });
+        setEntity(key.adaptErr(z), { value: null });
+      }
+      addActivity('Adaptive balancing reset');
+      return;
+    }
     return;
   }
 
@@ -317,6 +353,7 @@ export function handleMockPost(body) {
   if (k === 'manifold_return_probe') { setEntity(gkey.manifoldReturnProbe, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
   if (k === 'motor_profile_default') { setEntity(gkey.motorProfileDefault, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
   if (k === 'simple_preheat_enabled') { setEntity(gkey.simplePreheatEnabled, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
+  if (k === 'balance_mode') { setEntity(gkey.balanceMode, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
 
   // Text settings
   if (k === 'zone_ble_mac' && zone >= 1) { setEntity(key.ble(zone), { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
@@ -352,7 +389,12 @@ export function handleMockPost(body) {
     relearn_after_movements: gkey.relearnAfterMovements,
     relearn_after_hours: gkey.relearnAfterHours,
     learned_factor_min_samples: gkey.learnedFactorMinSamples,
-    learned_factor_max_deviation_pct: gkey.learnedFactorMaxDeviationPct
+    learned_factor_max_deviation_pct: gkey.learnedFactorMaxDeviationPct,
+    adapt_interval_s: gkey.adaptIntervalS,
+    adapt_step: gkey.adaptStep,
+    adapt_min: gkey.adaptMin,
+    adapt_max: gkey.adaptMax,
+    min_zone_flow_pct: gkey.minZoneFlowPct
   };
 
   if (numMap[k]) {

@@ -17,6 +17,7 @@
 #include <cstdarg>
 #include <ctime>
 #include <esp_http_server.h>
+#include <esp_heap_caps.h>
 
 namespace esphome {
 namespace hv6_dashboard {
@@ -220,6 +221,11 @@ void HV6Dashboard::update_snapshot_() {
   DashboardSnapshot s{};
 
   s.uptime_s = millis() / 1000UL;
+  // System diagnostics — per-core CPU load (sampled in loop()) + live heap.
+  s.cpu0_pct = cpu0_pct_;
+  s.cpu1_pct = cpu1_pct_;
+  s.free_internal_kb = heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024;
+  s.free_psram_kb = heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024;
 
   auto snap_float = [](sensor::Sensor *sns) -> float {
     return (sns && sns->has_state()) ? sns->state : NAN;
@@ -315,12 +321,25 @@ void HV6Dashboard::update_snapshot_() {
     s.preheat_detect_delta_c = ctrl_cfg.preheat_detect_delta_c;
     s.preheat_absorbing = this->zone_controller_ && this->zone_controller_->is_preheat_absorbing();
     s.asgard                 = this->config_store_->get_asgard_config();
-    s.min_zone_flow_pct      = this->config_store_->get_config().balancing.minimum_flow_pct;
+    s.balancing              = this->config_store_->get_config().balancing;
+    s.min_zone_flow_pct      = s.balancing.minimum_flow_pct;
     s.forecast               = this->config_store_->get_forecast_config();
     for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
       s.zones[i]            = this->config_store_->get_zone_config(i);
       s.zone_temp_source[i] = this->config_store_->get_zone_temp_source(i);
       this->config_store_->get_zone_ble_mac_str(i, s.zone_ble_mac[i], sizeof(s.zone_ble_mac[i]));
+    }
+  }
+
+  // Per-zone balancing telemetry (static prior, learned multiplier, effective
+  // factor, long-window error) — surfaces why a loop is throttled/boosted.
+  if (this->zone_controller_) {
+    for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
+      hv6::ZoneSnapshot zs = this->zone_controller_->get_zone_snapshot(i);
+      s.zone_static_factor[i]  = zs.static_factor;
+      s.zone_balance_factor[i] = zs.hydraulic_factor;
+      s.zone_balance_adapt[i]  = zs.balance_adapt;
+      s.zone_adapt_err[i]      = zs.adapt_err_ema;
     }
   }
 
@@ -358,6 +377,72 @@ void HV6Dashboard::setup() {
   ESP_LOGI(TAG, "Dashboard endpoints registered: /dashboard, /dashboard.js");
 }
 
+// =============================================================================
+// FreeRTOS runtime diagnostics (CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS)
+// =============================================================================
+
+void HV6Dashboard::sample_cpu_load_() {
+  UBaseType_t count = uxTaskGetNumberOfTasks();
+  if (count == 0)
+    return;
+  task_status_buf_.resize(count + 4);  // headroom for tasks spawned mid-call
+  uint32_t total_runtime = 0;
+  UBaseType_t got = uxTaskGetSystemState(task_status_buf_.data(),
+                                         (UBaseType_t) task_status_buf_.size(), &total_runtime);
+  if (got == 0)
+    return;
+
+  uint32_t idle0 = 0, idle1 = 0;
+  for (UBaseType_t i = 0; i < got; i++) {
+    const char *name = task_status_buf_[i].pcTaskName;
+    if (name == nullptr)
+      continue;
+    if (strcmp(name, "IDLE0") == 0 || strcmp(name, "IDLE") == 0)
+      idle0 = task_status_buf_[i].ulRunTimeCounter;
+    else if (strcmp(name, "IDLE1") == 0)
+      idle1 = task_status_buf_[i].ulRunTimeCounter;
+  }
+
+  // Need a previous sample, and skip the cycle when the run-time counter wrapped.
+  if (cpu_last_total_ > 0 && total_runtime > cpu_last_total_) {
+    float dt = (float) (total_runtime - cpu_last_total_);
+    float c0 = 100.0f - (float) (idle0 - cpu_last_idle0_) / dt * 100.0f;
+    float c1 = 100.0f - (float) (idle1 - cpu_last_idle1_) / dt * 100.0f;
+    cpu0_pct_ = std::max(0.0f, std::min(100.0f, c0));
+    cpu1_pct_ = std::max(0.0f, std::min(100.0f, c1));
+  }
+  cpu_last_total_ = total_runtime;
+  cpu_last_idle0_ = idle0;
+  cpu_last_idle1_ = idle1;
+}
+
+void HV6Dashboard::dump_task_stats_() {
+  UBaseType_t count = uxTaskGetNumberOfTasks();
+  if (count == 0)
+    return;
+  task_status_buf_.resize(count + 4);
+  uint32_t total_runtime = 0;
+  UBaseType_t got = uxTaskGetSystemState(task_status_buf_.data(),
+                                         (UBaseType_t) task_status_buf_.size(), &total_runtime);
+  if (got == 0 || total_runtime == 0)
+    return;
+
+  ESP_LOGI(TAG, "--- task stats: %u tasks | core0=%.0f%% core1=%.0f%% | heap int=%uKB psram=%uKB ---",
+           (unsigned) got, cpu0_pct_, cpu1_pct_,
+           (unsigned) (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+           (unsigned) (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
+  // ulRunTimeCounter is the lifetime counter, so cpu% here is the since-boot
+  // average per task (the live per-core figures above cover "now"). stack_free
+  // is the lifetime minimum free stack — a small value flags near-overflow.
+  for (UBaseType_t i = 0; i < got; i++) {
+    const TaskStatus_t &t = task_status_buf_[i];
+    float pct = (float) t.ulRunTimeCounter / (float) total_runtime * 100.0f;
+    ESP_LOGI(TAG, "  %-16s pri=%2u cpu=%5.1f%% stack_free=%uB",
+             t.pcTaskName ? t.pcTaskName : "?", (unsigned) t.uxCurrentPriority, pct,
+             (unsigned) (t.usStackHighWaterMark * sizeof(StackType_t)));
+  }
+}
+
 void HV6Dashboard::loop() {
   if (action_lock_ == nullptr)
     return;
@@ -376,6 +461,11 @@ void HV6Dashboard::loop() {
 
   // Update snapshot at 1 Hz (int32_t cast for millis() rollover safety).
   const uint32_t now = millis();
+  // Sample per-core CPU load every 2 s (needs two samples before it reports).
+  if ((int32_t)(now - cpu_last_sample_ms_) >= (int32_t)CPU_SAMPLE_INTERVAL_MS) {
+    cpu_last_sample_ms_ = now;
+    sample_cpu_load_();
+  }
   if ((int32_t)(now - snapshot_last_ms_) >= (int32_t)SNAPSHOT_INTERVAL_MS) {
     snapshot_last_ms_ = now;
     update_snapshot_();
@@ -477,6 +567,18 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
       "\"sensor-uptime\":{\"value\":%lu},"
       "\"sensor-wifi_signal\":{\"value\":%s},",
       static_cast<unsigned long>(snap->uptime_s), wifi_buf);
+
+  // --- system diagnostics: per-core CPU load + free heap ---
+  format_float_token(num_buf, sizeof(num_buf), snap->cpu0_pct, 1);
+  appendf(buf, BUF_SIZE, offset, "\"sensor-cpu_load_core0\":{\"value\":%s},", num_buf);
+  format_float_token(num_buf, sizeof(num_buf), snap->cpu1_pct, 1);
+  appendf(buf, BUF_SIZE, offset,
+      "\"sensor-cpu_load_core1\":{\"value\":%s},"
+      "\"sensor-free_internal_kb\":{\"value\":%lu},"
+      "\"sensor-free_psram_kb\":{\"value\":%lu},",
+      num_buf,
+      static_cast<unsigned long>(snap->free_internal_kb),
+      static_cast<unsigned long>(snap->free_psram_kb));
 
   // --- manifold temps ---
   format_float_token(num_buf, sizeof(num_buf), snap->manifold_flow_c);
@@ -832,6 +934,39 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
     if (!flush()) return;
   }
 
+  // --- hydraulic balancing: mode + adaptive knobs (global) ---
+  {
+    const hv6::BalanceMode bmode = hv6::effective_balance_mode(snap->balancing);
+    const char *mode_str = (bmode == hv6::BalanceMode::ADAPTIVE)    ? "Adaptive"
+                         : (bmode == hv6::BalanceMode::RETURN_TEMP) ? "Return Temp"
+                                                                    : "Static";
+    appendf(buf, BUF_SIZE, offset,
+        "\"select-balance_mode\":{\"state\":\"%s\"},"
+        "\"number-adapt_interval_s\":{\"value\":%lu},",
+        mode_str, static_cast<unsigned long>(snap->balancing.adapt_interval_s));
+    format_float_token(num_buf, sizeof(num_buf), snap->balancing.adapt_step, 3);
+    appendf(buf, BUF_SIZE, offset, "\"number-adapt_step\":{\"value\":%s},", num_buf);
+    format_float_token(num_buf, sizeof(num_buf), snap->balancing.adapt_min, 2);
+    appendf(buf, BUF_SIZE, offset, "\"number-adapt_min\":{\"value\":%s},", num_buf);
+    format_float_token(num_buf, sizeof(num_buf), snap->balancing.adapt_max, 2);
+    appendf(buf, BUF_SIZE, offset, "\"number-adapt_max\":{\"value\":%s},", num_buf);
+    if (!flush()) return;
+  }
+
+  // --- per-zone balancing telemetry (read-only): static × adapt = effective ---
+  for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
+    const uint8_t zn = i + 1;
+    format_float_token(num_buf, sizeof(num_buf), snap->zone_static_factor[i], 3);
+    appendf(buf, BUF_SIZE, offset, "\"sensor-zone_%u_static_factor\":{\"value\":%s},", zn, num_buf);
+    format_float_token(num_buf, sizeof(num_buf), snap->zone_balance_factor[i], 3);
+    appendf(buf, BUF_SIZE, offset, "\"sensor-zone_%u_balance_factor\":{\"value\":%s},", zn, num_buf);
+    format_float_token(num_buf, sizeof(num_buf), snap->zone_balance_adapt[i], 3);
+    appendf(buf, BUF_SIZE, offset, "\"sensor-zone_%u_balance_adapt\":{\"value\":%s},", zn, num_buf);
+    format_float_token(num_buf, sizeof(num_buf), snap->zone_adapt_err[i], 2);
+    appendf(buf, BUF_SIZE, offset, "\"sensor-zone_%u_adapt_err\":{\"value\":%s},", zn, num_buf);
+    if (!flush()) return;
+  }
+
   // Sentinel field closes the JSON object and absorbs any trailing comma.
   appendf(buf, BUF_SIZE, offset, "\"_\":{}}");
   flush();
@@ -1044,8 +1179,26 @@ void HV6Dashboard::handle_v1_(AsyncWebServerRequest *request, const char *path) 
     act.value_str = request->arg("value");
     act.has_str = !act.value_str.empty();
     if (is_number) {
-      if (!parse_num_arg(request, "value", &num)) {
-        this->send_v1_(request, 400, "invalid_value", "value must be numeric");
+      // Reject mixed/locale decimal separators before parsing. strtof() is "C"-locale
+      // and stops at a comma, so "55,7" or "12.345,6" would otherwise be silently
+      // truncated (e.g. "55,7" → 55.0) — a wrong forecast coordinate. Require '.' only.
+      if (act.value_str.find(',') != std::string::npos) {
+        this->send_v1_(request, 400, "invalid_value",
+                       "use '.' as the decimal separator (no ',')");
+        return;
+      }
+      if (!parse_num_arg(request, "value", &num) || !std::isfinite(num)) {
+        this->send_v1_(request, 400, "invalid_value", "value must be a finite number");
+        return;
+      }
+      // Geographic range guard for the forecast location, so a bad coordinate can't be
+      // stored or sent to Open-Meteo.
+      if (act.key == "forecast_latitude" && (num < -90.0f || num > 90.0f)) {
+        this->send_v1_(request, 400, "invalid_value", "latitude must be between -90 and 90");
+        return;
+      }
+      if (act.key == "forecast_longitude" && (num < -180.0f || num > 180.0f)) {
+        this->send_v1_(request, 400, "invalid_value", "longitude must be between -180 and 180");
         return;
       }
       act.num_val = num;
@@ -1120,6 +1273,10 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
       this->valve_controller_->reset_learned_factors(zi);
     } else if (strcmp(str_val, "motor_reset_and_relearn") == 0 && zone_valid && this->valve_controller_) {
       this->valve_controller_->reset_and_relearn(zi);
+    } else if (strcmp(str_val, "reset_balancing") == 0 && this->zone_controller_) {
+      this->zone_controller_->reset_balancing();
+    } else if (strcmp(str_val, "dump_task_stats") == 0) {
+      this->dump_task_stats_();
     }
     // Unknown commands are silently accepted
 
@@ -1282,6 +1439,33 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
     bal.minimum_flow_pct = std::max(0.0f, std::min(50.0f, num_val));
     this->config_store_->update_balancing(bal);
 
+  // ---- balance_mode (Static / Adaptive / Return Temp) ----
+  } else if (strcmp(key, "balance_mode") == 0 && has_str && this->zone_controller_) {
+    hv6::BalanceMode m = hv6::BalanceMode::STATIC;
+    if (strcasecmp(str_val, "Adaptive") == 0)
+      m = hv6::BalanceMode::ADAPTIVE;
+    else if (strcasecmp(str_val, "Return Temp") == 0 || strcasecmp(str_val, "Return") == 0)
+      m = hv6::BalanceMode::RETURN_TEMP;
+    this->zone_controller_->set_balance_mode(m);
+
+  // ---- adaptive balancing knobs ----
+  } else if (strcmp(key, "adapt_interval_s") == 0 && has_num && this->config_store_) {
+    auto bal = this->config_store_->get_config().balancing;
+    bal.adapt_interval_s = static_cast<uint32_t>(std::max(60.0f, std::min(86400.0f, num_val)));
+    this->config_store_->update_balancing(bal);
+  } else if (strcmp(key, "adapt_step") == 0 && has_num && this->config_store_) {
+    auto bal = this->config_store_->get_config().balancing;
+    bal.adapt_step = std::max(0.001f, std::min(0.2f, num_val));
+    this->config_store_->update_balancing(bal);
+  } else if (strcmp(key, "adapt_min") == 0 && has_num && this->config_store_) {
+    auto bal = this->config_store_->get_config().balancing;
+    bal.adapt_min = std::max(0.1f, std::min(1.0f, num_val));
+    this->config_store_->update_balancing(bal);
+  } else if (strcmp(key, "adapt_max") == 0 && has_num && this->config_store_) {
+    auto bal = this->config_store_->get_config().balancing;
+    bal.adapt_max = std::max(1.0f, std::min(3.0f, num_val));
+    this->config_store_->update_balancing(bal);
+
   // ---- forecast_enabled ----
   } else if (strcmp(key, "forecast_enabled") == 0 && has_str && this->config_store_) {
     auto fc = this->config_store_->get_forecast_config();
@@ -1389,11 +1573,34 @@ void HV6Dashboard::sample_history_() {
     entry.zone_state[i] = HISTORY_STATE_UNKNOWN;
   entry.absorbing = (this->zone_controller_ != nullptr &&
                      this->zone_controller_->is_preheat_absorbing()) ? 1 : 0;
+  entry.flow_dc = HISTORY_TEMP_NONE;
+  entry.return_dc = HISTORY_TEMP_NONE;
+  entry.demand_pct = HISTORY_DEMAND_NONE;
 
   if (snapshot_lock_ != nullptr && snapshot_ready_ &&
       xSemaphoreTake(snapshot_lock_, pdMS_TO_TICKS(10)) == pdTRUE) {
     for (uint8_t i = 0; i < hv6::NUM_ZONES; i++)
       entry.zone_state[i] = parse_zone_display_state_code(snapshot_.zone_state[i]);
+    if (!std::isnan(snapshot_.manifold_flow_c))
+      entry.flow_dc = static_cast<int16_t>(lroundf(snapshot_.manifold_flow_c * 10.0f));
+    if (!std::isnan(snapshot_.manifold_return_c))
+      entry.return_dc = static_cast<int16_t>(lroundf(snapshot_.manifold_return_c * 10.0f));
+    // Mean open-valve % over zones that report a position (matches the dashboard's
+    // client-side demand index, but persisted server-side for the 24 h window).
+    float demand_sum = 0.0f;
+    uint8_t demand_n = 0;
+    for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
+      if (!std::isnan(snapshot_.zone_valve_pct[i])) {
+        demand_sum += snapshot_.zone_valve_pct[i];
+        demand_n++;
+      }
+    }
+    if (demand_n > 0) {
+      long d = lroundf(demand_sum / demand_n);
+      entry.demand_pct = static_cast<uint8_t>(d < 0 ? 0 : (d > 100 ? 100 : d));
+    } else {
+      entry.demand_pct = 0;
+    }
     xSemaphoreGive(snapshot_lock_);
   }
 
@@ -1463,8 +1670,9 @@ void HV6Dashboard::handle_history_(AsyncWebServerRequest *request) {
     const HistoryEntry &e = ring_copy[slot];
 
     // Flush before entries that might overflow the 2 KB buffer.
-    // Each entry is at most ~37 bytes: "[4294967295,7,7,7,7,7,7,1]," → 31 chars.
-    if (offset + 44 >= BUF_SIZE) {
+    // Each entry is at most ~62 bytes:
+    // "[4294967295,7,7,7,7,7,7,1,72.5,68.1,100]," → ~41 chars.
+    if (offset + 72 >= BUF_SIZE) {
       if (!flush()) { free(ring_copy); return; }
     }
 
@@ -1473,9 +1681,19 @@ void HV6Dashboard::handle_history_(AsyncWebServerRequest *request) {
     }
     first_entry = false;
 
-    // Trailing field is the preheat-absorption flag (1 = active at sample time).
+    // flow/return as 1-decimal °C (or null), demand as int % (or null).
+    char flow_s[12], return_s[12], demand_s[8];
+    if (e.flow_dc == HISTORY_TEMP_NONE) { strcpy(flow_s, "null"); }
+    else { snprintf(flow_s, sizeof flow_s, "%.1f", e.flow_dc / 10.0f); }
+    if (e.return_dc == HISTORY_TEMP_NONE) { strcpy(return_s, "null"); }
+    else { snprintf(return_s, sizeof return_s, "%.1f", e.return_dc / 10.0f); }
+    if (e.demand_pct == HISTORY_DEMAND_NONE) { strcpy(demand_s, "null"); }
+    else { snprintf(demand_s, sizeof demand_s, "%u", static_cast<unsigned>(e.demand_pct)); }
+
+    // Fields after the absorption flag (index 7) are flow, return, demand —
+    // appended so the zone-state timeline's index-based parser is unaffected.
     offset += static_cast<size_t>(snprintf(buf + offset, BUF_SIZE - offset,
-        "[%lu,%u,%u,%u,%u,%u,%u,%u]",
+        "[%lu,%u,%u,%u,%u,%u,%u,%u,%s,%s,%s]",
         static_cast<unsigned long>(e.uptime_s),
         static_cast<unsigned>(e.zone_state[0]),
         static_cast<unsigned>(e.zone_state[1]),
@@ -1483,7 +1701,8 @@ void HV6Dashboard::handle_history_(AsyncWebServerRequest *request) {
         static_cast<unsigned>(e.zone_state[3]),
         static_cast<unsigned>(e.zone_state[4]),
         static_cast<unsigned>(e.zone_state[5]),
-        static_cast<unsigned>(e.absorbing ? 1u : 0u)));
+        static_cast<unsigned>(e.absorbing ? 1u : 0u),
+        flow_s, return_s, demand_s));
   }
 
   appendf(buf, BUF_SIZE, offset, "]}");

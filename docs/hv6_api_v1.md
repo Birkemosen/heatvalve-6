@@ -19,10 +19,14 @@ itself is still served at `/dashboard` + `/dashboard.js`.
 
 - Read endpoints (raw JSON, no envelope yet — see "Planned"):
   - `GET /api/hv6/v1/state` — full dashboard snapshot (entity-id → value map consumed by the frontend store)
-  - `GET /api/hv6/v1/history` — 24 h zone-state ring buffer. Each entry is
-    `[uptime_s, z0, z1, z2, z3, z4, z5, absorbing]` where `z0..z5` are `ZoneDisplayState`
-    codes (`0xFF` = unknown) and the trailing `absorbing` is `1` when preheat absorption was
-    active at that sample, else `0`. Shape:
+  - `GET /api/hv6/v1/history` — 24 h ring buffer (288 slots @ 5 min). Each entry is
+    `[uptime_s, z0, z1, z2, z3, z4, z5, absorbing, flow_c, return_c, demand_pct]` where
+    `z0..z5` are `ZoneDisplayState` codes (`0xFF` = unknown), `absorbing` is `1` when preheat
+    absorption was active at that sample (else `0`), `flow_c`/`return_c` are the manifold
+    flow/return temps in °C (`null` if no reading), and `demand_pct` is the mean open-valve %
+    over zones with a reading (`null` if unknown). The trailing `flow_c`/`return_c`/`demand_pct`
+    fields are appended after `absorbing` so index-based consumers (e.g. the zone-state timeline)
+    are unaffected. Shape:
     `{"interval_s":300,"uptime_s":N,"count":N,"entries":[[…],…]}`
   - `GET /api/hv6/v1/logs?since=<seq>` — live device-log ring (last ~96 lines). Returns only lines
     newer than `<seq>`. Shape: `{"next_seq":N,"lines":[[seq,level,"tag","msg"],…]}` where `level`
@@ -62,6 +66,13 @@ Implemented command names:
 - `motor_reset_and_relearn` (requires `zone`)
 - `motor_reset_learned_factors` (requires `zone`)
 - `open_motor_timed` / `close_motor_timed` / `stop_motor` (requires `zone`; also exposed as motor routes)
+- `reset_balancing` (clears every zone's learned adaptive-balance multiplier back to 1.0)
+
+Implemented global settings keys (selection/number) relevant to balancing:
+
+- `balance_mode` (select: `Static` | `Adaptive` | `Return Temp`) — hydraulic-balancing strategy
+- `adapt_interval_s`, `adapt_step`, `adapt_min`, `adapt_max` (number) — adaptive outer-loop knobs
+- `min_zone_flow_pct` (number) — per-zone minimum opening with a modulating heat source
 
 ## Response Envelope
 
@@ -210,6 +221,7 @@ Minimum command set:
 - `motor_reset_learned_factors`
 - `calibrate_all_motors`
 - `i2c_scan`
+- `reset_balancing`
 
 ### `POST /api/hv6/v1/settings`
 

@@ -139,6 +139,16 @@ enum class TempSource : uint8_t {
   BLE_SENSOR = 1,
 };
 
+/// Hydraulic-balancing strategy. STATIC uses the resistance-aware design model
+/// only; ADAPTIVE adds a slow room-temperature correction on top (no return
+/// probes); RETURN_TEMP is the legacy ΔT-from-return-probe balancer (superseded
+/// by ADAPTIVE, kept for back-compat). See docs/adaptive_balancing.md.
+enum class BalanceMode : uint8_t {
+  STATIC = 0,
+  RETURN_TEMP = 1,
+  ADAPTIVE = 2,
+};
+
 static constexpr TempSource DEFAULT_ZONE_TEMP_SOURCE = TempSource::BLE_SENSOR;
 
 /// What the zone's local DS18B20 probe measures.
@@ -210,6 +220,10 @@ struct ZoneConfig {
   float wind_exposure = 0.5f;      ///< 0..1 — facade shelter factor for forecast preload
   float solar_gain_factor = 0.3f;  ///< 0..1 — passive solar relief through glazing
   uint8_t thermal_lead_h = 4;      ///< Hours before a forecast load peak charging must start
+  // Adaptive balancing — learned room-temp correction multiplier (adapt_i). Rides
+  // on top of the resistance-aware static prior; persisted in the durable zones
+  // blob so it survives a CONFIG_VERSION bump. See docs/adaptive_balancing.md.
+  float balance_adapt = 1.0f;
 };
 
 struct ControlConfig {
@@ -262,31 +276,36 @@ static constexpr uint32_t SENSOR_CONFIG_VERSION = 1;
 /// key (separate from the main DeviceConfig blob) so per-zone settings (area,
 /// pipe type/spacing, exterior walls, etc.) survive a CONFIG_VERSION bump on
 /// firmware update. Bump only when ZoneConfig's layout changes.
-static constexpr uint32_t ZONE_CONFIG_VERSION = 1;
+/// v2 adds balance_adapt (learned adaptive-balancing multiplier).
+static constexpr uint32_t ZONE_CONFIG_VERSION = 2;
 
 struct BalancingConfig {
-  bool dynamic_balancing_enabled = false;   ///< Use measured return temps for balance factors
+  bool dynamic_balancing_enabled = false;   ///< Back-compat alias: true ⇒ mode == RETURN_TEMP
   bool modulating_heat_source = false;      ///< True when heat source can modulate flow temp (e.g. Ecodan)
   float minimum_flow_pct = 15.0f;           ///< Per-zone minimum valve opening (only active with modulating source)
   float flow_increase_threshold_pct = 80.0f;///< Request higher flow temp when avg zone opening exceeds this
   float flow_decrease_threshold_pct = 30.0f;///< Request lower flow temp when avg zone opening drops below this
-  float target_delta_t_c = 5.0f;            ///< Target ΔT (flow − return) for dynamic balancing
+  float target_delta_t_c = 5.0f;            ///< Target ΔT (flow − return) for dynamic (RETURN_TEMP) balancing
   float damping_factor = 0.3f;              ///< EMA damping for balance factor updates (0..1, lower = slower)
+  // --- Adaptive balancing (room-temperature feedback; docs/adaptive_balancing.md) ---
+  BalanceMode mode = BalanceMode::STATIC;   ///< Supersedes dynamic_balancing_enabled
+  uint32_t adapt_interval_s = 3600;         ///< Outer-loop period (learned-factor step cadence)
+  float    adapt_step = 0.02f;              ///< k: max factor move per update
+  float    adapt_min = 0.5f;                ///< Clamp on the learned multiplier (lower)
+  float    adapt_max = 1.5f;                ///< Clamp on the learned multiplier (upper)
+  float    adapt_error_window_s = 1800.0f;  ///< β = dt / window for the per-zone error EMA
+  uint16_t adapt_min_samples = 30;          ///< Eligible cycles a zone needs before it can update
+  float    adapt_heat_margin_c = 2.0f;      ///< flow_temp must exceed room by this to count a sample
 };
 
-static constexpr uint8_t HELIOS_HOST_LEN = 64;
-static constexpr uint8_t HELIOS_CONTROLLER_ID_LEN = 33;
-
+/// The external Helios-3 optimizer client was removed; whole-house MPC is now
+/// handled by Odin via the Asgard bridge. All that remains is a quiesce gate:
+/// `enabled` lets the on-device forecast preload stand down if a future external
+/// optimizer is reintroduced (it owns the per-zone command slots). It has no
+/// runtime setter today, so it stays false. The former host/port/mDNS fields
+/// were dead and were removed (see docs/CLAUDE.md → Helios command path).
 struct HeliosConfig {
   bool enabled = false;
-  char host[HELIOS_HOST_LEN] = "";                           ///< Helios-3 service hostname or IP
-  uint16_t port = 8080;                                      ///< Helios-3 HTTP port
-  char controller_id[HELIOS_CONTROLLER_ID_LEN] = "";         ///< empty = use system.controller_id
-  uint16_t poll_interval_s = 60;                             ///< Snapshot POST + commands GET interval (increased from 30s to reduce blocking)
-  uint16_t stale_after_s = 600;                              ///< Clear helios offsets if no ack within this period
-  bool auto_discover = false;                                ///< Enable mDNS discovery fallback when host is empty (opt-in)
-  char mdns_host[HELIOS_HOST_LEN] = "helios.local";         ///< mDNS hostname to resolve when host is empty
-  uint16_t mdns_resolve_interval_s = 60;                     ///< Re-resolve interval for mDNS host
 };
 
 static constexpr uint8_t ASGARD_HOST_LEN = 64;
@@ -359,7 +378,9 @@ struct MotorConfig {
   // the fixed ENDSTOP_HARD_CAP_MA safety ceiling, so derive a lower open cap on
   // the raw (low-latency) current as a fast belt for the open endstop.
   float open_hard_cap_factor = 1.7f;     // open raw cap = max(floor, mean_open × factor)
-  float open_hard_cap_floor_ma = 30.0f;  // floor so a low/under-learned mean can't trip mid-travel
+  float open_hard_cap_floor_ma = 20.0f;  // floor so a low/under-learned mean can't trip mid-travel
+                                         // (20 mA: low enough that low-current opens still get a fast belt;
+                                         //  detection only runs past the ~500 ms guard, clear of boost decay)
   // Ripple safety limit for opening: learned_open_ripples × factor (0 = disabled)
   float open_ripple_limit_factor = 1.10f;
   // Pin engagement detection (calibration)
@@ -420,7 +441,10 @@ struct ZoneSnapshot {
   float preheat_advance_c = 0.0f;
   ZoneState state = ZoneState::UNKNOWN;
   ZoneDisplayState display_state = ZoneDisplayState::UNKNOWN;
-  float hydraulic_factor = 0.0f;
+  float hydraulic_factor = 0.0f;      ///< Effective balance factor applied (static × adapt)
+  float static_factor = 0.0f;         ///< Resistance-aware static prior (normalized, 0..1)
+  float balance_adapt = 1.0f;         ///< Learned adaptive multiplier in effect (adapt_i)
+  float adapt_err_ema = NAN;          ///< Long-window room-temp error EMA (NAN = no samples yet)
   bool was_overheated = false;
   float heat_output_w = 0.0f;
   float pipe_length_m = 0.0f;
@@ -466,7 +490,10 @@ struct SystemConfig {
 /// v19 adds per-direction mean current (MotorTelemetry) + open hard-cap fields
 ///     (MotorConfig); tightens open_ripple_limit_factor to 1.10 — fixes motors
 ///     clicking past the open endstop during learning.
-static constexpr uint32_t CONFIG_VERSION = 19;
+/// v20 lowers open_hard_cap_floor_ma 30→20 so low-current motors get a usable
+///     fast open belt (paired with VdMot-style close-first calibration).
+/// v21 adds adaptive balancing fields to BalancingConfig (BalanceMode + adapt_*).
+static constexpr uint32_t CONFIG_VERSION = 21;
 
 struct DeviceConfig {
   uint32_t config_version = CONFIG_VERSION;
@@ -509,6 +536,23 @@ inline const char *motor_profile_to_string(MotorProfile profile) {
     case MotorProfile::HMIP_VDMOT: return "HMIP_VDMOT";
     default: return "UNKNOWN";
   }
+}
+
+inline const char *balance_mode_to_string(BalanceMode mode) {
+  switch (mode) {
+    case BalanceMode::STATIC: return "STATIC";
+    case BalanceMode::RETURN_TEMP: return "RETURN_TEMP";
+    case BalanceMode::ADAPTIVE: return "ADAPTIVE";
+    default: return "STATIC";
+  }
+}
+
+/// Resolve the effective balance mode, honouring the legacy
+/// dynamic_balancing_enabled flag as an alias for RETURN_TEMP.
+inline BalanceMode effective_balance_mode(const BalancingConfig &b) {
+  if (b.dynamic_balancing_enabled || b.mode == BalanceMode::RETURN_TEMP)
+    return BalanceMode::RETURN_TEMP;
+  return b.mode;
 }
 
 inline const char *zone_state_to_string(ZoneState state) {

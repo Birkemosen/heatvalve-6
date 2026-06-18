@@ -1,0 +1,78 @@
+// HeatValve-6 Rev 2 — system block diagram
+// Render:  dot -Tsvg hardware_rev2_block.dot -o hardware_rev2_block.svg
+//          dot -Tpng hardware_rev2_block.dot -o hardware_rev2_block.png
+digraph hv6_rev2 {
+  rankdir=LR;
+  graph [fontname="Helvetica", fontsize=11, splines=ortho, nodesep=0.4, ranksep=0.8];
+  node  [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled", fillcolor="#eef3fb"];
+  edge  [fontname="Helvetica", fontsize=9];
+
+  mcu  [label="ESP32-S3-WROOM-1\nN16R8\n(PCNT, LEDC, ADC1, BLE/WiFi)", fillcolor="#dbe7ff", height=1.1];
+
+  // Power
+  subgraph cluster_pwr {
+    label="Power"; style="rounded,dashed"; color="#999999";
+    vm    [label="VM (12V)\nTVS + bulk", fillcolor="#fdecea"];
+    ldo   [label="AP2112K\n+3V3 (>=500mA)", fillcolor="#fdecea"];
+    vref  [label="VREF/2\n(buffered divider)", fillcolor="#fdecea"];
+  }
+
+  // Drivers
+  subgraph cluster_drv {
+    label="6x dumb single H-bridge (DRV8837)"; style="rounded,filled"; fillcolor="#f3f8f1"; color="#7aa37a";
+    d1 [label="ch1"]; d2 [label="ch2"]; d3 [label="ch3"];
+    d4 [label="ch4"]; d5 [label="ch5"]; d6 [label="ch6"];
+  }
+
+  shunt [label="shared low-side\nshunt  Rs", shape=box, fillcolor="#fff6da"];
+
+  // Front end
+  subgraph cluster_fe {
+    label="Shared sense front-end"; style="rounded,filled"; fillcolor="#f6f1fb"; color="#9a7ab0";
+    diff   [label="diff amp + VREF/2\n(DC current)"];
+    tacho  [label="HPF + gain + comparator\n(AC tacho edges)"];
+    flim   [label="window comparator\n(force-limit)"];
+    latch  [label="latch (D-FF)\n-> DRIVE_PERMIT", fillcolor="#fde9d9"];
+  }
+
+  bemf  [label="OPTIONAL (DNP)\nOUT pairs -> 4051 mux\n-> BEMF stop", style="rounded,dashed,filled", fillcolor="#eeeeee"];
+
+  motors [label="6x manifold\nactuators (NO)", shape=box, fillcolor="#eef3fb"];
+
+  // Power edges
+  vm -> d1 [label="VM"]; vm -> d6 [style=dotted];
+  ldo -> mcu [label="+3V3"];
+  vref -> diff; vref -> flim;
+
+  // Control
+  mcu -> d1 [label="PH/EN x6"];
+  mcu -> d6 [style=dotted];
+
+  // Motor outputs
+  d1 -> motors; d6 -> motors [style=dotted];
+
+  // Shared shunt path
+  d1 -> shunt [label="chip GND"]; d6 -> shunt [style=dotted];
+  shunt -> diff;
+  shunt -> tacho;
+  shunt -> flim;
+
+  // Sense back to MCU
+  diff  -> mcu [label="ADC current"];
+  tacho -> mcu [label="PCNT edges"];
+  mcu   -> flim [label="PWM-DAC threshold\n(per-motor)"];
+  flim  -> latch [label="trip"];
+  mcu   -> latch [label="reset"];
+  latch -> mcu [label="state (fault)"];
+  latch -> d1 [label="nSLEEP (cut all)", color="#c0392b", fontcolor="#c0392b"];
+  latch -> d6 [style=dotted, color="#c0392b"];
+
+  // Optional BEMF
+  motors -> bemf [style=dashed];
+  bemf -> mcu [label="ADC (coast)", style=dashed];
+
+  // Sensors
+  ble [label="BLE room sensors\n(balancing feedback)", fillcolor="#eef3fb"];
+  ow  [label="1-Wire: manifold\nsupply + return (diag)", fillcolor="#eef3fb"];
+  ble -> mcu; ow -> mcu;
+}

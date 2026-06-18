@@ -108,11 +108,25 @@ class Hv6ValveController : public esphome::Component {
   static constexpr uint8_t ENDSTOP_HIGH_TICKS = 6;
   static constexpr float ENDSTOP_HARD_CAP_MA = 100.0f;          ///< Safety cap: immediate endstop above this
   static constexpr uint8_t HARD_CAP_TICKS = 2;                  ///< Consecutive raw-current ticks above cap to stop
+  // Fast open hard-stop cap: the open retract stop is a sharp ~47-52 mA raw bite, but the
+  // slope path only updates once per 500 ms window, so the gears grind for up to ~500 ms
+  // (1-3 ticks) before it reacts. A raw-current trip catches it in ~30 ms. To dodge the
+  // ~45 mA open BREAKAWAY current (which false-fired a naive open cap at ~600 ms), arm
+  // only AFTER the current has settled back below the free-travel band — then only the
+  // end-stop bite can trip it. No travel estimate needed; degrades to slope if never armed.
+  static constexpr float OPEN_FAST_CAP_MA = 40.0f;             ///< Raw-current fast trip for the open hard stop
+  static constexpr float OPEN_FAST_CAP_ARM_BELOW_MA = 28.0f;   ///< Arm only after post-breakaway settle below this
+  static constexpr uint8_t OPEN_FAST_CAP_TICKS = 3;            ///< ~30 ms raw debounce
   static constexpr uint32_t SLOPE_WINDOW_TICKS = 50;             ///< 500ms window for dI/dt estimation
   static constexpr float ENDSTOP_SLOPE_MA_PER_S = 0.4f;         ///< Slope threshold (mA/s) for ramp detection
   static constexpr float ENDSTOP_SLOPE_CURRENT_FACTOR = 1.3f;   ///< Current must exceed mean×1.3 for slope trigger
   static constexpr uint8_t ENDSTOP_SLOPE_WINDOWS = 2;           ///< Consecutive windows with rising slope required (close)
   static constexpr uint8_t ENDSTOP_SLOPE_WINDOWS_OPEN = 1;      ///< Open ramp is gentle/slow — halve slope latency to ~500ms
+  static constexpr uint32_t RIPPLE_STALL_MS = 750;             ///< Ripple-plateau (rotation stall) endstop: no commutation this long = stalled
+  static constexpr uint32_t RIPPLE_STALL_MIN_COUNT = 20;      ///< Require real rotation first, so a never-started motor isn't called "stalled"
+  static constexpr uint32_t ALREADY_AT_STOP_MS = 100;         ///< After boost, zero ripples + current present = valve already against the commanded stop (fast, pop-off-safe)
+  static constexpr uint32_t EARLY_STALL_MS = 250;             ///< Evaluated DURING boost (before the current debounce): 0 ripples by here = never moved = already at the stop; stop before boost force pops an already-closed actuator
+  static constexpr uint8_t CALIBRATION_DUTY_PCT = 100;        ///< Calibration drives at full duty (no 70% hold, no coast): full torque + undiluted IPROPI so the endstop stall current is strong and detectable
   static constexpr uint32_t RELEARN_CHECK_INTERVAL_MS = 10000;  ///< Check relearn triggers every 10s
   static constexpr uint32_t CALIBRATION_REQUEST_GUARD_MS = 15000;  ///< Ignore calibration requests briefly after boot
   static constexpr uint32_t AUTO_START_DELAY_MS = 10000;  ///< Delay after boot before auto-enable + full calibration
@@ -235,7 +249,18 @@ class Hv6ValveController : public esphome::Component {
   int debounce_count_ = 0;
   uint8_t endstop_high_count_ = 0;
   uint8_t hard_cap_high_count_ = 0;  ///< Consecutive raw-current ticks above the hard cap
+  bool open_fast_cap_armed_ = false;  ///< Open fast cap arms only after post-breakaway current settle
+  uint8_t open_fast_cap_count_ = 0;   ///< Consecutive raw-current ticks above the fast open cap
   int low_current_count_ = 0;
+  uint32_t oc_last_ripple_count_ = 0;  ///< Ripple count at last open-circuit check (rotation = connected)
+  uint32_t stall_last_ripple_count_ = 0;  ///< Highest ripple count seen this move (rotation-stall endstop)
+  uint32_t stall_last_advance_ms_ = 0;     ///< Runtime at last ripple advance (plateau = at the stop)
+  bool stall_initialized_ = false;         ///< Baseline the stall window from the guard, not motor start
+  // Calibration detection is self-referential: the running-current baseline is measured
+  // fresh each pass (never the stored mean), so a corrupted prior value can't break a
+  // re-learn. Endstop = current rising above this fresh baseline.
+  float cal_baseline_ma_ = 0.0f;
+  bool cal_baseline_set_ = false;
 
   // Per-move context for soft-approach + adaptive endstop guard (set at move start)
   bool drive_to_endstop_active_ = false;  ///< Current move targets a mechanical limit

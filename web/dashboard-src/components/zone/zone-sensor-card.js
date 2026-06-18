@@ -30,9 +30,9 @@ const css = `
   transition: border-color .15s ease;
 }
 .zone-sensor-card .ble-row .ble-input:focus {
-  outline: 2px solid rgba(83,168,255,.6);
+  outline: 2px solid rgba(124,155,208,.6);
   outline-offset: 1px;
-  border-color: rgba(83,168,255,.55);
+  border-color: rgba(124,155,208,.55);
 }
 .zone-sensor-card .btn-scan {
   flex-shrink: 0;
@@ -92,7 +92,7 @@ const css = `
   white-space: nowrap;
 }
 .zone-sensor-card .btn-assign:hover {
-  background: rgba(83,168,255,.12);
+  background: rgba(124,155,208,.12);
 }
 .zone-sensor-card .scan-msg {
   padding: 8px 10px;
@@ -133,7 +133,7 @@ const template = () => {
       </div>
       <div class="ui-divider"></div>
       <div class="ui-row">
-        <span class="ui-label">Sync To Zone <span class="ui-sublabel">mirror target &amp; control from another zone</span></span>
+        <span class="ui-label">Merge With Zone <span class="ui-sublabel">merge into one room — mean temperature, valves open equally</span></span>
         <span class="ui-field"><select class="ui-select zs-sync"></select></span>
       </div>
     </div>

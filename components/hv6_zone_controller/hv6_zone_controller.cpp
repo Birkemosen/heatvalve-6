@@ -701,6 +701,26 @@ bool Hv6ZoneController::is_dynamic_balancing_enabled() const {
   return config_store_->get_config().balancing.dynamic_balancing_enabled;
 }
 
+void Hv6ZoneController::set_balance_mode(BalanceMode mode) {
+  if (!config_store_)
+    return;
+  auto cfg = config_store_->get_config();
+  bool want_legacy = (mode == BalanceMode::RETURN_TEMP);
+  if (cfg.balancing.mode == mode && cfg.balancing.dynamic_balancing_enabled == want_legacy)
+    return;
+  cfg.balancing.mode = mode;
+  cfg.balancing.dynamic_balancing_enabled = want_legacy;  // keep legacy alias consistent
+  config_store_->update_balancing(cfg.balancing);
+  balance_dirty_ = true;
+  ESP_LOGI(TAG, "Balance mode: %s", balance_mode_to_string(mode));
+}
+
+BalanceMode Hv6ZoneController::get_balance_mode() const {
+  if (!config_store_)
+    return BalanceMode::STATIC;
+  return effective_balance_mode(config_store_->get_config().balancing);
+}
+
 void Hv6ZoneController::set_modulating_heat_source(bool enabled) {
   if (!config_store_)
     return;
@@ -834,7 +854,12 @@ void Hv6ZoneController::run_cycle_() {
 
   const auto cfg = config_store_->get_config();
 
-  if (balance_dirty_ || cfg.balancing.dynamic_balancing_enabled) {
+  const BalanceMode bmode = effective_balance_mode(cfg.balancing);
+  const bool adaptive_mode = (bmode == BalanceMode::ADAPTIVE);
+
+  // RETURN_TEMP recomputes every cycle (live return temps); STATIC/ADAPTIVE only
+  // rebuild when marked dirty (config edit, or an adaptive outer-loop step).
+  if (balance_dirty_ || bmode == BalanceMode::RETURN_TEMP) {
     recalculate_balance_factors_();
     balance_dirty_ = false;
   }
@@ -845,6 +870,9 @@ void Hv6ZoneController::run_cycle_() {
   // Read raw temperatures and setpoints for all zones first
   std::array<float, NUM_ZONES> zone_temps;
   std::array<float, NUM_ZONES> zone_setpoints;
+  std::array<float, NUM_ZONES> helios_offsets{};   // forecast/optimizer offset per zone (adaptive gate)
+  std::array<ZoneState, NUM_ZONES> zone_states{};  // classified state per zone (adaptive gate)
+  zone_states.fill(ZoneState::UNKNOWN);
   uint32_t now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
   for (uint8_t i = 0; i < NUM_ZONES; i++) {
     zone_temps[i] = read_zone_temperature_(i);
@@ -860,6 +888,7 @@ void Hv6ZoneController::run_cycle_() {
       xSemaphoreGive(helios_mutex_);
     }
     helios_off = std::clamp(helios_off, cfg.zones[i].min_offset_c, cfg.zones[i].max_offset_c);
+    helios_offsets[i] = helios_off;
     float eff = requested_setpoints_[i] + setpoint_offsets_[i] + helios_off;
     eff = std::clamp(eff, cfg.zones[i].abs_min_c, cfg.zones[i].abs_max_c);
     if (preheat_floor > 0.0f)
@@ -917,6 +946,7 @@ void Hv6ZoneController::run_cycle_() {
         ? cfg.control.preheat_absorb_band_c * floor_absorb_factor(cfg.zones[i].floor_type)
         : 0.0f;
     ZoneState state = classify_zone_(temp, setpoint, cfg.control.comfort_band_c, preheat_advance, absorb_band);
+    zone_states[i] = state;
 
     float position = 0.0f;
     bool was_overheated = false;
@@ -959,8 +989,81 @@ void Hv6ZoneController::run_cycle_() {
     }
   }
 
+  // Merge: a zone merged into another (sync_to_zone) shares the room, so after its
+  // position is computed from the merged (mean) temperature and shared setpoint, force
+  // it to the primary's opening — both valves open EQUALLY instead of diverging on
+  // per-zone hydraulic balance. Temperature averaging already happened above.
+  for (uint8_t i = 0; i < NUM_ZONES; i++) {
+    int8_t primary = cfg.zones[i].sync_to_zone;
+    if (primary < 0 || primary >= static_cast<int8_t>(NUM_ZONES))
+      continue;
+    if (!cfg.zones[i].enabled || !cfg.zones[primary].enabled)
+      continue;
+    target_positions[i] = target_positions[primary];
+    xSemaphoreTake(snapshot_mutex_, portMAX_DELAY);
+    snapshots_[i].valve_position_pct = target_positions[i];
+    xSemaphoreGive(snapshot_mutex_);
+  }
+
+  // Snapshot demand-driven openings before the minimum-flow floors are applied —
+  // the adaptive sampler below skips any zone whose opening was forced up (those
+  // openings no longer reflect natural demand). §3.
+  std::array<float, NUM_ZONES> pre_floor_positions = target_positions;
+  float pre_floor_total = 0.0f;
+  for (uint8_t i = 0; i < NUM_ZONES; i++)
+    if (cfg.zones[i].enabled)
+      pre_floor_total += pre_floor_positions[i];
+  const bool min_total_triggered = (pre_floor_total < cfg.control.min_valve_opening_pct);
+  const bool min_flow_active = (cfg.asgard.enabled || cfg.balancing.modulating_heat_source);
+
   enforce_minimum_total_opening_(target_positions);
   apply_minimum_flow_(target_positions);
+
+  // ---- Adaptive balancing: accumulate the relative control error, step hourly ----
+  if (adaptive_mode) {
+    if (adapt_reset_pending_.exchange(false, std::memory_order_acq_rel)) {
+      adapt_err_ema_.fill(0.0f);
+      adapt_samples_.fill(0);
+      last_adapt_ms_ = 0;
+    }
+    float flow_temp = read_manifold_flow_();
+    for (uint8_t i = 0; i < NUM_ZONES; i++) {
+      if (!cfg.zones[i].enabled || cfg.zones[i].sync_to_zone >= 0)
+        continue;  // disabled, or a synced secondary (inherits primary's adapt)
+      // Calibrated only — learned travel is needed for the opening to track demand.
+      auto telem = valve_controller_->get_telemetry(i);
+      if (telem.learned_open_ms == 0 || telem.learned_close_ms == 0)
+        continue;
+      // Only DEMAND/SATISFIED reflect a balancing condition (not OVERHEATED/UNKNOWN).
+      if (zone_states[i] != ZoneState::DEMAND && zone_states[i] != ZoneState::SATISFIED)
+        continue;
+      float temp = zone_temps[i];
+      if (std::isnan(temp))
+        continue;
+      // Heat must actually be available, else a cold room is a no-heat artefact.
+      if (std::isnan(flow_temp) || flow_temp < temp + cfg.balancing.adapt_heat_margin_c)
+        continue;
+      // Artificial openings bias the error: preheat-absorb, forecast preload offset.
+      if (preheat_absorb_active_.load())
+        continue;
+      if (std::fabs(helios_offsets[i]) > 0.001f)
+        continue;
+      // Minimum-flow overrides force openings unrelated to demand.
+      if (min_total_triggered)
+        continue;
+      if (min_flow_active && pre_floor_positions[i] < cfg.balancing.minimum_flow_pct)
+        continue;
+      // Eligible — fold the relative control error into the long-window EMA.
+      accumulate_balance_error_(i, zone_setpoints[i] - temp, cfg.balancing.adapt_error_window_s);
+    }
+    // Mirror the live error to the snapshot so the dashboard shows convergence
+    // every cycle (static_factor/balance_adapt only change at a rebuild).
+    xSemaphoreTake(snapshot_mutex_, portMAX_DELAY);
+    for (uint8_t i = 0; i < NUM_ZONES; i++)
+      snapshots_[i].adapt_err_ema = (adapt_samples_[i] > 0) ? adapt_err_ema_[i] : NAN;
+    xSemaphoreGive(snapshot_mutex_);
+    update_adaptive_balance_(cfg);
+  }
 
   for (uint8_t i = 0; i < NUM_ZONES; i++) {
     if (!drivers_enabled)
@@ -1241,45 +1344,76 @@ void Hv6ZoneController::reset_simple_preheat_(uint8_t zone) {
 // Hydraulic Balancing
 // =============================================================================
 
+/// Resistance-aware static prior weight (un-normalized) for one zone:
+///   demand · floor_factor · length_term · pipe_factor
+/// demand = area · heat_loss (design heat → flow need). Each correction term is
+/// multiplicatively neutral (1.0) for default inputs, so the model degrades
+/// gracefully to the demand-only prior. See docs/adaptive_balancing.md §1a.
+float Hv6ZoneController::static_balance_weight_(const ZoneConfig &zc) {
+  float demand = zc.area_m2 * zc.heat_loss_w_m2;
+  float floor_f = floor_correction_factor_(zc.floor_type, zc.floor_cover_thickness_mm);
+  float pipe_f = pipe_correction_factor_(zc.pipe_type);
+  float L = calculate_pipe_length_m_(zc.area_m2, zc.pipe_spacing_mm, zc.supply_pipe_length_m);
+  // Longer loop ⇒ more opening for equal flow. Clamp like pipe_correction so a
+  // single mis-entered number can't dominate the split.
+  float length_term = std::clamp(L / LENGTH_REF_M, 0.85f, 1.35f);
+  return demand * floor_f * length_term * pipe_f;
+}
+
 void Hv6ZoneController::recalculate_balance_factors_() {
   if (!config_store_)
     return;
   const auto cfg = config_store_->get_config();
 
-  // Try dynamic balancing first (uses measured return temperatures)
-  if (cfg.balancing.dynamic_balancing_enabled) {
+  // Legacy return-temp balancing (uses measured return temperatures)
+  if (effective_balance_mode(cfg.balancing) == BalanceMode::RETURN_TEMP) {
     recalculate_dynamic_balance_factors_();
     return;
   }
 
-  // Fallback: static model based on configured zone parameters
+  const bool adaptive = (cfg.balancing.mode == BalanceMode::ADAPTIVE);
+
+  // Refresh the physical hydraulic outputs (flow_lh, pipe length, floor temp)
+  // for the diagnostics display — these stay demand-only / physical.
   calculate_hydraulic_outputs_();
 
-  float max_flow = 0.0f;
-  std::array<float, NUM_ZONES> flows;
-  flows.fill(0.0f);
+  // Resistance-aware static prior: normalize the per-zone weight by the manifold
+  // maximum so the most-demanding loop = 1.0 and the rest are throttled below it.
+  std::array<float, NUM_ZONES> weights;
+  weights.fill(0.0f);
+  float max_w = 0.0f;
+  for (uint8_t i = 0; i < NUM_ZONES; i++) {
+    if (!cfg.zones[i].enabled)
+      continue;
+    weights[i] = static_balance_weight_(cfg.zones[i]);
+    if (weights[i] > max_w)
+      max_w = weights[i];
+  }
 
   xSemaphoreTake(snapshot_mutex_, portMAX_DELAY);
   for (uint8_t i = 0; i < NUM_ZONES; i++) {
     if (!cfg.zones[i].enabled) {
       balance_factors_[i] = 0.0f;
+      snapshots_[i].static_factor = 0.0f;
+      snapshots_[i].balance_adapt = cfg.zones[i].balance_adapt;
+      snapshots_[i].hydraulic_factor = 0.0f;
+      snapshots_[i].adapt_err_ema = NAN;
       continue;
     }
-    flows[i] = snapshots_[i].flow_lh;
-    if (flows[i] > max_flow)
-      max_flow = flows[i];
+    float sf = (max_w > 0.0f) ? (weights[i] / max_w) : 1.0f;
+    float adapt = adaptive ? cfg.zones[i].balance_adapt : 1.0f;
+    float eff = std::clamp(sf * adapt, 0.0f, 1.0f);
+    balance_factors_[i] = eff;
+    snapshots_[i].static_factor = sf;
+    snapshots_[i].balance_adapt = adapt;
+    snapshots_[i].hydraulic_factor = eff;
+    snapshots_[i].adapt_err_ema =
+        (adaptive && adapt_samples_[i] > 0) ? adapt_err_ema_[i] : NAN;
   }
   xSemaphoreGive(snapshot_mutex_);
 
-  if (max_flow > 0.0f) {
-    for (uint8_t i = 0; i < NUM_ZONES; i++) {
-      if (!cfg.zones[i].enabled)
-        continue;
-      balance_factors_[i] = flows[i] / max_flow;
-    }
-  }
-
-  ESP_LOGI(TAG, "Static balance: [%.2f, %.2f, %.2f, %.2f, %.2f, %.2f]",
+  ESP_LOGI(TAG, "%s balance: [%.2f, %.2f, %.2f, %.2f, %.2f, %.2f]",
+           adaptive ? "Adaptive" : "Static",
            balance_factors_[0], balance_factors_[1], balance_factors_[2],
            balance_factors_[3], balance_factors_[4], balance_factors_[5]);
 }
@@ -1367,6 +1501,107 @@ float Hv6ZoneController::apply_hydraulic_balance_(uint8_t zone, float raw_positi
   if (balance_factors_[zone] <= 0.0f)
     return 0.0f;
   return raw_position * balance_factors_[zone];
+}
+
+// =============================================================================
+// Adaptive Balancing (room-temperature feedback; docs/adaptive_balancing.md)
+// =============================================================================
+
+void Hv6ZoneController::accumulate_balance_error_(uint8_t zone, float e_i, float window_s) {
+  // Time-weighted EMA: β = dt / window. A few cycles can't swing the average.
+  float dt = cycle_interval_ms_ / 1000.0f;
+  float beta = (window_s > 0.0f) ? std::clamp(dt / window_s, 0.0f, 1.0f) : 1.0f;
+  if (adapt_samples_[zone] == 0)
+    adapt_err_ema_[zone] = e_i;  // seed with the first sample
+  else
+    adapt_err_ema_[zone] = beta * e_i + (1.0f - beta) * adapt_err_ema_[zone];
+  adapt_samples_[zone]++;
+}
+
+void Hv6ZoneController::update_adaptive_balance_(const DeviceConfig &cfg) {
+  if (!config_store_)
+    return;
+
+  uint32_t now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+  uint32_t interval_ms = cfg.balancing.adapt_interval_s * 1000UL;
+  if (interval_ms == 0)
+    interval_ms = 3600000UL;
+
+  // Seed the timer on the first cycle so a full interval of samples is collected
+  // before the first step (and the boot-time accumulators aren't acted on).
+  if (last_adapt_ms_ == 0) {
+    last_adapt_ms_ = now_ms;
+    return;
+  }
+  if ((now_ms - last_adapt_ms_) < interval_ms)
+    return;
+  last_adapt_ms_ = now_ms;
+
+  // Gather the zones that collected enough valid samples this interval. Synced
+  // secondary zones never adapt on their own (§5) — they inherit the primary's.
+  float sum_e = 0.0f;
+  uint8_t contrib = 0;
+  std::array<bool, NUM_ZONES> contributes{};
+  for (uint8_t i = 0; i < NUM_ZONES; i++) {
+    if (!cfg.zones[i].enabled || cfg.zones[i].sync_to_zone >= 0)
+      continue;
+    if (adapt_samples_[i] < cfg.balancing.adapt_min_samples)
+      continue;
+    contributes[i] = true;
+    sum_e += adapt_err_ema_[i];
+    contrib++;
+  }
+
+  // Need ≥2 loops to define a common-mode mean to redistribute around.
+  if (contrib >= 2) {
+    float e_mean = sum_e / static_cast<float>(contrib);
+    hv6ab::AdaptParams p{cfg.balancing.adapt_step, cfg.balancing.adapt_min, cfg.balancing.adapt_max};
+    for (uint8_t i = 0; i < NUM_ZONES; i++) {
+      if (!contributes[i])
+        continue;
+      float old_a = cfg.zones[i].balance_adapt;
+      float new_a = hv6ab::next_adapt(old_a, adapt_err_ema_[i], e_mean, p);
+      // Persist only on a meaningful move (NVS write ≈ a few/day, not per cycle).
+      if (std::fabs(new_a - old_a) >= 0.01f) {
+        ZoneConfig zc = config_store_->get_zone_config(i);
+        zc.balance_adapt = new_a;
+        config_store_->update_zone(i, zc);
+        // Merged secondaries share the primary's correction (they open equally).
+        for (uint8_t j = 0; j < NUM_ZONES; j++) {
+          if (cfg.zones[j].enabled && cfg.zones[j].sync_to_zone == static_cast<int8_t>(i)) {
+            ZoneConfig zs = config_store_->get_zone_config(j);
+            zs.balance_adapt = new_a;
+            config_store_->update_zone(j, zs);
+          }
+        }
+        ESP_LOGI(TAG, "Adapt z%u: %.3f -> %.3f (e=%.2f, mean=%.2f, n=%u)",
+                 i + 1, old_a, new_a, adapt_err_ema_[i], e_mean,
+                 static_cast<unsigned>(adapt_samples_[i]));
+      }
+    }
+    balance_dirty_ = true;  // rebuild balance_factors_ from the new multipliers
+  } else {
+    ESP_LOGD(TAG, "Adapt: only %u contributing zone(s) this interval, no update", contrib);
+  }
+
+  // Reset accumulators for the next interval regardless of whether we stepped.
+  adapt_err_ema_.fill(0.0f);
+  adapt_samples_.fill(0);
+}
+
+void Hv6ZoneController::reset_balancing() {
+  if (!config_store_)
+    return;
+  for (uint8_t i = 0; i < NUM_ZONES; i++) {
+    ZoneConfig zc = config_store_->get_zone_config(i);
+    if (zc.balance_adapt != 1.0f) {
+      zc.balance_adapt = 1.0f;
+      config_store_->update_zone(i, zc);
+    }
+  }
+  adapt_reset_pending_.store(true, std::memory_order_release);
+  balance_dirty_ = true;
+  ESP_LOGI(TAG, "Adaptive balancing reset (all balance_adapt = 1.0)");
 }
 
 /// Enforce per-zone minimum flow when a modulating heat source is present (e.g. Ecodan).
@@ -1474,7 +1709,7 @@ void Hv6ZoneController::calculate_hydraulic_outputs_() {
 float Hv6ZoneController::calculate_pipe_length_m_(float area_m2, float spacing_mm, float supply_pipe_m) {
   float spacing_m = spacing_mm / 1000.0f;
   if (spacing_m <= 0.0f)
-    spacing_m = 0.15f;
+    spacing_m = 0.20f;  // 200 mm standard — matches ZoneConfig::pipe_spacing_mm default
   float zone_pipe = area_m2 / spacing_m;
   return zone_pipe + 2.0f * supply_pipe_m + 2.0f;
 }

@@ -9,14 +9,14 @@ import { getDashboardValue, subscribeDashboard, zoneLabel, NZ } from '../../core
 // 0xFF (255) = unknown/empty slot → transparent
 // ========================================
 const STATE_PALETTE = {
-  0:   { label: 'Off',             color: '#2e3f5c' },
-  1:   { label: 'Manual',          color: '#4ecdc4' },
-  2:   { label: 'Calibrating',     color: '#f2c77b' },
-  3:   { label: 'Wait Cal.',        color: '#8ab0d4' },
-  4:   { label: 'Wait Temp',       color: '#8ab0d4' },
-  5:   { label: 'Heating',         color: '#EEA111' },
-  6:   { label: 'Idle',            color: '#53A8FF' },
-  7:   { label: 'Overheated',      color: '#ff6464' },
+  0:   { label: 'Off',             color: '#2c4875' },
+  1:   { label: 'Manual',          color: '#d07bb5' },
+  2:   { label: 'Calibrating',     color: '#ffd380' },
+  3:   { label: 'Wait Cal.',        color: '#6B5C84' },
+  4:   { label: 'Wait Temp',       color: '#6B5C84' },
+  5:   { label: 'Heating',         color: '#ff8531' },
+  6:   { label: 'Idle',            color: '#39354c' },
+  7:   { label: 'Overheated',      color: '#ff6361' },
   255: { label: '',                color: 'transparent' },
 };
 
@@ -28,7 +28,7 @@ const AXIS_H     = 20;
 const PAD_TOP    = 4;
 const BAND_H     = 10;          // preheat-absorption band height
 const BAND_GAP   = 6;           // gap between zone rows and the absorption band
-const ABSORB_COLOR = '#b07bd1'; // distinct from heating (orange) / idle (blue)
+const ABSORB_COLOR = '#bc5090'; // magenta — distinct from heating (orange) / idle (blue)
 const ABSORB_INDEX = NZ + 1;    // entry shape: [uptime_s, z0..z5, absorbing]
 const ZONES_BOTTOM = PAD_TOP + NZ * (ROW_H + ROW_GAP) - ROW_GAP;
 const BAND_Y       = ZONES_BOTTOM + BAND_GAP;
@@ -156,7 +156,7 @@ function renderTimeline(histData, currentUptimeS) {
   bg.setAttribute('y', PAD_TOP);
   bg.setAttribute('width', chartW);
   bg.setAttribute('height', CHART_H - PAD_TOP - AXIS_H);
-  bg.setAttribute('fill', 'rgba(10,24,46,0.55)');
+  bg.setAttribute('fill', 'rgba(0,32,46,0.55)');
   bg.setAttribute('rx', '4');
   svg.appendChild(bg);
 
@@ -170,7 +170,7 @@ function renderTimeline(histData, currentUptimeS) {
     line.setAttribute('y1', PAD_TOP);
     line.setAttribute('x2', x);
     line.setAttribute('y2', CHART_H - AXIS_H);
-    line.setAttribute('stroke', 'rgba(120,168,255,.12)');
+    line.setAttribute('stroke', 'rgba(120,146,200,.16)');
     line.setAttribute('stroke-width', '1');
     svg.appendChild(line);
   }
@@ -186,8 +186,8 @@ function renderTimeline(histData, currentUptimeS) {
     rowBg.setAttribute('width', chartW);
     rowBg.setAttribute('height', ROW_H);
     rowBg.setAttribute('fill', zi % 2 === 0
-      ? 'rgba(83,168,255,0.03)'
-      : 'rgba(83,168,255,0.00)');
+      ? 'rgba(124,155,208,0.05)'
+      : 'rgba(124,155,208,0.00)');
     svg.appendChild(rowBg);
 
     // Zone label
@@ -196,7 +196,7 @@ function renderTimeline(histData, currentUptimeS) {
     label.setAttribute('y', y + ROW_H / 2 + 1);
     label.setAttribute('text-anchor', 'end');
     label.setAttribute('dominant-baseline', 'middle');
-    label.setAttribute('fill', 'rgba(191,211,245,.65)');
+    label.setAttribute('fill', 'rgba(233,222,210,.62)');
     label.setAttribute('font-size', '9.5');
     label.setAttribute('font-family', 'Montserrat, sans-serif');
     label.setAttribute('font-weight', '600');
@@ -254,7 +254,7 @@ function renderTimeline(histData, currentUptimeS) {
     bandBg.setAttribute('y', BAND_Y);
     bandBg.setAttribute('width', chartW);
     bandBg.setAttribute('height', BAND_H);
-    bandBg.setAttribute('fill', 'rgba(176,123,209,0.08)');
+    bandBg.setAttribute('fill', 'rgba(188,80,144,0.10)');
     bandBg.setAttribute('rx', '2');
     svg.appendChild(bandBg);
 
@@ -263,7 +263,7 @@ function renderTimeline(histData, currentUptimeS) {
     bandLabel.setAttribute('y', BAND_Y + BAND_H / 2 + 1);
     bandLabel.setAttribute('text-anchor', 'end');
     bandLabel.setAttribute('dominant-baseline', 'middle');
-    bandLabel.setAttribute('fill', 'rgba(191,211,245,.65)');
+    bandLabel.setAttribute('fill', 'rgba(233,222,210,.62)');
     bandLabel.setAttribute('font-size', '8.5');
     bandLabel.setAttribute('font-family', 'Montserrat, sans-serif');
     bandLabel.setAttribute('font-weight', '600');
@@ -317,7 +317,7 @@ function renderTimeline(histData, currentUptimeS) {
     lbl.setAttribute('x', x);
     lbl.setAttribute('y', AXIS_Y);
     lbl.setAttribute('text-anchor', al.hoursAgo === 0 ? 'end' : 'middle');
-    lbl.setAttribute('fill', 'rgba(191,211,245,.45)');
+    lbl.setAttribute('fill', 'rgba(202,219,248,.78)');
     lbl.setAttribute('font-size', '9');
     lbl.setAttribute('font-family', 'Montserrat, sans-serif');
     lbl.textContent = al.label;

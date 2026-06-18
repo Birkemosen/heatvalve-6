@@ -14,6 +14,7 @@
 #include "../hv6_config_store/hv6_types.h"
 #include "../hv6_valve_controller/hv6_valve_controller.h"
 #include "control_algorithms.h"
+#include "adaptive_balance.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -149,6 +150,10 @@ class Hv6ZoneController : public esphome::Component {
   // Balancing configuration
   void set_dynamic_balancing_enabled(bool enabled);
   bool is_dynamic_balancing_enabled() const;
+  /// Set the hydraulic-balancing strategy. Persists and forces a rebuild; also
+  /// keeps the legacy dynamic_balancing_enabled flag consistent with the mode.
+  void set_balance_mode(BalanceMode mode);
+  BalanceMode get_balance_mode() const;
   void set_modulating_heat_source(bool enabled);
   bool has_modulating_heat_source() const;
   void set_minimum_flow_pct(float pct);
@@ -159,6 +164,11 @@ class Hv6ZoneController : public esphome::Component {
   float get_flow_decrease_threshold() const;
   void set_target_delta_t(float delta_c);
   float get_target_delta_t() const;
+
+  /// Reset adaptive balancing: clears every zone's learned multiplier back to
+  /// 1.0, drops the in-RAM error accumulators, and forces a balance rebuild on
+  /// the next cycle. Persists the cleared multipliers to the durable zones blob.
+  void reset_balancing();
 
   void set_simple_preheat_enabled(bool enabled);
   bool is_simple_preheat_enabled() const;
@@ -201,6 +211,17 @@ class Hv6ZoneController : public esphome::Component {
   // Hydraulic balance
   std::array<float, NUM_ZONES> balance_factors_;
   bool balance_dirty_ = true;
+
+  // Adaptive balancing accumulators (runtime only; adapt_i lives in ZoneConfig).
+  // adapt_err_ema_[i] is a long-window EMA of the control error (setpoint−temp)
+  // gathered only on cycles where the sample reflects a balancing condition;
+  // adapt_samples_[i] counts those eligible cycles this interval.
+  std::array<float, NUM_ZONES> adapt_err_ema_{};
+  std::array<uint32_t, NUM_ZONES> adapt_samples_{};
+  uint32_t last_adapt_ms_ = 0;
+  // Set by reset_balancing() (dashboard task), consumed by the zone task — clears
+  // the RAM accumulators without a cross-thread float race.
+  std::atomic<bool> adapt_reset_pending_{false};
 
   // Setpoint adjustments
   QueueHandle_t adj_queue_ = nullptr;
@@ -278,9 +299,21 @@ class Hv6ZoneController : public esphome::Component {
   void enforce_minimum_total_opening_(std::array<float, NUM_ZONES> &positions);
   void calculate_hydraulic_outputs_();
 
+  // Adaptive balancing (room-temperature feedback; docs/adaptive_balancing.md)
+  /// Fold one eligible cycle's control error into the zone's long-window EMA.
+  void accumulate_balance_error_(uint8_t zone, float e_i, float window_s);
+  /// Outer loop: when adapt_interval_s has elapsed, step every contributing
+  /// zone's learned multiplier toward the manifold common-mode and persist it.
+  void update_adaptive_balance_(const DeviceConfig &cfg);
+  /// Resistance-aware static prior weight (un-normalized) for one zone.
+  static float static_balance_weight_(const ZoneConfig &zc);
+
   static float calculate_pipe_length_m_(float area_m2, float spacing_mm, float supply_pipe_m);
   static float pipe_correction_factor_(PipeType type);
   static float floor_correction_factor_(FloorType type, float cover_thickness_mm);
+  // Reference loop length (m) for the resistance length_term — a standard
+  // 15 m² room at 200 mm spacing (~75 m) maps to length_term ≈ 1.0.
+  static constexpr float LENGTH_REF_M = 75.0f;
 };
 
 }  // namespace hv6

@@ -27,7 +27,11 @@ export const key = {
   solarGain: (zone) => 'number-zone_' + zone + '_solar_gain',
   thermalLeadH: (zone) => 'number-zone_' + zone + '_thermal_lead_h',
   forecastOffset: (zone) => 'sensor-zone_' + zone + '_forecast_offset_c',
-  forecastPeakH: (zone) => 'sensor-zone_' + zone + '_forecast_peak_h'
+  forecastPeakH: (zone) => 'sensor-zone_' + zone + '_forecast_peak_h',
+  staticFactor: (zone) => 'sensor-zone_' + zone + '_static_factor',
+  balanceFactor: (zone) => 'sensor-zone_' + zone + '_balance_factor',
+  balanceAdapt: (zone) => 'sensor-zone_' + zone + '_balance_adapt',
+  adaptErr: (zone) => 'sensor-zone_' + zone + '_adapt_err'
 };
 
 export const gkey = {
@@ -89,4 +93,13 @@ export const gkey = {
   forecastLongitude: 'number-forecast_longitude',
   forecastLoadThreshold: 'number-forecast_load_threshold',
   forecastMaxOffsetC: 'number-forecast_max_offset_c',
+  balanceMode: 'select-balance_mode',
+  adaptIntervalS: 'number-adapt_interval_s',
+  adaptStep: 'number-adapt_step',
+  adaptMin: 'number-adapt_min',
+  adaptMax: 'number-adapt_max',
+  cpuLoadCore0: 'sensor-cpu_load_core0',
+  cpuLoadCore1: 'sensor-cpu_load_core1',
+  freeInternalKb: 'sensor-free_internal_kb',
+  freePsramKb: 'sensor-free_psram_kb',
 };

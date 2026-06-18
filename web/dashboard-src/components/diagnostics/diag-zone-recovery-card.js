@@ -12,7 +12,6 @@ const css = `
   border: 1px solid var(--panel-border);
   border-radius: 18px;
   padding: 18px;
-  margin-bottom: 18px;
   box-shadow: var(--panel-shadow);
 }
 .diag-zone-recovery .card-title {
@@ -31,6 +30,17 @@ const css = `
   line-height: 1.4;
   margin-bottom: 12px;
 }
+.diag-zone-recovery .recovery-status {
+  margin-top: 10px;
+  font-size: .78rem;
+  font-weight: 600;
+  min-height: 1.1em;
+  opacity: 0;
+  transition: opacity .15s ease;
+}
+.diag-zone-recovery .recovery-status.show { opacity: 1; }
+.diag-zone-recovery .recovery-status.ok { color: var(--state-ok); }
+.diag-zone-recovery .recovery-status.err { color: var(--state-danger); }
 .diag-zone-recovery .btn-row {
   display: flex;
   flex-wrap: wrap;
@@ -59,9 +69,9 @@ const css = `
   transition: border-color .15s ease;
 }
 .diag-zone-recovery .sel:focus {
-  outline: 2px solid rgba(83,168,255,.6);
+  outline: 2px solid rgba(124,155,208,.6);
   outline-offset: 1px;
-  border-color: rgba(83,168,255,.55);
+  border-color: rgba(124,155,208,.55);
 }
 .diag-zone-recovery .btn {
   flex: 1;
@@ -79,7 +89,7 @@ const css = `
 }
 .diag-zone-recovery .btn:hover {
   background: var(--control-bg-hover);
-  border-color: rgba(238,161,17,.5);
+  border-color: rgba(255,133,49,.5);
   color: #ffe8ba;
 }
 .diag-zone-recovery .btn.warn {
@@ -107,6 +117,7 @@ const template = () => `
         <button class="btn warn recovery-factors-btn">Reset Factors</button>
         <button class="btn accent recovery-relearn-btn">Reset + Relearn</button>
       </div>
+      <div class="recovery-status" role="status"></div>
     </div>
   `;
 
@@ -121,24 +132,45 @@ export default component({
     const faultBtn = el.querySelector('.recovery-fault-btn');
     const factorsBtn = el.querySelector('.recovery-factors-btn');
     const relearnBtn = el.querySelector('.recovery-relearn-btn');
+    const statusEl = el.querySelector('.recovery-status');
 
     subscribeDashboard('selectedZone', () => {
       zone = Number(getDashboardValue('selectedZone') || 1);
     });
 
+    let statusTimer = null;
+    function showStatus(msg, ok) {
+      statusEl.textContent = msg;
+      statusEl.className = 'recovery-status show ' + (ok ? 'ok' : 'err');
+      clearTimeout(statusTimer);
+      statusTimer = setTimeout(() => { statusEl.classList.remove('show'); }, 4000);
+    }
+
+    // Fire the action, then reflect success/failure locally so the click has
+    // visible feedback on the Zones page (the activity entry lives in Logs).
+    function run(action, sentMsg) {
+      const p = action(zone);
+      showStatus(sentMsg, true);
+      if (p && typeof p.then === 'function') {
+        p.then((resp) => {
+          if (resp && resp.ok === false) showStatus('Failed — device rejected the request', false);
+        }).catch(() => showStatus('Failed — could not reach device', false));
+      }
+    }
+
     faultBtn?.addEventListener('click', () => {
-      resetMotorFault(zone);
+      run(resetMotorFault, '✓ Fault reset sent for ' + zoneLabel(zone));
     });
 
     factorsBtn?.addEventListener('click', () => {
       if (confirm('Reset learned factors for ' + zoneLabel(zone) + '?')) {
-        resetMotorLearnedFactors(zone);
+        run(resetMotorLearnedFactors, '✓ Learned factors reset for ' + zoneLabel(zone));
       }
     });
 
     relearnBtn?.addEventListener('click', () => {
       if (confirm('Reset + relearn motor for ' + zoneLabel(zone) + '?')) {
-        resetMotorAndRelearn(zone);
+        run(resetMotorAndRelearn, '✓ Relearn started for ' + zoneLabel(zone));
       }
     });
   }

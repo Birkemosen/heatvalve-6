@@ -18,7 +18,7 @@ SERIAL_PORT := $(if $(PORT),$(PORT),$(AUTO_PORT))
 DASHBOARD_SRC_DIR ?= web/dashboard-src
 DASHBOARD_OUT_FILE ?= web/dashboard.js
 
-.PHONY: help check config build build-patch build-minor build-major build-verify deploy ota logs discover monitor erase erase-nvs clean dashboard dashboard-tooling dashboard-build dashboard-watch test test-ripple
+.PHONY: help check config build build-patch build-minor build-major build-verify deploy ota logs discover monitor erase erase-nvs clean dashboard dashboard-tooling dashboard-build dashboard-watch test test-ripple test-forecast test-balance
 
 help:
 	@echo "HeatValve-6 ESPHome tasks"
@@ -38,6 +38,7 @@ help:
 	@echo "  make test          Run all host unit tests"
 	@echo "  make test-ripple   Run ripple-counter unit tests (5 rates × 5 cases)"
 	@echo "  make test-forecast Run forecast preload-model unit tests"
+	@echo "  make test-balance  Run adaptive-balancing step-math unit tests"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make build"
@@ -130,7 +131,14 @@ test-forecast:
 	$(RIPPLE_CXX) -std=c++17 -O2 -Wall -Wextra -I components/hv6_forecast $(FORECAST_SRCS) -o $(FORECAST_OUT) -lm
 	$(FORECAST_OUT)
 
-test: test-ripple test-forecast
+BALANCE_SRCS = test/adaptive_balance/test_adaptive_balance.cpp
+BALANCE_OUT  = /tmp/test_adaptive_balance
+
+test-balance:
+	$(RIPPLE_CXX) -std=c++17 -O2 -Wall -Wextra -I components/hv6_zone_controller $(BALANCE_SRCS) -o $(BALANCE_OUT) -lm
+	$(BALANCE_OUT)
+
+test: test-ripple test-forecast test-balance
 
 ota: check
 	$(MAKE) build

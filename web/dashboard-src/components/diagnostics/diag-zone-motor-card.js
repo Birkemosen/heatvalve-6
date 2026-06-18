@@ -66,9 +66,9 @@ const css = `
   transition: border-color .15s ease;
 }
 .diag-zone-motor .sel:focus {
-  outline: 2px solid rgba(83,168,255,.6);
+  outline: 2px solid rgba(124,155,208,.6);
   outline-offset: 1px;
-  border-color: rgba(83,168,255,.55);
+  border-color: rgba(124,155,208,.55);
 }
 .diag-zone-motor .mn-inp {
   background: var(--control-bg);
@@ -82,9 +82,9 @@ const css = `
   transition: border-color .15s ease;
 }
 .diag-zone-motor .mn-inp:focus {
-  outline: 2px solid rgba(83,168,255,.6);
+  outline: 2px solid rgba(124,155,208,.6);
   outline-offset: 1px;
-  border-color: rgba(83,168,255,.55);
+  border-color: rgba(124,155,208,.55);
 }
 .diag-zone-motor .mn-unit {
   color: var(--muted);
@@ -113,7 +113,7 @@ const css = `
 }
 .diag-zone-motor .btn:hover {
   background: var(--control-bg-hover);
-  border-color: rgba(238,161,17,.5);
+  border-color: rgba(255,133,49,.5);
   color: #ffe8ba;
 }
 .diag-zone-motor .btn.warn {
@@ -144,16 +144,16 @@ const css = `
   width: 20px;
   height: 20px;
   border-radius: 999px;
-  background: #dbe8ff;
+  background: #efe6dd;
   transition: .2s ease;
 }
 .diag-zone-motor .sw.on {
   background: var(--blue);
-  border-color: rgba(83,168,255,.4);
+  border-color: rgba(124,155,208,.4);
 }
 .diag-zone-motor .sw.on::after {
   transform: translateX(22px);
-  background: #0f213c;
+  background: #042a3b;
 }
 .diag-zone-motor .gated {
   transition: opacity .18s ease;

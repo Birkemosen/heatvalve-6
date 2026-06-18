@@ -73,7 +73,7 @@ const css = `
   left: 3px;
   width: 18px;
   height: 18px;
-  background: #dbe8ff;
+  background: #efe6dd;
   border-radius: 999px;
   transition: transform .2s ease;
 }
@@ -85,7 +85,7 @@ const css = `
 
 .settings-card .ui-toggle.on::after {
   transform: translateX(22px);
-  background: #0f213c;
+  background: #042a3b;
 }
 
 .settings-card .btn-row {
@@ -109,7 +109,7 @@ const css = `
 
 .settings-card .btn:hover {
   background: var(--control-bg-hover);
-  border-color: rgba(120,168,255,.52);
+  border-color: rgba(120,146,200,.52);
   color: var(--text-strong);
 }
 

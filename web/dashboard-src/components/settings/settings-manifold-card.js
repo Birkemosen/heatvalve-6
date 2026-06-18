@@ -10,36 +10,35 @@ import { fmtT } from '../../utils/format.js';
 // CSS
 // ========================================
 const css = `
+/* Probe readouts mirror the zone-detail stat style: small uppercase label
+   above a large mono value, no cell chrome. */
 .settings-manifold-card .probe-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 20px;
   margin-top: 12px;
 }
 
 .settings-manifold-card .probe-cell {
-  border: 1px solid var(--control-border);
-  border-radius: 10px;
-  padding: 10px;
-  background: var(--control-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .settings-manifold-card .probe-name {
   color: var(--text-secondary);
-  font-size: .72rem;
+  font-size: .64rem;
   font-weight: 700;
-  letter-spacing: .5px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .settings-manifold-card .probe-temp {
-  margin-top: 4px;
-  font-size: 1rem;
-  font-weight: 800;
   font-family: var(--mono);
-}
-
-@media (max-width: 900px) {
-  .settings-manifold-card .probe-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--text-strong);
+  line-height: 1;
 }
 `;
 

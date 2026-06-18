@@ -46,7 +46,7 @@ const css = `
 
 .zone-room-card .wall-btn:hover {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(83,168,255,.2);
+  box-shadow: 0 0 0 1px rgba(124,155,208,.2);
 }
 
 .zone-room-card .wall-btn.active {

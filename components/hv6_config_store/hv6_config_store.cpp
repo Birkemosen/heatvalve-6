@@ -309,28 +309,6 @@ HeliosConfig Hv6ConfigStore::get_helios_config() const {
   return copy;
 }
 
-void Hv6ConfigStore::update_helios(const HeliosConfig &helios) {
-  HeliosConfig sanitized = helios;
-  trim_copy(sanitized.host, sizeof(sanitized.host), helios.host);
-  trim_copy(sanitized.controller_id, sizeof(sanitized.controller_id), helios.controller_id);
-  trim_copy(sanitized.mdns_host, sizeof(sanitized.mdns_host), helios.mdns_host);
-  if (sanitized.port == 0)
-    sanitized.port = 8080;
-  sanitized.poll_interval_s = std::max<uint16_t>(5, sanitized.poll_interval_s);
-  sanitized.stale_after_s = std::max<uint16_t>(10, sanitized.stale_after_s);
-  sanitized.mdns_resolve_interval_s = std::max<uint16_t>(15, sanitized.mdns_resolve_interval_s);
-
-  if (mutex_ == nullptr) {
-    config_.helios = sanitized;
-    mark_dirty();
-    return;
-  }
-  xSemaphoreTake(mutex_, portMAX_DELAY);
-  config_.helios = sanitized;
-  xSemaphoreGive(mutex_);
-  mark_dirty();
-}
-
 AsgardConfig Hv6ConfigStore::get_asgard_config() const {
   if (mutex_ == nullptr)
     return config_.asgard;

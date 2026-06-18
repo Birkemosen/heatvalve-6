@@ -12,8 +12,8 @@ const PAD_L = 44, PAD_R = 46, PAD_T = 16, PAD_B = 52;
 const PLOT_W = W - PAD_L - PAD_R;
 const PLOT_H = H - PAD_T - PAD_B;
 
-const TEMP_COLOR = 'var(--accent)';
-const WIND_COLOR = 'var(--blue)';
+const TEMP_COLOR = 'var(--series-warm)';
+const WIND_COLOR = 'var(--series-cool)';
 
 // ========================================
 // CSS
@@ -62,9 +62,9 @@ const css = `
 .forecast-preview .fc-empty { color: var(--text-secondary); font-size: .8rem; text-align: center; padding: 30px; }
 
 .forecast-preview svg { width: 100%; height: auto; display: block; }
-.forecast-preview .fc-grid { stroke: rgba(143,176,230,.16); stroke-width: 1; }
-.forecast-preview .fc-axis { stroke: rgba(143,176,230,.42); stroke-width: 1; }
-.forecast-preview .fc-tick { font-size: 11px; fill: var(--text-faint); }
+.forecast-preview .fc-grid { stroke: rgba(150,168,205,.16); stroke-width: 1; }
+.forecast-preview .fc-axis { stroke: rgba(150,168,205,.40); stroke-width: 1; }
+.forecast-preview .fc-tick { font-size: 11px; fill: var(--chart-axis); }
 .forecast-preview .fc-hour { font-size: 12px; fill: var(--text-secondary); font-weight: 700; }
 .forecast-preview .fc-dir  { font-size: 10px; fill: var(--accent); font-family: var(--mono); }
 `;
@@ -150,7 +150,7 @@ function renderChart(data) {
   let windPath = '';
   for (let i = 0; i < n; i++) windPath += (i ? ' L ' : 'M ') + xAt(i).toFixed(1) + ' ' + yWind(winds[i]).toFixed(1);
   const windArea = windPath + ' L ' + xAt(n - 1).toFixed(1) + ' ' + (PAD_T + PLOT_H) + ' L ' + xAt(0).toFixed(1) + ' ' + (PAD_T + PLOT_H) + ' Z';
-  s.appendChild(svg('path', { d: windArea, fill: 'rgba(83,168,255,.12)' }));
+  s.appendChild(svg('path', { d: windArea, fill: 'var(--series-cool-fill)' }));
   s.appendChild(svg('path', { d: windPath, fill: 'none', stroke: WIND_COLOR, 'stroke-width': '2.4', 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
 
   // temp line

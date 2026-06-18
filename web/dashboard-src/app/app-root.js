@@ -9,40 +9,55 @@ const css = `
 @import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap");
 
 :root {
-  --accent: #EEA111;
-  --blue: #53A8FF;
-  --bg: #0E1A2C;
-  --surface: #132744;
-  --card: #0F213C;
-  --border: rgba(120,168,255,.24);
+  /* ===========================================================
+     Palette (sunset ramp, cool-dark → warm-light):
+       #00202e #003f5c #2c4875 #8a508f #bc5090
+       #ff6361 #ff8531 #ffa600 #ffd380
+     Dark cool tones → surfaces/borders; orange → primary accent,
+     purple → secondary/cool (no blue in the UI or charts); warm
+     members → data series + states. Greens for "OK" status are kept
+     (the palette has no green) for status legibility.
+     =========================================================== */
+  --accent: #ff8531;          /* orange — primary accent */
+  --blue: #8a508f;            /* purple — secondary / cool accent (replaces blue) */
+  /* Chart data series — orange (warm) + purple (cool), no blue. */
+  --series-warm: #ff8531;
+  --series-cool: #8a508f;
+  --series-cool-fill: rgba(138,80,143,.16);
+  /* Axis/tick label color — warm-neutral, legible on the dark panel. */
+  --chart-axis: rgba(233,222,210,.82);
+  --bg: #00202e;
+  --surface: #003f5c;
+  --card: #042a3b;
+  --border: rgba(120,146,200,.22);
   --text: #FFFFFF;
-  --text-strong: #F3F8FF;
-  --text-secondary: rgba(214,228,255,.86);
-  --muted: rgba(214,228,255,.78);
-  --text-faint: rgba(191,211,245,.58);
-  --text-on-accent: #101C30;
-  --soft: rgba(132,180,255,.12);
-  --panel-border: rgba(120,168,255,.28);
-  --panel-bg: linear-gradient(180deg, rgba(20,44,79,.42), rgba(13,31,58,.36));
-  --panel-bg-vibrant: radial-gradient(900px 300px at 90% -40%, rgba(83,168,255,.18), transparent 62%), linear-gradient(180deg, rgba(20,44,79,.44), rgba(13,31,58,.38));
-  --panel-shadow: inset 0 1px 0 rgba(255,255,255,.03), 0 24px 60px rgba(0,0,0,.35);
+  --text-strong: #FFF4E6;
+  --text-secondary: rgba(255,239,224,.84);
+  --muted: rgba(247,233,221,.74);
+  --text-faint: rgba(229,216,222,.56);
+  --text-on-accent: #00202e;
+  --soft: rgba(124,155,208,.12);
+  --panel-border: rgba(120,146,200,.28);
+  --panel-bg: linear-gradient(180deg, rgba(0,63,92,.40), rgba(0,32,46,.40));
+  --panel-bg-vibrant: radial-gradient(900px 300px at 90% -40%, rgba(255,166,0,.14), transparent 62%), linear-gradient(180deg, rgba(0,63,92,.44), rgba(0,32,46,.40));
+  --panel-shadow: inset 0 1px 0 rgba(255,255,255,.03), 0 24px 60px rgba(0,0,0,.42);
   --state-ok: #79d17e;
-  --state-warn: #f2c77b;
-  --state-danger: #ff7676;
-  --state-disabled: #7D8BA7;
-  --control-bg: rgba(83,168,255,.1);
-  --control-bg-hover: rgba(83,168,255,.16);
-  --control-border: rgba(120,168,255,.32);
-  --control-border-strong: rgba(120,168,255,.45);
-  --viz-flow-low: #8FCBFF;
-  --viz-flow-mid: #BCDFFF;
-  --viz-flow-high: #E4D092;
-  --viz-flow-hot: #F2B74C;
-  --viz-delta-low: #42A5F5;
+  --state-warn: #ffa600;
+  --state-danger: #ff6361;
+  --state-disabled: #6E7E96;
+  --control-bg: rgba(124,155,208,.10);
+  --control-bg-hover: rgba(124,155,208,.16);
+  --control-border: rgba(120,146,200,.30);
+  --control-border-strong: rgba(120,146,200,.45);
+  --viz-flow-low: #8a508f;
+  --viz-flow-mid: #bc5090;
+  --viz-flow-high: #ff8531;
+  --viz-flow-hot: #ffa600;
+  --viz-delta-low: #8a508f;
   --viz-delta-ok: #66BB6A;
-  --viz-delta-high: #EF5350;
+  --viz-delta-high: #ff6361;
   --green: #79d17e;
-  --red: #ff6464;
+  --red: #ff6361;
   --mono: "Montserrat", sans-serif;
   --side-w: 260px;
   --side-collapsed: 76px;
@@ -53,8 +68,8 @@ html { font-size: 12px; scroll-behavior: smooth; }
 body {
   font-family: "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background:
-    radial-gradient(1400px 760px at 92% -14%, rgba(238,161,17,.12), transparent 56%),
-    radial-gradient(1200px 820px at 18% -8%, rgba(83,168,255,.2), transparent 64%),
+    radial-gradient(1400px 760px at 92% -14%, rgba(255,133,49,.12), transparent 56%),
+    radial-gradient(1200px 820px at 18% -8%, rgba(138,80,143,.16), transparent 64%),
     var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -84,36 +99,40 @@ body {
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 14px;
   margin-top: 14px;
   align-items: stretch;
 }
 
-.overview-connectivity,
 .overview-flow-return,
 .overview-demand {
   display: flex;
   flex-direction: column;
 }
 
-.overview-connectivity > *,
 .overview-flow-return > *,
 .overview-demand > * {
   flex: 1;
 }
 
 .zone-layout,
-.zone-diag-layout,
-.logs-diag-layout {
+.logs-layout {
   display: grid;
   gap: 14px;
 }
 
-.zone-diag-layout,
-.logs-diag-layout {
-  grid-template-columns: repeat(3, 1fr);
+/* Logs: main log stream (2/3) + stacked diagnostics column (1/3). */
+.logs-layout {
+  grid-template-columns: 2fr 1fr;
   align-items: start;
+}
+
+.logs-main-col,
+.logs-side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .zone-layout {
@@ -142,7 +161,9 @@ body {
   flex-direction: column;
   gap: 14px;
 }
-.zone-mid-col > * { width: 100%; }
+/* Slots grow to share the column's full height so the stack matches the Zone
+   and Zone Settings columns (no gap left below the last card). */
+.zone-mid-col > * { width: 100%; flex: 1 1 auto; }
 
 /* Single row of 4 equal-height columns; cards stretch to fill via flex. */
 .settings-layout {
@@ -153,6 +174,8 @@ body {
 }
 .settings-layout > * { display: flex; }
 .settings-layout > * > * { flex: 1; }
+/* Balancing card carries a 6-zone table — give it the full row below the four. */
+.settings-balancing-slot { grid-column: 1 / -1; }
 
 .ftr {
   text-align: center;
@@ -163,7 +186,7 @@ body {
 }
 
 .placeholder-card {
-  background: linear-gradient(180deg, rgba(20,44,79,.42), rgba(13,31,58,.36));
+  background: linear-gradient(180deg, rgba(0,63,92,.40), rgba(0,32,46,.40));
   border: 1px solid var(--border);
   border-radius: 18px;
   padding: 20px;
@@ -184,25 +207,15 @@ body {
   font-size: .86rem;
 }
 
-@media (max-width: 1080px) {
-  .dashboard-grid { grid-template-columns: 1fr 1fr; }
-}
-
 @media (max-width: 1200px) {
   .settings-layout { grid-template-columns: 1fr 1fr; }
-}
-
-@media (max-width: 1080px) {
-  .zone-diag-layout,
-  .logs-diag-layout { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 860px) {
   .zone-layout,
   .dashboard-grid,
   .settings-layout,
-  .zone-diag-layout,
-  .logs-diag-layout { grid-template-columns: 1fr; }
+  .logs-layout { grid-template-columns: 1fr; }
 
   .zone-detail-slot {
     grid-column: 1;
@@ -218,7 +231,7 @@ button:focus-visible,
 select:focus-visible,
 input:focus-visible,
 a:focus-visible {
-  outline: 2px solid rgba(83,168,255,.72);
+  outline: 2px solid rgba(124,155,208,.72);
   outline-offset: 2px;
 }
 
@@ -256,7 +269,6 @@ const template = (ctx) => `
         <div class="overview-flow"></div>
         <div class="overview-timeline" style="margin-top:14px"></div>
         <div class="dashboard-grid">
-          <div class="overview-connectivity"></div>
           <div class="overview-flow-return"></div>
           <div class="overview-demand"></div>
         </div>
@@ -279,11 +291,14 @@ const template = (ctx) => `
           <div class="settings-asgard-slot"></div>
           <div class="settings-motor-cal-slot"></div>
           <div class="settings-smart-heating-slot"></div>
+          <div class="settings-balancing-slot"></div>
         </div>
       </section>
       <section class="sec" data-section="logs">
-        <div class="logs-stream-slot"></div>
-        <div class="logs-diag-layout" style="margin-top:14px"></div>
+        <div class="logs-layout">
+          <div class="logs-main-col"></div>
+          <div class="logs-side-col"></div>
+        </div>
       </section>
       <div class="ftr">HEATVALVE-6 · UFH CONTROLLER</div>
     </main>
@@ -302,7 +317,6 @@ component({
     el.querySelector('.hdr').appendChild(mountComponent('hv6-header'));
     el.querySelector('.overview-flow').appendChild(mountComponent('flow-diagram'));
     el.querySelector('.overview-timeline').appendChild(mountComponent('zone-state-timeline'));
-    el.querySelector('.overview-connectivity').appendChild(mountComponent('connectivity-card'));
     el.querySelector('.overview-flow-return').appendChild(mountComponent('graph-widgets', { variant: 'flow-return' }));
     el.querySelector('.overview-demand').appendChild(mountComponent('graph-widgets', { variant: 'demand' }));
     el.querySelector('.overview-forecast').appendChild(mountComponent('monitor-forecast-preview'));
@@ -319,15 +333,22 @@ component({
     el.querySelector('.settings-motor-cal-slot').appendChild(mountComponent('settings-motor-calibration-card'));
     // Smart Heating: Preheat + Forecast combined into one card under Settings.
     el.querySelector('.settings-smart-heating-slot').appendChild(mountComponent('settings-smart-heating-card'));
+    // Hydraulic balancing spans the full width below the 4-card row (per-zone table).
+    el.querySelector('.settings-balancing-slot').appendChild(mountComponent('settings-balancing-card'));
 
-    // Logs view: live device-log stream + device-level diagnostics + motor control + device actions.
-    el.querySelector('.logs-stream-slot').appendChild(mountComponent('logs-view'));
-    const logsDiag = el.querySelector('.logs-diag-layout');
-    logsDiag.appendChild(mountComponent('diag-zone-motor-card', { zone: getDashboardValue('selectedZone') || 1 }));
-    logsDiag.appendChild(mountComponent('settings-control-card'));
-    logsDiag.appendChild(mountComponent('diag-manual-badge'));
-    logsDiag.appendChild(mountComponent('diag-i2c'));
-    logsDiag.appendChild(mountComponent('diag-activity'));
+    // Logs view: live device-log stream + general activity log (2/3) beside a stacked
+    // diagnostics column (1/3) holding connectivity + device-level diagnostics +
+    // motor control + device actions.
+    const logsMain = el.querySelector('.logs-main-col');
+    logsMain.appendChild(mountComponent('logs-view'));
+    logsMain.appendChild(mountComponent('diag-activity'));
+    const logsSide = el.querySelector('.logs-side-col');
+    logsSide.appendChild(mountComponent('connectivity-card'));
+    logsSide.appendChild(mountComponent('diag-system-card'));
+    logsSide.appendChild(mountComponent('diag-zone-motor-card', { zone: getDashboardValue('selectedZone') || 1 }));
+    logsSide.appendChild(mountComponent('settings-control-card'));
+    logsSide.appendChild(mountComponent('diag-manual-badge'));
+    logsSide.appendChild(mountComponent('diag-i2c'));
 
     const sectionNodes = el.querySelectorAll('.sec');
 

@@ -7,10 +7,10 @@ import { getDeviceLog, clearDeviceLog, subscribeDashboard } from '../../core/sto
 // 1=ERROR 2=WARN 3=INFO 4=CONFIG 5=DEBUG 6=VERBOSE 7=VERY_VERBOSE
 // ========================================
 const LEVELS = {
-  1: { label: 'E', color: '#ff6464' },
-  2: { label: 'W', color: '#f2c77b' },
+  1: { label: 'E', color: '#ff6361' },
+  2: { label: 'W', color: '#ffd380' },
   3: { label: 'I', color: '#79d17e' },
-  4: { label: 'C', color: '#53A8FF' },
+  4: { label: 'C', color: '#8a508f' },
   5: { label: 'D', color: 'rgba(214,228,255,.7)' },
   6: { label: 'V', color: 'rgba(214,228,255,.5)' },
   7: { label: 'VV', color: 'rgba(214,228,255,.4)' },
@@ -69,20 +69,20 @@ const css = `
   padding: 6px 0;
   font-family: var(--mono);
   scrollbar-width: thin;
-  scrollbar-color: rgba(83,168,255,.25) transparent;
+  scrollbar-color: rgba(124,155,208,.25) transparent;
 }
 .logs-stream::-webkit-scrollbar { width: 6px; }
-.logs-stream::-webkit-scrollbar-thumb { background: rgba(83,168,255,.25); border-radius: 999px; }
+.logs-stream::-webkit-scrollbar-thumb { background: rgba(124,155,208,.25); border-radius: 999px; }
 
 .logs-empty { color: var(--text-secondary); font-size: .78rem; text-align: center; padding: 24px; }
 
 .log-line {
   display: grid;
-  grid-template-columns: 18px 96px 1fr;
+  grid-template-columns: 20px 104px 1fr;
   gap: 8px;
-  padding: 2px 12px;
-  font-size: .72rem;
-  line-height: 1.45;
+  padding: 3px 12px;
+  font-size: .84rem;
+  line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
 }

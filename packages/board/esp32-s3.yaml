@@ -35,6 +35,13 @@ esp32:
       # stack overflow during BLE bursts; 8 KB gives comfortable margin. RAM use
       # is ~16%, so the extra few KB is free.
       CONFIG_ESP_MAIN_TASK_STACK_SIZE: "8192"
+      # FreeRTOS runtime stats — lets the dashboard report per-core CPU load and
+      # per-task CPU% / stack headroom (uxTaskGetSystemState) so a task that
+      # saturates a core or starves the loop can be pinpointed. The stats-
+      # formatting helper functions are deliberately NOT enabled (we compute the
+      # percentages ourselves) to keep the flash cost to a few KB.
+      CONFIG_FREERTOS_USE_TRACE_FACILITY: "y"
+      CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS: "y"
 
 # Enable the ESPHome `psram:` component so the debug platform can expose a
 # Free PSRAM sensor. The IDF sdkconfig above already enables SPIRAM at the

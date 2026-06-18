@@ -254,6 +254,11 @@ float Hv6AsgardBridge::compute_recommended_setpoint_(const hv6::AsgardConfig &cf
 // =============================================================================
 
 bool Hv6AsgardBridge::fetch_peer_(const hv6::AsgardConfig &cfg) {
+  if (!esphome::network::is_connected()) {
+    snprintf(last_error_, sizeof(last_error_), "peer: network down");
+    return false;
+  }
+
   char url[160];
   snprintf(url, sizeof(url), "http://%s:%u/api/hv6/v1/peer", cfg.peer_host, cfg.peer_port);
 
@@ -314,6 +319,14 @@ bool Hv6AsgardBridge::fetch_peer_(const hv6::AsgardConfig &cfg) {
 // =============================================================================
 
 bool Hv6AsgardBridge::push_asgard_(const hv6::AsgardConfig &cfg, float value) {
+  // Re-check connectivity right before the call: WiFi can drop mid-cycle (e.g. an AP
+  // restart) after the loop-top gate passed. Issuing esp_http_client into a down stack
+  // can stall on DNS/connect; skip it so the task always returns and retries next cycle.
+  if (!esphome::network::is_connected()) {
+    snprintf(last_error_, sizeof(last_error_), "network down");
+    return false;
+  }
+
   // ESPHome REST: POST /number/<object_id>/set?value=<float>
   char url[192];
   snprintf(url, sizeof(url), "http://%s:%u/number/%s/set?value=%.2f",

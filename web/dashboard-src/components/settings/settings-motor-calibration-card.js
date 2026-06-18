@@ -10,8 +10,8 @@ const css = `
   color: var(--state-warn);
   font-size: .74rem;
   line-height: 1.4;
-  border: 1px solid rgba(238,161,17,.35);
-  background: rgba(238,161,17,.12);
+  border: 1px solid rgba(255,133,49,.35);
+  background: rgba(255,133,49,.12);
   border-radius: 10px;
   padding: 8px 10px;
   margin: 10px 0 2px;

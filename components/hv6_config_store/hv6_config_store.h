@@ -45,8 +45,7 @@ class Hv6ConfigStore : public esphome::Component {
   void update_motor(const MotorConfig &motor);
   void update_sensor_config(const SensorConfig &sensor_config);
   void update_balancing(const BalancingConfig &balancing);
-  void update_helios(const HeliosConfig &helios);
-  HeliosConfig get_helios_config() const;
+  HeliosConfig get_helios_config() const;  // forecast quiesce gate (.enabled)
   void update_asgard(const AsgardConfig &asgard);
   AsgardConfig get_asgard_config() const;
   void update_forecast(const ForecastConfig &forecast);

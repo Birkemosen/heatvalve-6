@@ -9,6 +9,7 @@
 #include "esphome/core/progmem.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <freertos/task.h>
 #include <string>
 #include <vector>
 
@@ -48,6 +49,12 @@ struct DashboardSnapshot {
   // --- live runtime flags ---
   bool drivers_enabled;
 
+  // --- system diagnostics (FreeRTOS runtime stats + heap) ---
+  float    cpu0_pct{NAN};        // Core 0 load % (loop/web/API/WiFi/zone task)
+  float    cpu1_pct{NAN};        // Core 1 load % (valve/ripple/HTTP tasks)
+  uint32_t free_internal_kb{0};  // free DMA-capable internal heap (KB)
+  uint32_t free_psram_kb{0};     // free PSRAM (KB), 0 if none
+
   // --- full config copies (POD structs, safe to memcpy) ---
   hv6::ZoneConfig   zones[hv6::NUM_ZONES];
   hv6::TempSource   zone_temp_source[hv6::NUM_ZONES];
@@ -74,6 +81,13 @@ struct DashboardSnapshot {
   uint8_t           asgard_peer_zones{0};
   float             min_zone_flow_pct{15.0f};  // per-zone minimum valve opening enforced while bridge active
 
+  // --- Hydraulic balancing (static / adaptive) ---
+  hv6::BalancingConfig balancing;                       // mode + adaptive knobs + min flow
+  float             zone_static_factor[hv6::NUM_ZONES]{};   // resistance-aware prior (0..1)
+  float             zone_balance_factor[hv6::NUM_ZONES]{};  // effective factor applied (static × adapt)
+  float             zone_balance_adapt[hv6::NUM_ZONES]{};   // learned multiplier in effect
+  float             zone_adapt_err[hv6::NUM_ZONES]{};       // long-window room-temp error EMA (NAN = none)
+
   // --- Forecast preload (wind-aware) ---
   hv6::ForecastConfig forecast;            // current forecast config
   char              forecast_status[16];   // "ok"|"no data"|"stale"|"external helios"|"disabled"
@@ -98,17 +112,23 @@ struct DashboardAction {
 // -----------------------------------------------------------------------
 // Zone-state history ring buffer
 // Samples every HISTORY_INTERVAL_MS, keeps HISTORY_SLOTS entries (24 h).
-// Each entry: uptime_s + one uint8_t per zone (ZoneDisplayState, 0xFF=unknown).
-// Total RAM: HISTORY_SLOTS * (4 + NUM_ZONES) bytes = 288 * 10 = 2880 bytes.
+// Each entry: uptime_s + one uint8_t per zone (ZoneDisplayState, 0xFF=unknown)
+// + preheat-absorption flag + manifold flow/return (deci-°C) + mean demand %.
+// Total RAM: HISTORY_SLOTS * sizeof(HistoryEntry) = 288 * 16 = 4608 bytes.
 // -----------------------------------------------------------------------
 static constexpr uint16_t HISTORY_SLOTS         = 288;       // 24 h at 5 min
 static constexpr uint32_t HISTORY_INTERVAL_MS   = 5 * 60 * 1000UL;
 static constexpr uint8_t  HISTORY_STATE_UNKNOWN = 0xFF;
+static constexpr int16_t  HISTORY_TEMP_NONE     = INT16_MIN; ///< flow/return: no reading
+static constexpr uint8_t  HISTORY_DEMAND_NONE   = 0xFF;      ///< demand: unknown
 
 struct HistoryEntry {
   uint32_t uptime_s;
   uint8_t  zone_state[hv6::NUM_ZONES];
-  uint8_t  absorbing;  ///< 1 if preheat absorption was active at sample time, else 0
+  uint8_t  absorbing;   ///< 1 if preheat absorption was active at sample time, else 0
+  int16_t  flow_dc;     ///< manifold flow temp ×10 (deci-°C), HISTORY_TEMP_NONE = no reading
+  int16_t  return_dc;   ///< manifold return temp ×10 (deci-°C), HISTORY_TEMP_NONE = no reading
+  uint8_t  demand_pct;  ///< mean open-valve % over zones with a reading, HISTORY_DEMAND_NONE = unknown
 };
 
 // -----------------------------------------------------------------------
@@ -232,6 +252,21 @@ class HV6Dashboard : public Component, public AsyncWebHandler {
   bool snapshot_ready_{false};
   static constexpr uint32_t SNAPSHOT_INTERVAL_MS = 1000;
   void update_snapshot_();
+
+  // --- FreeRTOS per-core CPU load sampling (protected by runtime-stats sdkconfig) ---
+  static constexpr uint32_t CPU_SAMPLE_INTERVAL_MS = 2000;
+  uint32_t cpu_last_sample_ms_{0};
+  uint32_t cpu_last_total_{0};
+  uint32_t cpu_last_idle0_{0};
+  uint32_t cpu_last_idle1_{0};
+  float cpu0_pct_{NAN};
+  float cpu1_pct_{NAN};
+  std::vector<TaskStatus_t> task_status_buf_;  // reused across samples (no per-call alloc)
+  // Sample per-core load from the IDLE-task runtime counters (called from loop()).
+  void sample_cpu_load_();
+  // Log a per-task table (name, prio, state, CPU%, stack headroom) on demand —
+  // the tool to find a task that saturates a core. Triggered by a dashboard command.
+  void dump_task_stats_();
 
   // History ring buffer (protected by history_lock_)
   SemaphoreHandle_t history_lock_{nullptr};

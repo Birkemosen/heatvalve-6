@@ -32,8 +32,9 @@ const css = `
 .top-brand {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
+  justify-self: center;
   gap: 4px;
 }
 
@@ -53,25 +54,10 @@ const css = `
   white-space: nowrap;
 }
 
-.mode-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(238,161,17,.35);
-  background: rgba(238,161,17,.12);
-  color: var(--accent);
-  font-size: .66rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: .8px;
-}
-
 .top-menu {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 7px;
 }
 
@@ -79,7 +65,7 @@ const css = `
   text-decoration: none;
   color: var(--text-secondary);
   border: 1px solid var(--control-border);
-  background: linear-gradient(180deg, rgba(28,54,95,.54), rgba(19,38,70,.46));
+  background: linear-gradient(180deg, rgba(0,63,92,.54), rgba(0,32,46,.46));
   border-radius: 11px;
   padding: 10px 12px;
   font-size: .78rem;
@@ -91,8 +77,8 @@ const css = `
 
 .menu-link:hover {
   color: var(--text-strong);
-  background: linear-gradient(180deg, rgba(42,76,132,.64), rgba(28,54,100,.54));
-  border-color: rgba(120,168,255,.52);
+  background: linear-gradient(180deg, rgba(0,84,120,.64), rgba(0,63,92,.54));
+  border-color: rgba(120,146,200,.52);
 }
 
 .menu-link.active {
@@ -124,8 +110,8 @@ const css = `
   height: 34px;
   padding: 4px 10px;
   border-radius: 14px;
-  border: 1px solid rgba(120,168,255,.32);
-  background: linear-gradient(180deg, rgba(31,61,105,.52), rgba(18,36,68,.42));
+  border: 1px solid rgba(120,146,200,.32);
+  background: linear-gradient(180deg, rgba(0,63,92,.52), rgba(0,32,46,.42));
 }
 
 .meta-chip-label {
@@ -152,14 +138,14 @@ const css = `
 
 .meta-chip-state.saving {
   color: var(--state-warn);
-  border-color: rgba(238,161,17,.35);
+  border-color: rgba(255,133,49,.35);
   background: linear-gradient(180deg, rgba(83,56,20,.46), rgba(58,37,12,.36));
 }
 
 .meta-chip-state.offline {
   color: var(--text-secondary);
-  border-color: rgba(120,168,255,.24);
-  background: linear-gradient(180deg, rgba(31,61,105,.34), rgba(18,36,68,.28));
+  border-color: rgba(120,146,200,.24);
+  background: linear-gradient(180deg, rgba(0,63,92,.34), rgba(0,32,46,.28));
 }
 
 .brand-fw {
@@ -180,16 +166,17 @@ const css = `
 }
 
 .top-dot.on {
-  background: var(--blue);
-  box-shadow: 0 0 12px rgba(83,168,255,.55);
+  background: var(--state-ok);
+  box-shadow: 0 0 12px rgba(121,209,126,.55);
 }
 
 @media (max-width: 860px) {
   .topbar-head { grid-template-columns: 1fr; }
-  .top-brand { justify-content: center; flex-wrap: wrap; }
+  /* Stat pills (uptime / wifi / asgard) ride to the very top, above brand + menu. */
+  .top-meta { order: -2; justify-items: center; }
+  .top-brand { order: -1; justify-self: center; justify-content: center; flex-wrap: wrap; }
   .brand-row { justify-content: center; }
   .brand-fw { text-align: center; width: 100%; }
-  .top-meta { justify-items: center; }
   .meta-row { justify-content: center; flex-wrap: wrap; }
   .top-menu { justify-content: center; }
 }
@@ -203,19 +190,18 @@ injectStyle('hv6-header', css);
 const template = () => `
   <header class="topbar">
     <div class="topbar-head">
-      <div class="top-brand">
-        <div class="brand-row">
-          <div class="side-brand">HeatValve-6</div>
-          <div class="mode-pill" id="hdr-mode"></div>
-        </div>
-        <span class="brand-fw" id="hdr-fw"></span>
-      </div>
       <nav class="top-menu">
         <a href="#" class="menu-link active" data-section="overview">Monitor</a>
         <a href="#" class="menu-link" data-section="zones">Zones</a>
         <a href="#" class="menu-link" data-section="settings">Settings</a>
         <a href="#" class="menu-link" data-section="logs">Logs</a>
       </nav>
+      <div class="top-brand">
+        <div class="brand-row">
+          <div class="side-brand">HeatValve-6</div>
+        </div>
+        <span class="brand-fw" id="hdr-fw"></span>
+      </div>
       <div class="top-meta">
         <div class="meta-row">
           <div class="top-dot" id="hdr-dot"></div>
@@ -236,7 +222,6 @@ export default component({
   tag: 'hv6-header',
   render: template,
   onMount(ctx, el) {
-    const modeEl = el.querySelector('#hdr-mode');
     const dotEl = el.querySelector('#hdr-dot');
     const syncEl = el.querySelector('#hdr-sync');
     const upEl = el.querySelector('#hdr-up');
@@ -256,15 +241,17 @@ export default component({
     function updateMeta() {
       const live = getDashboardValue('live');
       const pendingWrites = getDashboardValue('pendingWrites');
-      const mode = window.HV6_DASHBOARD_CONFIG && window.HV6_DASHBOARD_CONFIG.mock ?
-        (window.HV6_DASHBOARD_CONFIG.mockLabel || 'Mock') :
-        (live ? 'Live' : 'Offline');
+      const mock = !!(window.HV6_DASHBOARD_CONFIG && window.HV6_DASHBOARD_CONFIG.mock);
 
-      modeEl.textContent = mode;
       dotEl.classList.toggle('on', !!live);
-      syncEl.textContent = pendingWrites > 0 ? 'Saving...' : (live ? 'Synced' : 'Offline');
-      const syncState = pendingWrites > 0 ? 'saving' : (live ? 'synced' : 'offline');
-      syncEl.className = 'meta-chip meta-chip-state ' + syncState;
+      // Connection status — not a save indicator (per-card Apply owns saving).
+      let connLabel, connState;
+      if (pendingWrites > 0) { connLabel = 'Saving…'; connState = 'saving'; }
+      else if (mock) { connLabel = (window.HV6_DASHBOARD_CONFIG.mockLabel || 'Mock'); connState = 'synced'; }
+      else if (live) { connLabel = 'Live'; connState = 'synced'; }
+      else { connLabel = 'Offline'; connState = 'offline'; }
+      syncEl.textContent = connLabel;
+      syncEl.className = 'meta-chip meta-chip-state ' + connState;
       upEl.textContent = fmtUp(ev(gkey.uptime));
       wifiEl.textContent = fmtWifi(ev(gkey.wifi));
       const pushC = ev(gkey.asgardLastPushC);
