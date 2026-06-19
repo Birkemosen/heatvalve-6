@@ -32,11 +32,15 @@ static const char *const NVS_KEY_HOURS = "hours";
 static const char *const NVS_KEY_META = "meta";
 
 // Minimum free *internal* (DMA-capable) heap required before attempting a fetch.
-// The TLS handshake to Open-Meteo needs ~40 KB of internal heap; if we're already
-// below this, starting it would starve WiFi/lwIP and stall the device. Skip and
-// retry later instead. The large body + JSON buffers go to PSRAM (see below) so
-// this guard only has to cover TLS + WiFi headroom.
-static constexpr size_t MIN_INTERNAL_HEAP_B = 48 * 1024;
+// Everything large is already on PSRAM: the response body (heap_caps SPIRAM), the
+// ArduinoJson pool (PsRamAllocator) and the mbedTLS buffers/session
+// (CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC). So a fetch's *internal* footprint is just
+// the esp_http_client rx/tx buffers (~4 KB) + esp-tls glue + WiFi headroom — far
+// below the old 48 KB figure, which predated the PSRAM routing and kept the fetch
+// from ever running on this BLE board (~30 KB free at idle). fetch_forecast_ logs
+// the all-time internal-heap low-water mark after each attempt so this floor can
+// be tuned to the measured trough; keep a margin above it for WiFi/lwIP.
+static constexpr size_t MIN_INTERNAL_HEAP_B = 24 * 1024;
 
 // ArduinoJson allocator that prefers PSRAM (keeps the parse pool off the internal
 // heap that TLS and WiFi need), falling back to internal heap when no PSRAM is
@@ -53,8 +57,13 @@ struct PsRamAllocator : ArduinoJson::Allocator {
   }
 };
 
+// Below this epoch (2020-09-13) the SNTP clock has not synced yet — the ESP is
+// still on its 1970 boot time, so wall-clock-dependent logic must wait.
+static constexpr uint32_t MIN_VALID_EPOCH = 1600000000u;
+
 struct CacheMeta {
   uint32_t base_epoch;
+  uint32_t fetch_epoch;  ///< wall-clock of the fetch that produced this cache
   uint8_t count;
 };
 
@@ -108,11 +117,11 @@ const char *Hv6Forecast::get_status_str() const {
   }
 }
 
-uint32_t Hv6Forecast::get_forecast_age_s() const {
-  if (hours_base_epoch_ == 0)
+uint32_t Hv6Forecast::get_fetch_age_s() const {
+  if (last_fetch_epoch_ == 0)
     return 0;
   uint32_t now = epoch_s_();
-  return (now > hours_base_epoch_) ? (now - hours_base_epoch_) : 0;
+  return (now > last_fetch_epoch_) ? (now - last_fetch_epoch_) : 0;
 }
 
 uint8_t Hv6Forecast::copy_hours(ForecastHour *out, uint8_t max, uint32_t *base_epoch_out,
@@ -128,7 +137,7 @@ uint8_t Hv6Forecast::copy_hours(ForecastHour *out, uint8_t max, uint32_t *base_e
   for (uint8_t i = 0; i < n; i++)
     out[i] = hours_[i];
   if (base_epoch_out) *base_epoch_out = hours_base_epoch_;
-  if (age_s_out) *age_s_out = get_forecast_age_s();
+  if (age_s_out) *age_s_out = get_fetch_age_s();  // "fetched X ago", not hour offset
   if (hours_lock_ != nullptr)
     xSemaphoreGive(hours_lock_);
   return n;
@@ -160,6 +169,18 @@ void Hv6Forecast::run_() {
       vTaskDelay(pdMS_TO_TICKS(5000));
       continue;
     }
+    // Wall clock must be SNTP-synced before fetching: preload timing (now_index)
+    // and the persisted fetch timestamp both need a real epoch, and TLS to
+    // Open-Meteo would otherwise stamp the cache with a 1970 time. Wait it out.
+    if (epoch_s_() < MIN_VALID_EPOCH) {
+      const uint32_t now_s = epoch_s_();
+      if (now_s - last_gate_log_s >= 60) {
+        last_gate_log_s = now_s;
+        ESP_LOGI(TAG, "No fetch: waiting for SNTP clock sync");
+      }
+      vTaskDelay(pdMS_TO_TICKS(5000));
+      continue;
+    }
     const bool config_ok = cfg.enabled && (cfg.latitude != 0.0f || cfg.longitude != 0.0f);
     const bool net_ok = esphome::network::is_connected();
     if (!config_ok || !net_ok) {
@@ -183,14 +204,20 @@ void Hv6Forecast::run_() {
 
     // ---- Fetch ------------------------------------------------------------
     const uint32_t now = epoch_s_();
-    const bool need_fetch = hours_count_ == 0 ||
-                            get_forecast_age_s() >= cfg.fetch_interval_s;
+    const bool forced = force_fetch_;
+    if (forced) force_fetch_ = false;
+    // Refetch cadence is measured from the last *successful* fetch (wall clock),
+    // not from the forecast-hour boundary — so it's a true "every fetch_interval_s".
+    const bool need_fetch = forced || hours_count_ == 0 || last_fetch_epoch_ == 0 ||
+                            get_fetch_age_s() >= cfg.fetch_interval_s;
     uint32_t backoff_s = 0;
-    if (need_fetch && (now - last_fetch_attempt_s) >= 60) {
+    if (need_fetch && (forced || (now - last_fetch_attempt_s) >= 60)) {
+      if (forced) ESP_LOGI(TAG, "Manual fetch triggered from dashboard");
       last_fetch_attempt_s = now;
       if (fetch_forecast_(cfg)) {
         fetch_fail_streak_ = 0;
         last_error_[0] = '\0';
+        last_fetch_epoch_ = now;
         save_cache_();
       } else {
         if (fetch_fail_streak_ < 0xFFFFFFFFu) fetch_fail_streak_++;
@@ -200,7 +227,13 @@ void Hv6Forecast::run_() {
     }
 
     // ---- Evaluate ----------------------------------------------------------
-    if (hours_count_ > 0 && get_forecast_age_s() <= FORECAST_MAX_AGE_S) {
+    // Usable while the cache temporally covers "now" (now_index in range) AND a
+    // successful fetch happened recently. Anchoring hours_[0] at the day start
+    // means now − base grows to ~24 h, so freshness is judged by fetch age, not
+    // by the hour offset.
+    const uint32_t span_end = hours_base_epoch_ + static_cast<uint32_t>(hours_count_) * 3600;
+    const bool covers_now = hours_count_ > 0 && now >= hours_base_epoch_ && now < span_end;
+    if (covers_now && get_fetch_age_s() <= FORECAST_MAX_AGE_S) {
       status_ = Status::OK;
       recompute_preloads_(cfg);
     } else {
@@ -288,7 +321,7 @@ bool Hv6Forecast::fetch_forecast_(const hv6::ForecastConfig &cfg) {
   snprintf(url, sizeof(url),
            "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"
            "&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,shortwave_radiation"
-           "&forecast_days=3&timeformat=unixtime&wind_speed_unit=ms&timezone=UTC",
+           "&forecast_days=3&timeformat=unixtime&wind_speed_unit=ms&timezone=auto",
            cfg.latitude, cfg.longitude);
 
   ESP_LOGI(TAG, "Open-Meteo GET %s", url);
@@ -354,11 +387,12 @@ bool Hv6Forecast::fetch_forecast_(const hv6::ForecastConfig &cfg) {
         JsonArrayConst dirs = doc["hourly"]["wind_direction_10m"].as<JsonArrayConst>();
         JsonArrayConst solar = doc["hourly"]["shortwave_radiation"].as<JsonArrayConst>();
 
-        // Skip hours that are already in the past so hours_[0] ≈ "now".
-        const uint32_t now = epoch_s_();
+        // Keep the whole day: anchor hours_[0] at the start of the response
+        // (00:00 local today, since timezone=auto) so the dashboard shows the
+        // entire day, not just the hours remaining. The preload scan locates
+        // "now" via now_index (recompute_preloads_), so retaining the morning's
+        // already-elapsed hours is purely for display.
         size_t start = 0;
-        while (start < times.size() && times[start].as<uint32_t>() + 3600 < now)
-          start++;
 
         uint8_t count = 0;
         uint32_t base_epoch = 0;
@@ -400,6 +434,12 @@ bool Hv6Forecast::fetch_forecast_(const hv6::ForecastConfig &cfg) {
 
   esp_http_client_close(client);
   esp_http_client_cleanup(client);
+
+  // Report the all-time internal-heap low-water mark so MIN_INTERNAL_HEAP_B can be
+  // tuned to the measured TLS-fetch trough (vs. the conservative compile-time floor).
+  ESP_LOGI(TAG, "Fetch done (ok=%d): internal heap now %u B, all-time min %u B",
+           ok ? 1 : 0, (unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+           (unsigned) heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
   return ok;
 }
 
@@ -411,7 +451,7 @@ void Hv6Forecast::save_cache_() {
   nvs_handle_t handle;
   if (nvs_open(NVS_NS, NVS_READWRITE, &handle) != ESP_OK)
     return;
-  CacheMeta meta{hours_base_epoch_, hours_count_};
+  CacheMeta meta{hours_base_epoch_, last_fetch_epoch_, hours_count_};
   nvs_set_blob(handle, NVS_KEY_META, &meta, sizeof(meta));
   nvs_set_blob(handle, NVS_KEY_HOURS, hours_, sizeof(ForecastHour) * hours_count_);
   nvs_commit(handle);
@@ -430,6 +470,7 @@ void Hv6Forecast::load_cache_() {
     if (nvs_get_blob(handle, NVS_KEY_HOURS, hours_, &hours_len) == ESP_OK) {
       hours_count_ = meta.count;
       hours_base_epoch_ = meta.base_epoch;
+      last_fetch_epoch_ = meta.fetch_epoch;
       ESP_LOGI(TAG, "Restored %u cached forecast hours from NVS", hours_count_);
     }
   }

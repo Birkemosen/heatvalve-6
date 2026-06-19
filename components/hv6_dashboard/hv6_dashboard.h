@@ -93,6 +93,7 @@ struct DashboardSnapshot {
   char              forecast_status[16];   // "ok"|"no data"|"stale"|"external helios"|"disabled"
   char              forecast_last_error[SNAPSHOT_TEXT_LEN];
   uint32_t          forecast_age_s{0};
+  uint32_t          forecast_fetch_epoch{0};  // wall-clock of last successful fetch
   uint32_t          forecast_fail_streak{0};
   float             forecast_zone_offset_c[hv6::NUM_ZONES]{};
   int8_t            forecast_zone_peak_in_h[hv6::NUM_ZONES]{};

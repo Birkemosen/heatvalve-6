@@ -74,6 +74,15 @@ improv_serial:
 mdns:
   disabled: true
 
+# System clock via SNTP. Required by hv6_forecast: preload timing (now_index)
+# and the "last fetched" timestamp both read the wall clock — without a time
+# source the ESP stays on the 1970 epoch (forecast preloads never apply and the
+# dashboard shows a bogus "1 Jan" update time). Epoch-only usage, so timezone is
+# irrelevant (left at UTC); Open-Meteo is queried with timezone=auto separately.
+time:
+  - platform: sntp
+    id: sntp_time
+
 # =============================================================================
 # Packages — Platform, network, hardware, zones (radio NOT included here)
 # =============================================================================

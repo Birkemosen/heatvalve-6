@@ -18,6 +18,7 @@
 #include <ctime>
 #include <esp_http_server.h>
 #include <esp_heap_caps.h>
+#include <esp_system.h>
 
 namespace esphome {
 namespace hv6_dashboard {
@@ -295,7 +296,8 @@ void HV6Dashboard::update_snapshot_() {
     auto *fc = static_cast<hv6_forecast::Hv6Forecast *>(this->forecast_);
     strncpy(s.forecast_status, fc->get_status_str(), sizeof(s.forecast_status) - 1);
     strncpy(s.forecast_last_error, fc->get_last_error(), sizeof(s.forecast_last_error) - 1);
-    s.forecast_age_s = fc->get_forecast_age_s();
+    s.forecast_age_s = fc->get_fetch_age_s();  // "fetched X ago", not the hour offset
+    s.forecast_fetch_epoch = fc->get_last_fetch_epoch();
     s.forecast_fail_streak = fc->get_fetch_fail_streak();
     for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
       s.forecast_zone_offset_c[i] = fc->get_zone_offset(i);
@@ -905,11 +907,13 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
       "\"text-forecast_status\":{\"state\":\"%s\"},"
       "\"text-forecast_last_error\":{\"state\":\"%s\"},"
       "\"sensor-forecast_age_s\":{\"state\":%lu},"
+      "\"sensor-forecast_fetch_epoch\":{\"state\":%lu},"
       "\"sensor-forecast_fail_streak\":{\"state\":%lu},",
       snap->forecast.enabled ? "on" : "off",
       snap->forecast_status,
       snap->forecast_last_error,
       static_cast<unsigned long>(snap->forecast_age_s),
+      static_cast<unsigned long>(snap->forecast_fetch_epoch),
       static_cast<unsigned long>(snap->forecast_fail_streak));
   format_float_token(num_buf, sizeof(num_buf), snap->forecast.latitude, 4);
   appendf(buf, BUF_SIZE, offset, "\"number-forecast_latitude\":{\"value\":%s},", num_buf);
@@ -1289,6 +1293,13 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
       this->zone_controller_->reset_balancing();
     } else if (strcmp(str_val, "dump_task_stats") == 0) {
       this->dump_task_stats_();
+    } else if (strcmp(str_val, "restart") == 0) {
+      ESP_LOGW(TAG, "Restarting device on dashboard request");
+      esp_restart();
+#ifdef USE_HV6_FORECAST
+    } else if (strcmp(str_val, "trigger_forecast_fetch") == 0 && this->forecast_) {
+      static_cast<hv6_forecast::Hv6Forecast *>(this->forecast_)->trigger_fetch();
+#endif
     }
     // Unknown commands are silently accepted
 
@@ -1886,12 +1897,14 @@ void HV6Dashboard::handle_forecast_(AsyncWebServerRequest *request) {
   uint8_t count = 0;
   uint32_t base_epoch = 0;
   uint32_t age_s = 0;
+  uint32_t fetch_epoch = 0;
 
 #ifdef USE_HV6_FORECAST
   static hv6_forecast::ForecastHour hours[hv6_forecast::FORECAST_HOURS];
   if (this->forecast_ != nullptr) {
     auto *fc = static_cast<hv6_forecast::Hv6Forecast *>(this->forecast_);
     count = fc->copy_hours(hours, hv6_forecast::FORECAST_HOURS, &base_epoch, &age_s);
+    fetch_epoch = fc->get_last_fetch_epoch();
   }
 #else
   hv6_forecast::ForecastHour *hours = nullptr;
@@ -1899,9 +1912,10 @@ void HV6Dashboard::handle_forecast_(AsyncWebServerRequest *request) {
 #endif
 
   appendf(buf, BUF_SIZE, offset,
-          "{\"base_epoch\":%lu,\"age_s\":%lu,\"count\":%u,\"hours\":[",
+          "{\"base_epoch\":%lu,\"age_s\":%lu,\"fetch_epoch\":%lu,\"count\":%u,\"hours\":[",
           static_cast<unsigned long>(base_epoch),
           static_cast<unsigned long>(age_s),
+          static_cast<unsigned long>(fetch_epoch),
           static_cast<unsigned>(count));
 
 #ifdef USE_HV6_FORECAST
@@ -1916,6 +1930,8 @@ void HV6Dashboard::handle_forecast_(AsyncWebServerRequest *request) {
     format_float_token(num_buf, sizeof(num_buf), hours[i].wind_speed_ms, 1);
     appendf(buf, BUF_SIZE, offset, "%s,", num_buf);
     format_float_token(num_buf, sizeof(num_buf), hours[i].wind_dir_deg, 0);
+    appendf(buf, BUF_SIZE, offset, "%s,", num_buf);
+    format_float_token(num_buf, sizeof(num_buf), hours[i].shortwave_wm2, 0);
     appendf(buf, BUF_SIZE, offset, "%s]", num_buf);
   }
 #else
