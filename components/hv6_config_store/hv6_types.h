@@ -224,6 +224,10 @@ struct ZoneConfig {
   // on top of the resistance-aware static prior; persisted in the durable zones
   // blob so it survives a CONFIG_VERSION bump. See docs/adaptive_balancing.md.
   float balance_adapt = 1.0f;
+  // Simple preheat — learned per-zone head-start (°C above setpoint to start
+  // heating so the zone reaches temperature on time). Adapts over time; persisted
+  // so the device doesn't have to re-learn from zero after every reboot.
+  float preheat_advance_c = 0.0f;
 };
 
 struct ControlConfig {
@@ -277,7 +281,8 @@ static constexpr uint32_t SENSOR_CONFIG_VERSION = 1;
 /// pipe type/spacing, exterior walls, etc.) survive a CONFIG_VERSION bump on
 /// firmware update. Bump only when ZoneConfig's layout changes.
 /// v2 adds balance_adapt (learned adaptive-balancing multiplier).
-static constexpr uint32_t ZONE_CONFIG_VERSION = 2;
+/// v3 adds preheat_advance_c (learned simple-preheat head-start per zone).
+static constexpr uint32_t ZONE_CONFIG_VERSION = 3;
 
 /// Per-section durable NVS blob versions. Each global-settings section is mirrored
 /// to its own NVS key (like zones/sensors above) so it survives the version-based

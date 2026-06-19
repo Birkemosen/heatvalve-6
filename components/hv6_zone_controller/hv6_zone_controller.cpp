@@ -62,7 +62,14 @@ void Hv6ZoneController::setup() {
   balance_factors_.fill(1.0f);
   last_valid_temp_ms_.fill(0);
   external_temp_last_ms_.fill(0);
-  preheat_advance_c_.fill(0.0f);
+  // Restore learned preheat advance from NVS so the device doesn't start from
+  // zero after every reboot.
+  if (config_store_) {
+    for (uint8_t i = 0; i < NUM_ZONES; i++)
+      preheat_advance_c_[i] = config_store_->get_zone_config(i).preheat_advance_c;
+  } else {
+    preheat_advance_c_.fill(0.0f);
+  }
   preheat_episode_active_.fill(false);
   preheat_episode_min_temp_c_.fill(NAN);
   preheat_episode_max_temp_c_.fill(NAN);
@@ -1343,6 +1350,14 @@ void Hv6ZoneController::update_simple_preheat_(uint8_t zone, float temp, float s
     preheat_advance_c_[zone] = std::max(0.0f, preheat_advance_c_[zone] - SIMPLE_PREHEAT_OVERSHOOT_DECAY_C);
   }
 
+  // Persist the learned advance so it survives reboots.
+  if (config_store_) {
+    auto zcfg = config_store_->get_zone_config(zone);
+    if (zcfg.preheat_advance_c != preheat_advance_c_[zone]) {
+      zcfg.preheat_advance_c = preheat_advance_c_[zone];
+      config_store_->update_zone(zone, zcfg);
+    }
+  }
 }
 
 void Hv6ZoneController::reset_simple_preheat_(uint8_t zone) {
@@ -1353,6 +1368,11 @@ void Hv6ZoneController::reset_simple_preheat_(uint8_t zone) {
   preheat_episode_min_temp_c_[zone] = NAN;
   preheat_episode_max_temp_c_[zone] = NAN;
   preheat_episode_setpoint_c_[zone] = 0.0f;
+  if (config_store_) {
+    auto zcfg = config_store_->get_zone_config(zone);
+    zcfg.preheat_advance_c = 0.0f;
+    config_store_->update_zone(zone, zcfg);
+  }
 }
 
 // =============================================================================

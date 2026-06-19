@@ -31,6 +31,7 @@ const css = `
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  overflow: visible;
 }
 .ui-title-text { display: inline-flex; align-items: center; }
 
@@ -39,13 +40,13 @@ const css = `
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   margin-left: 7px;
   border-radius: 999px;
-  border: 1px solid var(--control-border);
-  color: var(--text-faint);
-  font-size: .6rem;
+  border: 1.5px solid rgba(180,180,180,.55);
+  color: rgba(210,210,220,.9);
+  font-size: .65rem;
   font-weight: 700;
   font-family: inherit;
   text-transform: none;
@@ -53,6 +54,7 @@ const css = `
   cursor: help;
   position: relative;
   flex-shrink: 0;
+  vertical-align: middle;
 }
 .help-badge:hover, .help-badge:focus-visible { color: var(--accent); border-color: var(--accent); outline: none; }
 .help-badge .help-tip {
