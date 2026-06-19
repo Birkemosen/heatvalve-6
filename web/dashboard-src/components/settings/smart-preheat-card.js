@@ -1,6 +1,6 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { cardForm } from '../../core/ui-kit.js';
+import { cardForm, helpBadge } from '../../core/ui-kit.js';
 import { setGlobalSelect, setGlobalNumber } from '../../core/api.js';
 import { es, ev, isEntityOn, setEntity } from '../../core/store.js';
 import { gkey } from '../../utils/keys.js';
@@ -35,7 +35,7 @@ injectStyle('smart-preheat-card', css);
 // ========================================
 const template = () => `
   <div class="ui-card smart-preheat-card">
-    <div class="ui-card-title">Preheat</div>
+    <div class="ui-card-title"><span class="ui-title-text">Preheat${helpBadge('When hot water arrives but no zone is calling for heat, satisfied zones hold their opening instead of closing — absorbing heat an external optimiser pre-buffered, weighted by floor thermal mass.')}</span></div>
     <div class="ui-row">
       <span class="ui-label">Simple Preheat</span>
       <span class="ui-field"><div class="ui-toggle preheat-toggle" role="switch" aria-label="Toggle simple preheat"></div></span>

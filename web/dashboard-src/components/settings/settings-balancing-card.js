@@ -1,6 +1,6 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { cardForm } from '../../core/ui-kit.js';
+import { cardForm, helpBadge } from '../../core/ui-kit.js';
 import { es, ev, setEntity } from '../../core/store.js';
 import { setGlobalSelect, setGlobalNumber, resetBalancing } from '../../core/api.js';
 import { key, gkey } from '../../utils/keys.js';
@@ -42,7 +42,7 @@ const zoneRow = (z) => `
 
 const template = () => `
   <div class="ui-card settings-balancing-card">
-    <div class="ui-card-title"><span>Hydraulic Balancing</span></div>
+    <div class="ui-card-title"><span class="ui-title-text">Hydraulic Balancing${helpBadge('Scales raw valve positions by pipe length and zone area so long loops get proportionally more flow. Adaptive mode tunes the factors over time.')}</span></div>
 
     <div class="ui-row">
       <span class="ui-label">Balancing mode</span>

@@ -1,6 +1,6 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { cardForm } from '../../core/ui-kit.js';
+import { cardForm, helpBadge } from '../../core/ui-kit.js';
 import { ev, es, isEntityOn } from '../../core/store.js';
 import { setGlobalNumber, setGlobalSelect, setDriversEnabled } from '../../core/api.js';
 import { gkey } from '../../utils/keys.js';
@@ -49,7 +49,7 @@ const template = () => {
 
   return `
     <div class="ui-card settings-motor-cal-card">
-      <div class="ui-card-title">Motor Calibration & Learning</div>
+      <div class="ui-card-title"><span class="ui-title-text">Motor Calibration &amp; Learning${helpBadge('Per-valve endstop learning and motor runtime profiles. Calibration drives each valve fully open and closed to learn its travel time and ripple count.')}</span></div>
       <div class="ui-row">
         <span class="ui-label">Motor Drivers</span>
         <span class="ui-field"><div class="ui-toggle mc-drivers-toggle" role="switch" aria-label="Toggle motor drivers"></div></span>

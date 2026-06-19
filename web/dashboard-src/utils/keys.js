@@ -89,6 +89,7 @@ export const gkey = {
   forecastStatus: 'text-forecast_status',
   forecastLastError: 'text-forecast_last_error',
   forecastAgeS: 'sensor-forecast_age_s',
+  forecastFetchEpoch: 'sensor-forecast_fetch_epoch',
   forecastFailStreak: 'sensor-forecast_fail_streak',
   forecastLatitude: 'number-forecast_latitude',
   forecastLongitude: 'number-forecast_longitude',

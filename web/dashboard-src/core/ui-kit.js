@@ -32,6 +32,54 @@ const css = `
   justify-content: space-between;
   gap: 10px;
 }
+.ui-title-text { display: inline-flex; align-items: center; }
+
+/* ---- Help badge: a "?" chip with a hover/focus explanation tooltip ---- */
+.help-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-left: 7px;
+  border-radius: 999px;
+  border: 1px solid var(--control-border);
+  color: var(--text-faint);
+  font-size: .6rem;
+  font-weight: 700;
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: help;
+  position: relative;
+  flex-shrink: 0;
+}
+.help-badge:hover, .help-badge:focus-visible { color: var(--accent); border-color: var(--accent); outline: none; }
+.help-badge .help-tip {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: max-content;
+  max-width: 240px;
+  background: rgba(4,18,28,.97);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: .72rem;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  text-transform: none;
+  letter-spacing: .2px;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s ease;
+  z-index: 60;
+}
+.help-badge:hover .help-tip, .help-badge:focus-visible .help-tip { opacity: 1; }
 
 .ui-section {
   color: var(--text-secondary);
@@ -254,6 +302,14 @@ const css = `
 `;
 
 injectStyle('ui-kit', css);
+
+// Render a "?" help chip whose tooltip shows `text` on hover/focus. Drop it
+// inside a `.ui-title-text` span next to a card title.
+export function helpBadge(text) {
+  const safe = String(text).replace(/"/g, '&quot;');
+  return `<span class="help-badge" tabindex="0" role="img" aria-label="${safe}">?` +
+    `<span class="help-tip">${text}</span></span>`;
+}
 
 // Magnitude-aware step: the increment follows the size of the number so big
 // values move in big jumps and small values stay fine-grained. Below 1000 the

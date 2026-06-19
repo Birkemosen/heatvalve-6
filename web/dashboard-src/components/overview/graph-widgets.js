@@ -1,18 +1,19 @@
 import { component } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
 import { getDashboardValue, subscribeDashboard, NZ } from '../../core/store.js';
+import { svgEl, smoothPath, attachTooltip, legendHtml } from '../../core/chart-kit.js';
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
 // Wide viewBox scaled to 100% width with a uniform aspect ratio (meet) so axis
 // text stays crisp and proportional instead of stretching with the column width.
 const CHART_W = 480;
-const CHART_H = 200;
+const CHART_H = 210;
 const PAD_TOP = 14;
-const PAD_RIGHT = 16;
+const PAD_RIGHT = 14;
 const PAD_BOTTOM = 34;
-const PAD_LEFT = 44;
+const PAD_LEFT = 42;
 const PLOT_W = CHART_W - PAD_LEFT - PAD_RIGHT;
 const PLOT_H = CHART_H - PAD_TOP - PAD_BOTTOM;
+const PLOT_B = PAD_TOP + PLOT_H;
 
 // 24 h display window — fed by the device's server-side /history ring (sampled
 // every 5 min, 288 slots). Entry shape:
@@ -22,138 +23,45 @@ const FLOW_INDEX = NZ + 2;     // 8
 const RETURN_INDEX = NZ + 3;   // 9
 const DEMAND_INDEX = NZ + 4;   // 10
 
-// ========================================
-// CSS
-// ========================================
+const FLOW_LINE = 'var(--series-warm)';
+const RETURN_LINE = 'var(--series-cool)';
+const DEMAND_LINE = 'var(--series-cool)';
+
 const css = `
-.graph-widgets {
-  display: grid;
-  gap: 12px;
-}
-
-.graph-card {
-  border: 1px solid var(--panel-border);
-  border-radius: 16px;
-  background: var(--panel-bg);
-  padding: 10px 12px;
-  box-shadow: var(--panel-shadow);
-  height: 100%;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-}
-
-.graph-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  color: var(--accent);
-  font-size: .75rem;
-  text-transform: uppercase;
-  letter-spacing: .75px;
-  font-weight: 700;
-}
-
-.graph-head strong {
-  color: var(--text-strong);
-  font-size: .82rem;
-}
-
-.graph-legend {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 8px;
-}
-
-.graph-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--text-faint);
-  font-size: .62rem;
-  letter-spacing: .5px;
-  text-transform: uppercase;
-  font-weight: 700;
-}
-
-.graph-legend-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  box-shadow: 0 0 0 1px rgba(10, 20, 34, .45);
-}
-
-.graph-card svg {
-  width: 100%;
-  height: auto;
-  flex: 1;
-  display: block;
+.graph-widgets { display: grid; gap: 12px; }
+.graph-widgets .chart-card svg {
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(138,80,143,.12), rgba(0,32,46,.4));
-}
-
-.graph-axis,
-.graph-grid {
-  vector-effect: non-scaling-stroke;
-}
-
-.graph-tick-label {
-  fill: var(--chart-axis);
-  font-size: 11px;
-  letter-spacing: .4px;
-}
-
-.graph-axis-label {
-  fill: var(--chart-axis);
-  font-size: 9px;
-  letter-spacing: .8px;
-  text-transform: uppercase;
-  opacity: .85;
-}
-
-.graph-empty {
-  fill: var(--text-faint);
-  font-size: 12px;
-  letter-spacing: .3px;
+  background: linear-gradient(180deg, rgba(138,80,143,.10), rgba(0,32,46,.34));
 }
 `;
-
 injectStyle('graph-widgets', css);
 
 // ========================================
 // TEMPLATE
 // ========================================
+const flowCard = () =>
+  `<div class="chart-card"><div class="chart-head"><span class="chart-title">Flow / Return</span><span class="chart-sub gw-dt">—</span></div>` +
+  legendHtml([{ color: FLOW_LINE, label: 'Flow' }, { color: RETURN_LINE, label: 'Return' }]) +
+  `<svg class="gw-flow"></svg></div>`;
+
+const demandCard = () =>
+  `<div class="chart-card"><div class="chart-head"><span class="chart-title">Demand Index</span><span class="chart-sub gw-demand-text">—</span></div>` +
+  `<svg class="gw-demand"></svg></div>`;
+
 const template = (ctx) => {
-  if (ctx.variant === 'flow-return') {
-    return '<div class="graph-widgets"><div class="graph-card"><div class="graph-head"><span>Flow / Return</span><strong class="gw-dt">---</strong></div><div class="graph-legend"><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--series-warm)"></span>Flow</span><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--series-cool)"></span>Return</span></div><svg class="gw-flow"></svg></div></div>';
-  }
-  if (ctx.variant === 'demand') {
-    return '<div class="graph-widgets"><div class="graph-card"><div class="graph-head"><span>Demand Index</span><strong class="gw-demand-text">---</strong></div><svg class="gw-demand"></svg></div></div>';
-  }
-  return '<div class="graph-widgets"><div class="graph-card"><div class="graph-head"><span>Flow / Return</span><strong class="gw-dt">---</strong></div><div class="graph-legend"><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--series-warm)"></span>Flow</span><span class="graph-legend-item"><span class="graph-legend-dot" style="background:var(--series-cool)"></span>Return</span></div><svg class="gw-flow"></svg></div><div class="graph-card"><div class="graph-head"><span>Demand Index</span><strong class="gw-demand-text">---</strong></div><svg class="gw-demand"></svg></div></div>';
+  if (ctx.variant === 'flow-return') return `<div class="graph-widgets">${flowCard()}</div>`;
+  if (ctx.variant === 'demand') return `<div class="graph-widgets">${demandCard()}</div>`;
+  return `<div class="graph-widgets">${flowCard()}${demandCard()}</div>`;
 };
 
-function createSvgNode(tag, attrs, text) {
-  const node = document.createElementNS(SVG_NS, tag);
-  if (attrs) {
-    Object.keys(attrs).forEach((name) => {
-      node.setAttribute(name, attrs[name]);
-    });
-  }
-  if (text != null) node.textContent = text;
-  return node;
+// ========================================
+// HELPERS
+// ========================================
+function fmtTick(value, unit) {
+  if (!Number.isFinite(value)) return '—';
+  return unit === '%' ? Math.round(value) + '%' : value.toFixed(1);
 }
 
-function formatTick(value, unit) {
-  if (!Number.isFinite(value)) return '---';
-  if (unit === '%') return Math.round(value) + '%';
-  return value.toFixed(1) + 'C';
-}
-
-// Build {t, v} points for one value column of the history entries, skipping
-// null/undefined samples (a sensor with no reading at that time).
 function seriesFromHistory(entries, valueIndex, windowStart) {
   const out = [];
   for (let i = 0; i < entries.length; i++) {
@@ -166,147 +74,100 @@ function seriesFromHistory(entries, valueIndex, windowStart) {
   return out;
 }
 
-function xAt(t, windowStart) {
-  const ratio = (t - windowStart) / WINDOW_S;
-  return PAD_LEFT + Math.max(0, Math.min(1, ratio)) * PLOT_W;
-}
+const xForTime = (t, windowStart) => PAD_LEFT + Math.max(0, Math.min(1, (t - windowStart) / WINDOW_S)) * PLOT_W;
 
-function linePath(points, windowStart, min, max) {
-  if (!points.length) return '';
-  const span = Math.max(0.001, max - min);
-  let out = '';
-  for (let i = 0; i < points.length; i++) {
-    const x = xAt(points[i].t, windowStart);
-    const y = PAD_TOP + (1 - (points[i].v - min) / span) * PLOT_H;
-    out += (i ? ' L ' : 'M ') + x.toFixed(2) + ' ' + y.toFixed(2);
-  }
-  return out;
-}
-
-function areaPath(points, windowStart, min, max) {
-  const line = linePath(points, windowStart, min, max);
-  if (!line) return '';
-  const baseline = (PAD_TOP + PLOT_H).toFixed(2);
-  const xEnd = xAt(points[points.length - 1].t, windowStart).toFixed(2);
-  const xStart = xAt(points[0].t, windowStart).toFixed(2);
-  return line + ' L ' + xEnd + ' ' + baseline + ' L ' + xStart + ' ' + baseline + ' Z';
-}
-
-function getRange(pointsA, pointsB, unit) {
+function getRange(seriesList, unit) {
   const values = [];
-  pointsA.forEach((p) => values.push(p.v));
-  if (pointsB) pointsB.forEach((p) => values.push(p.v));
-  if (!values.length) {
-    return unit === '%' ? { min: 0, max: 100 } : { min: 0, max: 10 };
-  }
-
-  let min = Math.min.apply(null, values);
-  let max = Math.max.apply(null, values);
-  if (unit === '%') {
-    min = 0;                       // demand anchored at 0
-    max = Math.min(100, max);
-  }
-  if (min === max) {
-    const delta = unit === '%' ? 5 : 0.5;
-    min -= delta;
-    max += delta;
-  }
-  const padding = (max - min) * 0.08;
-  if (unit !== '%') min -= padding;
-  max += padding;
-  if (unit === '%') {
-    min = Math.max(0, min);
-    max = Math.min(100, max);
-  }
+  seriesList.forEach((s) => s.forEach((p) => values.push(p.v)));
+  if (!values.length) return unit === '%' ? { min: 0, max: 100 } : { min: 0, max: 10 };
+  let min = Math.min(...values), max = Math.max(...values);
+  if (unit === '%') { min = 0; max = Math.min(100, max); }
+  if (min === max) { const d = unit === '%' ? 5 : 0.5; min -= d; max += d; }
+  const pad = (max - min) * 0.1;
+  if (unit !== '%') min -= pad;
+  max += pad;
+  if (unit === '%') { min = Math.max(0, min); max = Math.min(100, max); }
   return { min, max };
 }
 
-function appendAxes(svg, min, max, unit, windowStart, uptime) {
-  const axisColor = 'rgba(150,168,205,0.40)';
-  const gridColor = 'rgba(150,168,205,0.16)';
-  const yTickCount = 3;
-  const xTicks = [24, 12, 0];   // hours ago
+// Draw one history chart (1–2 series) into `svg`, attach a hover tooltip on
+// `card`. defs = [{ index, color, label, width, fill }]. Returns teardown.
+function drawChart(svg, card, defs, unit, axisLabel, entries, windowStart, uptime) {
+  svg.innerHTML = '';
+  svg.setAttribute('viewBox', `0 0 ${CHART_W} ${CHART_H}`);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
-  svg.appendChild(createSvgNode('line', {
-    x1: PAD_LEFT, y1: PAD_TOP, x2: PAD_LEFT, y2: PAD_TOP + PLOT_H,
-    stroke: axisColor, 'stroke-width': '1', class: 'graph-axis'
-  }));
-  svg.appendChild(createSvgNode('line', {
-    x1: PAD_LEFT, y1: PAD_TOP + PLOT_H, x2: PAD_LEFT + PLOT_W, y2: PAD_TOP + PLOT_H,
-    stroke: axisColor, 'stroke-width': '1', class: 'graph-axis'
-  }));
-
-  for (let tick = 0; tick < yTickCount; tick++) {
-    const ratio = yTickCount === 1 ? 0 : tick / (yTickCount - 1);
-    const y = PAD_TOP + ratio * PLOT_H;
-    const value = max - (max - min) * ratio;
-    svg.appendChild(createSvgNode('line', {
-      x1: PAD_LEFT, y1: y, x2: PAD_LEFT + PLOT_W, y2: y,
-      stroke: gridColor, 'stroke-width': '1', class: 'graph-grid'
-    }));
-    svg.appendChild(createSvgNode('text', {
-      x: PAD_LEFT - 6, y: y + 4, 'text-anchor': 'end', class: 'graph-tick-label'
-    }, formatTick(value, unit)));
+  const seriesList = defs.map((d) => seriesFromHistory(entries, d.index, windowStart));
+  if (!seriesList.some((s) => s.length)) {
+    svg.appendChild(svgEl('text', { x: CHART_W / 2, y: CHART_H / 2, 'text-anchor': 'middle', class: 'chart-empty' }, 'Collecting history…'));
+    return null;
   }
 
-  xTicks.forEach((hoursAgo) => {
-    const x = xAt(uptime - hoursAgo * 3600, windowStart);
-    svg.appendChild(createSvgNode('text', {
+  const { min, max } = getRange(seriesList, unit);
+  const span = Math.max(0.001, max - min);
+  const yAt = (v) => PAD_TOP + (1 - (v - min) / span) * PLOT_H;
+
+  // gridlines + left y ticks
+  for (let t = 0; t < 3; t++) {
+    const r = t / 2;
+    const y = PAD_TOP + r * PLOT_H;
+    svg.appendChild(svgEl('line', { x1: PAD_LEFT, y1: y, x2: PAD_LEFT + PLOT_W, y2: y, class: 'chart-grid' }));
+    svg.appendChild(svgEl('text', { x: PAD_LEFT - 6, y: y + 4, 'text-anchor': 'end', class: 'chart-tick' }, fmtTick(max - span * r, unit)));
+  }
+  svg.appendChild(svgEl('line', { x1: PAD_LEFT, y1: PLOT_B, x2: PAD_LEFT + PLOT_W, y2: PLOT_B, class: 'chart-axis' }));
+  svg.appendChild(svgEl('text', { x: 9, y: PAD_TOP + PLOT_H / 2,
+    transform: `rotate(-90 9 ${(PAD_TOP + PLOT_H / 2).toFixed(1)})`, 'text-anchor': 'middle', class: 'chart-axis-label' }, axisLabel));
+
+  // x ticks: -24h, -12h, now (live edge in gold)
+  [24, 12, 0].forEach((hoursAgo) => {
+    const x = xForTime(uptime - hoursAgo * 3600, windowStart);
+    svg.appendChild(svgEl('text', {
       x, y: CHART_H - 10,
       'text-anchor': hoursAgo === 24 ? 'start' : (hoursAgo === 0 ? 'end' : 'middle'),
-      class: 'graph-tick-label'
+      class: 'chart-hour' + (hoursAgo === 0 ? ' now' : ''),
     }, hoursAgo === 0 ? 'now' : '-' + hoursAgo + 'h'));
   });
 
-  svg.appendChild(createSvgNode('text', {
-    x: 8, y: PAD_TOP + PLOT_H / 2,
-    transform: 'rotate(-90 8 ' + (PAD_TOP + PLOT_H / 2).toFixed(2) + ')',
-    'text-anchor': 'middle', class: 'graph-axis-label'
-  }, unit === '%' ? 'Demand' : 'Temp'));
+  // series (area fill first, then smooth line)
+  defs.forEach((d, k) => {
+    const pts = seriesList[k].map((p) => ({ x: xForTime(p.t, windowStart), y: yAt(p.v) }));
+    if (!pts.length) return;
+    const line = smoothPath(pts);
+    if (d.fill) {
+      svg.appendChild(svgEl('path', { d: line + ` L ${pts[pts.length - 1].x.toFixed(1)} ${PLOT_B} L ${pts[0].x.toFixed(1)} ${PLOT_B} Z`, fill: d.fill, stroke: 'none' }));
+    }
+    svg.appendChild(svgEl('path', { d: line, fill: 'none', stroke: d.color, 'stroke-width': String(d.width || 2.2), 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+  });
+
+  // unified samples for the tooltip (align series on shared timestamps)
+  const samples = [];
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    if (!e || e[0] < windowStart) continue;
+    const vals = defs.map((d) => e[d.index]);
+    if (vals.every((v) => v == null || !Number.isFinite(v))) continue;
+    samples.push({ t: e[0], vals });
+  }
+  if (!samples.length) return null;
+
+  const nowMs = Date.now();
+  return attachTooltip(svg, card, {
+    count: samples.length, plotTop: PAD_TOP, plotBottom: PLOT_B,
+    xAt: (i) => xForTime(samples[i].t, windowStart),
+    label: (i) => {
+      const d = new Date(nowMs - (uptime - samples[i].t) * 1000);
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    },
+    dots: (i) => defs.map((d, k) => ({ y: yAt(samples[i].vals[k]), color: d.color }))
+      .filter((_, k) => Number.isFinite(samples[i].vals[k])),
+    rows: (i) => defs.map((d, k) => ({ color: d.color, label: d.label, value: fmtTick(samples[i].vals[k], unit) + (unit === '%' ? '' : '°') }))
+      .filter((_, k) => Number.isFinite(samples[i].vals[k])),
+  });
 }
 
-function appendLine(svg, points, windowStart, min, max, color, width, fill) {
-  const d = linePath(points, windowStart, min, max);
-  if (!d) return;
-  if (fill) {
-    const area = createSvgNode('path', {
-      d: areaPath(points, windowStart, min, max), fill, stroke: 'none'
-    });
-    svg.appendChild(area);
-  }
-  svg.appendChild(createSvgNode('path', {
-    d, fill: 'none', stroke: color, 'stroke-width': String(width),
-    'stroke-linecap': 'round', 'stroke-linejoin': 'round'
-  }));
-}
-
-function renderSpark(svg, pointsA, colorA, pointsB, colorB, unit, windowStart, uptime, fillA) {
-  svg.innerHTML = '';
-  svg.setAttribute('viewBox', '0 0 ' + CHART_W + ' ' + CHART_H);
-  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-
-  if (!pointsA.length && !(pointsB && pointsB.length)) {
-    svg.appendChild(createSvgNode('text', {
-      x: CHART_W / 2, y: CHART_H / 2, 'text-anchor': 'middle', class: 'graph-empty'
-    }, 'Collecting history…'));
-    return;
-  }
-
-  const range = getRange(pointsA, pointsB, unit);
-  appendAxes(svg, range.min, range.max, unit, windowStart, uptime);
-
-  appendLine(svg, pointsA, windowStart, range.min, range.max, colorA, 2.4, fillA);
-  if (pointsB && pointsB.length) {
-    appendLine(svg, pointsB, windowStart, range.min, range.max, colorB, 2);
-  }
-}
-
-const FLOW_LINE = 'var(--series-warm)';
-const RETURN_LINE = 'var(--series-cool)';
-const DEMAND_LINE = 'var(--series-cool)';
-
-function lastVal(points) {
-  return points.length ? points[points.length - 1].v : null;
+function lastVal(entries, index, windowStart) {
+  const s = seriesFromHistory(entries, index, windowStart);
+  return s.length ? s[s.length - 1].v : null;
 }
 
 // ========================================
@@ -314,15 +175,14 @@ function lastVal(points) {
 // ========================================
 export default component({
   tag: 'graph-widgets',
-  state: (props) => ({
-    variant: (props && props.variant) || 'both'
-  }),
+  state: (props) => ({ variant: (props && props.variant) || 'both' }),
   render: template,
   onMount(ctx, el) {
     const dtEl = el.querySelector('.gw-dt');
     const demandTextEl = el.querySelector('.gw-demand-text');
     const flowSvg = el.querySelector('.gw-flow');
     const demandSvg = el.querySelector('.gw-demand');
+    let flowTeardown = null, demandTeardown = null;
 
     function update() {
       const hist = getDashboardValue('zoneStateHistory');
@@ -330,20 +190,23 @@ export default component({
       const uptime = (hist && hist.uptime_s) || (Number(Date.now() / 1000) | 0);
       const windowStart = uptime - WINDOW_S;
 
-      const flow = seriesFromHistory(entries, FLOW_INDEX, windowStart);
-      const ret = seriesFromHistory(entries, RETURN_INDEX, windowStart);
-      const demand = seriesFromHistory(entries, DEMAND_INDEX, windowStart);
-
-      if (dtEl && flowSvg) {
-        const lf = lastVal(flow);
-        const lr = lastVal(ret);
-        dtEl.textContent = lf != null && lr != null ? (lf - lr).toFixed(1) + ' C' : '---';
-        renderSpark(flowSvg, flow, FLOW_LINE, ret, RETURN_LINE, 'C', windowStart, uptime);
+      if (flowSvg) {
+        if (flowTeardown) flowTeardown();
+        const lf = lastVal(entries, FLOW_INDEX, windowStart);
+        const lr = lastVal(entries, RETURN_INDEX, windowStart);
+        dtEl.textContent = lf != null && lr != null ? 'Δ ' + (lf - lr).toFixed(1) + '°' : '—';
+        flowTeardown = drawChart(flowSvg, flowSvg.closest('.chart-card'),
+          [{ index: FLOW_INDEX, color: FLOW_LINE, label: 'Flow', width: 2.4 },
+           { index: RETURN_INDEX, color: RETURN_LINE, label: 'Return', width: 2 }],
+          'C', 'Temp', entries, windowStart, uptime);
       }
-      if (demandTextEl && demandSvg) {
-        const ld = lastVal(demand);
-        demandTextEl.textContent = ld != null ? Math.round(ld) + '%' : '---';
-        renderSpark(demandSvg, demand, DEMAND_LINE, null, null, '%', windowStart, uptime, 'var(--series-cool-fill)');
+      if (demandSvg) {
+        if (demandTeardown) demandTeardown();
+        const ld = lastVal(entries, DEMAND_INDEX, windowStart);
+        demandTextEl.textContent = ld != null ? Math.round(ld) + '%' : '—';
+        demandTeardown = drawChart(demandSvg, demandSvg.closest('.chart-card'),
+          [{ index: DEMAND_INDEX, color: DEMAND_LINE, label: 'Demand', width: 2.2, fill: 'var(--series-cool-fill)' }],
+          '%', 'Demand', entries, windowStart, uptime);
       }
     }
 

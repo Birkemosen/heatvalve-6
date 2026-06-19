@@ -1,8 +1,8 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { cardForm } from '../../core/ui-kit.js';
+import { cardForm, helpBadge } from '../../core/ui-kit.js';
 import { es, ev, isEntityOn, setEntity } from '../../core/store.js';
-import { setGlobalSelect, setGlobalNumber } from '../../core/api.js';
+import { setGlobalSelect, setGlobalNumber, command, fetchForecastHours } from '../../core/api.js';
 import { key, gkey } from '../../utils/keys.js';
 
 const ZONES = [1, 2, 3, 4, 5, 6];
@@ -35,6 +35,48 @@ const css = `
   border-color: rgba(255,200,50,.35);
 }
 
+.settings-forecast-card .fc-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  font-size: .78rem;
+}
+.settings-forecast-card .fc-age {
+  color: var(--text-secondary);
+}
+.settings-forecast-card .fc-error {
+  color: #FFB4B4;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+.settings-forecast-card .fc-fetch-btn {
+  margin-left: auto;
+  padding: 4px 12px;
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  color: var(--text-strong);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: .78rem;
+  font-weight: 700;
+  transition: .18s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.settings-forecast-card .fc-fetch-btn:hover {
+  background: var(--control-bg-hover);
+  border-color: rgba(120,146,200,.52);
+}
+.settings-forecast-card .fc-fetch-btn:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
 .settings-forecast-card .zone-table { width: 100%; border-collapse: collapse; font-size: .8rem; margin-top: 4px; }
 .settings-forecast-card .zone-table th {
   color: var(--text-secondary); font-size: .68rem; font-weight: 700; text-transform: uppercase;
@@ -62,8 +104,14 @@ const zoneRow = (z) => `
 const template = () => `
   <div class="ui-card settings-forecast-card">
     <div class="ui-card-title">
-      <span>Forecast Preload</span>
+      <span class="ui-title-text">Forecast Preload${helpBadge('Charges the slab before incoming weather: raises a zone setpoint when forecast wind on its exterior walls is about to spike. Solar gain offsets it. Fetched from Open-Meteo hourly.')}</span>
       <span class="fc-badge">disabled</span>
+    </div>
+
+    <div class="fc-meta">
+      <span class="fc-age"></span>
+      <span class="fc-error"></span>
+      <button class="fc-fetch-btn">Fetch Now</button>
     </div>
 
     <div class="ui-row">
@@ -121,8 +169,42 @@ export default component({
     const lonEl = el.querySelector('.fc-lon');
     const thrEl = el.querySelector('.fc-threshold');
     const maxEl = el.querySelector('.fc-maxoffset');
+    const ageEl = el.querySelector('.fc-age');
+    const errorEl = el.querySelector('.fc-error');
+    const fetchBtn = el.querySelector('.fc-fetch-btn');
 
     const form = cardForm(el);
+
+    function fmtFetchTime(epoch) {
+      if (!epoch) return '';
+      if (epoch < 1600000000) return 'clock syncing…';
+      const d = new Date(epoch * 1000);
+      const hhmm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const now = new Date();
+      const sameDay = d.getFullYear() === now.getFullYear() &&
+                      d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+      return sameDay ? hhmm
+        : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + hhmm;
+    }
+
+    function updateMeta() {
+      const ts = fmtFetchTime(ev(gkey.forecastFetchEpoch));
+      ageEl.textContent = ts ? `Last fetch: ${ts}` : '';
+      const err = es(gkey.forecastLastError);
+      errorEl.textContent = err || '';
+    }
+
+    fetchBtn.addEventListener('click', () => {
+      fetchBtn.disabled = true;
+      fetchBtn.textContent = 'Fetching…';
+      command('trigger_forecast_fetch').catch(() => {});
+      // Refresh the monitor graph after giving the firmware time to fetch (~15 s)
+      setTimeout(() => { fetchForecastHours(); }, 15000);
+      setTimeout(() => {
+        fetchBtn.disabled = false;
+        fetchBtn.textContent = 'Fetch Now';
+      }, 20000);
+    });
 
     const gate = (on) => { if (body) body.classList.toggle('is-disabled', !on); };
     form.toggle(enableBtn, {
@@ -180,11 +262,14 @@ export default component({
     subscribe(gkey.forecastLongitude, form.refresh);
     subscribe(gkey.forecastLoadThreshold, form.refresh);
     subscribe(gkey.forecastMaxOffsetC, form.refresh);
+    subscribe(gkey.forecastFetchEpoch, updateMeta);
+    subscribe(gkey.forecastLastError, updateMeta);
     ZONES.forEach((z) => {
       subscribe(key.forecastOffset(z), updateOffsets);
     });
 
     updateStatus();
+    updateMeta();
     updateOffsets();
     form.refresh();
   }

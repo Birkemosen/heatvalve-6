@@ -41,27 +41,38 @@ const css = `
 .timeline-card {
   border: 1px solid var(--panel-border);
   border-radius: 16px;
-  background: var(--panel-bg);
-  padding: 10px 12px;
+  background: var(--panel-bg-vibrant);
+  padding: 14px 16px;
   box-shadow: var(--panel-shadow);
 }
 
 .timeline-head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
+  gap: 9px;
   margin-bottom: 10px;
+}
+.timeline-head::before {
+  content: '';
+  width: 4px;
+  height: 13px;
+  border-radius: 2px;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+.timeline-head span {
   color: var(--accent);
-  font-size: .75rem;
+  font-size: .74rem;
+  font-weight: 800;
+  letter-spacing: 1.4px;
   text-transform: uppercase;
-  letter-spacing: .75px;
-  font-weight: 700;
 }
 
 .timeline-head strong {
+  margin-left: auto;
   color: var(--text-faint);
   font-size: .70rem;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: .4px;
   text-transform: none;
 }

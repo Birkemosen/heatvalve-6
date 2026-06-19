@@ -24,6 +24,7 @@ const css = `
   --series-warm: #ff8531;
   --series-cool: #8a508f;
   --series-cool-fill: rgba(138,80,143,.16);
+  --series-solar: #ffc14d;    /* gold — solar irradiance / current-hour highlight */
   /* Axis/tick label color — warm-neutral, legible on the dark panel. */
   --chart-axis: rgba(233,222,210,.82);
   --bg: #00202e;

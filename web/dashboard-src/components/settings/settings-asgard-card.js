@@ -1,6 +1,6 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { cardForm } from '../../core/ui-kit.js';
+import { cardForm, helpBadge } from '../../core/ui-kit.js';
 import { es, ev, isEntityOn, setEntity } from '../../core/store.js';
 import { setGlobalSelect, setGlobalNumber, setGlobalText } from '../../core/api.js';
 import { gkey } from '../../utils/keys.js';
@@ -68,7 +68,7 @@ injectStyle('settings-asgard-card', css);
 const template = () => `
   <div class="ui-card settings-asgard-card">
     <div class="ui-card-title">
-      <span>Asgard / Ecodan Bridge</span>
+      <span class="ui-title-text">Asgard / Ecodan Bridge${helpBadge('Pushes the house-weighted room temperature to the Ecodan/Asgard virtual thermostat. One board is the coordinator and aggregates zones from both boards; the other is a slave.')}</span>
       <span class="asgard-role-badge slave">slave</span>
     </div>
 
