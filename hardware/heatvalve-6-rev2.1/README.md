@@ -5,12 +5,15 @@ Editable KiCad 10 design for the USB-C-powered, six-channel DRV8837 HeatValve co
 ## Design state
 
 - Schematic: complete first electrical-review revision; KiCad ERC reports 0 errors.
-- PCB: compact four-layer 120 x 75 mm placement review with 103 electrical
+- PCB: compact four-layer 120 x 75 mm placement review with 128 electrical
   footprints, two M3 holes, an antenna notch, GND/+3V3 inner planes, and an
   intentionally unrouted ratsnest.
 - Fabrication status: **not released**. Routing, mechanical confirmation, and final
   footprint/availability review are still required.
-- Prototype tuning: tacho filter/gain, force threshold, and optional parallel shunt.
+- PCB DRC: not current; KiCad CLI 10.0.3 aborts on both the original and updated
+  board. See `drc.rpt` and rerun DRC in PCB Editor after routing.
+- Prototype tuning: BEMF filter/gain/blanking, force threshold, engagement signature,
+  and optional parallel shunt.
 
 ## Generate and validate
 
@@ -37,11 +40,18 @@ The committed `.kicad_sch` is usable without the Python generator dependency.
 - Motors and logic operate from the MT2492-generated 3.3 V rail.
 - Only one motor may run at a time.
 - All DRV8837 ground returns meet at `SHUNT`; `RSH1` is the only normal return to system ground.
-- INA180A1 provides x20 current gain. Its 3.3 V supply inherently bounds the normal output.
+- `RSH1` is 1.0 ohm and INA180A1 provides x20 gain: 30 mA = 0.60 V,
+  60 mA = 1.20 V, and 150 mA = 3.00 V. This preserves the pin-engagement peak.
 - `R14`, `C13`, and `D5` provide additional ADC filtering and rail clamp protection.
 - The hardware force-limit comparator reads the raw Kelvin shunt and remains effective if the ADC path saturates.
+- Two 74HC4051 selectors connect only the active motor's A/B terminals to a
+  shared differential BEMF front end. `ADC_BEMF` retains the raw waveform and
+  `TACHO_EDGE` feeds PCNT after AC gain and hysteresis.
+- Shunt ripple is not used as authoritative motion evidence. Firmware must qualify
+  tacho edges against BEMF waveform, direction, switching blanking, and cadence.
 - The latch powers up with `DRIVE_PERMIT` low and must be explicitly armed by firmware.
 - Three OneWire connectors share GPIO42. The DNP I2C header uses GPIO1/GPIO2.
 - Motor jacks use the center pair: pin 2 `MOT_A`, pin 3 `MOT_B`.
 
-See `design-review.md` for calculations, interfaces, and the remaining release gates.
+See `design-review.md` for calculations and release gates, and
+`measurement-and-position.md` for engagement, modulation, endstop, and position logic.

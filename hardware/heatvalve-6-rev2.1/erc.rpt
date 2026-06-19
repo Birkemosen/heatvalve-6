@@ -1,4 +1,4 @@
-ERC report (2026-06-17T22:47:37, Encoding UTF8)
+ERC report (2026-06-19T17:36:12, Encoding UTF8)
 Report includes: Errors, Warnings, Exclusions
 
 ***** Sheet /
@@ -7,13 +7,13 @@ Report includes: Errors, Warnings, Exclusions
     @(229.87 mm, 149.86 mm): Symbol U10 [MCP6004]
 [lib_symbol_mismatch]: Symbol 'MCP6004' doesn't match copy in library 'Amplifier_Operational'
     ; warning
-    @(299.72 mm, 149.86 mm): Symbol U10 [MCP6004]
-[lib_symbol_mismatch]: Symbol 'MCP6004' doesn't match copy in library 'Amplifier_Operational'
-    ; warning
-    @(299.72 mm, 184.15 mm): Symbol U10 [MCP6004]
-[lib_symbol_mismatch]: Symbol 'MCP6004' doesn't match copy in library 'Amplifier_Operational'
-    ; warning
     @(330.20 mm, 184.15 mm): Symbol U10 [MCP6004]
+[lib_symbol_mismatch]: Symbol 'MCP6004' doesn't match copy in library 'Amplifier_Operational'
+    ; warning
+    @(350.52 mm, 166.37 mm): Symbol U10 [MCP6004]
+[lib_symbol_mismatch]: Symbol 'MCP6004' doesn't match copy in library 'Amplifier_Operational'
+    ; warning
+    @(439.42 mm, 204.47 mm): Symbol U10 [MCP6004]
 [lib_symbol_mismatch]: Symbol 'MCP6004' doesn't match copy in library 'Amplifier_Operational'
     ; warning
     @(463.55 mm, 149.86 mm): Symbol U10 [MCP6004]
