@@ -79,7 +79,8 @@ struct DashboardSnapshot {
   uint32_t          asgard_push_fail_streak{0};
   uint8_t           asgard_local_zones{0};
   uint8_t           asgard_peer_zones{0};
-  float             min_zone_flow_pct{15.0f};  // per-zone minimum valve opening enforced while bridge active
+  float             min_zone_flow_pct{15.0f};  // per-zone floor while bridge or always-enforce is active
+  bool              minimum_flow_always{false}; // enforce independently of bridge state
 
   // --- Hydraulic balancing (static / adaptive) ---
   hv6::BalancingConfig balancing;                       // mode + adaptive knobs + min flow

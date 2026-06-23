@@ -325,6 +325,7 @@ void HV6Dashboard::update_snapshot_() {
     s.asgard                 = this->config_store_->get_asgard_config();
     s.balancing              = this->config_store_->get_config().balancing;
     s.min_zone_flow_pct      = s.balancing.minimum_flow_pct;
+    s.minimum_flow_always    = s.balancing.modulating_heat_source;
     s.forecast               = this->config_store_->get_forecast_config();
     for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
       s.zones[i]            = this->config_store_->get_zone_config(i);
@@ -873,7 +874,9 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
       static_cast<unsigned>(snap->asgard.peer_stale_after_s));
   format_float_token(num_buf, sizeof(num_buf), snap->min_zone_flow_pct, 1);
   appendf(buf, BUF_SIZE, offset,
+      "\"switch-minimum_flow_always\":{\"state\":\"%s\"},"
       "\"number-min_zone_flow_pct\":{\"value\":%s},",
+      snap->minimum_flow_always ? "on" : "off",
       num_buf);
   format_float_token(num_buf, sizeof(num_buf), snap->asgard_last_push_c, 2);
   char sp_buf[16];
@@ -1460,11 +1463,16 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
     asgard_cfg.peer_stale_after_s = static_cast<uint16_t>(std::max(30.0f, std::min(3600.0f, num_val)));
     this->config_store_->update_asgard(asgard_cfg);
 
-  // ---- min_zone_flow_pct (per-zone minimum valve opening while bridge active) ----
+  // ---- min_zone_flow_pct (active with bridge or minimum_flow_always) ----
   } else if (strcmp(key, "min_zone_flow_pct") == 0 && has_num && this->config_store_) {
     auto bal = this->config_store_->get_config().balancing;
     bal.minimum_flow_pct = std::max(0.0f, std::min(50.0f, num_val));
     this->config_store_->update_balancing(bal);
+
+  // ---- minimum_flow_always (modulating source exists independently of Asgard) ----
+  } else if (strcmp(key, "minimum_flow_always") == 0 && has_str && this->zone_controller_) {
+    const bool enabled = (strcasecmp(str_val, "on") == 0 || strcmp(str_val, "1") == 0);
+    this->zone_controller_->set_modulating_heat_source(enabled);
 
   // ---- balance_mode (Static / Adaptive / Return Temp) ----
   } else if (strcmp(key, "balance_mode") == 0 && has_str && this->zone_controller_) {

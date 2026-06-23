@@ -143,7 +143,8 @@ export default component({
           cell.textContent = '—';
         } else {
           cell.textContent = (err >= 0 ? '+' : '') + Number(err).toFixed(2);
-          cell.classList.add(err > 0.05 ? 'cold' : (err < -0.05 ? 'warm' : ''));
+          const errorClass = err > 0.05 ? 'cold' : (err < -0.05 ? 'warm' : '');
+          if (errorClass) cell.classList.add(errorClass);
         }
       });
     }

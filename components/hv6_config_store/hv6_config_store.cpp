@@ -50,10 +50,10 @@ void trim_copy(char *dst, size_t dst_len, const char *src) {
 }
 
 // Persist/restore an arbitrary POD config section under its own NVS key with an
-// independent version tag, so it survives the version-based discard of the main
-// `config` blob on a CONFIG_VERSION bump (same rationale as the zone/sensor
-// blobs). Bump the matching *_CONFIG_VERSION only when that struct's layout
-// changes — that resets just that section, not the whole configuration.
+// independent version tag, so release/schema churn in the legacy main `config`
+// blob cannot reset unrelated user settings. Bump the matching *_CONFIG_VERSION
+// only when that struct's layout changes — that resets just that section, not
+// the whole configuration.
 template<typename T>
 void save_section(nvs_handle_t handle, const char *key, uint32_t version, const T &obj) {
   uint8_t blob[sizeof(uint32_t) + sizeof(T)];
@@ -583,6 +583,7 @@ void Hv6ConfigStore::load_config_() {
     return;
   }
 
+  bool normalize_main_config_version = false;
   size_t stored_size = 0;
   err = nvs_get_blob(handle, KEY_CONFIG, nullptr, &stored_size);
   if (err == ESP_OK && stored_size > 0) {
@@ -590,20 +591,27 @@ void Hv6ConfigStore::load_config_() {
     size_t read_size = stored_size;
     err = nvs_get_blob(handle, KEY_CONFIG, raw.data(), &read_size);
     if (err == ESP_OK) {
-      // Check config version before applying — if the stored blob has an
-      // incompatible version (or no version field at all), discard it and
-      // keep the fresh C++ defaults.
+      // The all-in-one blob is now only a legacy fallback. Keep same-size blobs
+      // even when their coarse version differs, then normalize the marker on the
+      // next commit. Real reset boundaries live in the per-section versions.
       uint32_t stored_version = 0;
       if (read_size >= sizeof(uint32_t))
         memcpy(&stored_version, raw.data(), sizeof(uint32_t));
 
-      if (stored_version == CONFIG_VERSION && read_size == sizeof(DeviceConfig)) {
+      if (read_size == sizeof(DeviceConfig)) {
         xSemaphoreTake(mutex_, portMAX_DELAY);
         memcpy(&config_, raw.data(), sizeof(DeviceConfig));
+        config_.config_version = CONFIG_VERSION;
         xSemaphoreGive(mutex_);
-        ESP_LOGI(TAG, "Config loaded (%u bytes, version %" PRIu32 ")", (unsigned) read_size, stored_version);
+        normalize_main_config_version = (stored_version != CONFIG_VERSION);
+        if (normalize_main_config_version) {
+          ESP_LOGI(TAG, "Config loaded from compatible legacy blob (%u bytes, stored v%" PRIu32 ", normalized to v%" PRIu32 ")",
+                   (unsigned) read_size, stored_version, CONFIG_VERSION);
+        } else {
+          ESP_LOGI(TAG, "Config loaded (%u bytes, version %" PRIu32 ")", (unsigned) read_size, stored_version);
+        }
       } else {
-        ESP_LOGW(TAG, "Config version/size mismatch (stored v%" PRIu32 " %u bytes, expected v%" PRIu32 " %u bytes), using defaults",
+        ESP_LOGW(TAG, "Config size mismatch (stored v%" PRIu32 " %u bytes, expected v%" PRIu32 " %u bytes), using defaults",
                  stored_version, static_cast<unsigned>(read_size),
                  CONFIG_VERSION, static_cast<unsigned>(sizeof(DeviceConfig)));
       }
@@ -611,13 +619,13 @@ void Hv6ConfigStore::load_config_() {
   }
 
   // Overlay the durable sensor pairing and zone config on top of whatever the
-  // main blob loaded (or the defaults, when the main blob was version-discarded
+  // main blob loaded (or the defaults, when the main blob was size-discarded
   // above).
   bool had_durable_sensors = load_sensor_config_(handle);
   bool had_durable_zones = load_zone_config_(handle);
 
   // Overlay the remaining durable global-settings sections (each independent of
-  // CONFIG_VERSION). Done under the mutex; the section loaders are plain memcpys
+  // the legacy main-blob version). Done under the mutex; the section loaders are plain memcpys
   // (they don't take the mutex themselves, so no re-entrancy).
   bool had_all_sections = true;
   xSemaphoreTake(mutex_, portMAX_DELAY);
@@ -638,8 +646,8 @@ void Hv6ConfigStore::load_config_() {
 
   // Migration: a returning device whose settings only lived in the main blob has
   // no durable copies yet. Seed them now (deferred commit) while the data is
-  // still present, so they survive the next CONFIG_VERSION bump.
-  if (!had_durable_sensors || !had_durable_zones || !had_all_sections)
+  // still present, so they survive future main-blob resets.
+  if (normalize_main_config_version || !had_durable_sensors || !had_durable_zones || !had_all_sections)
     mark_dirty();
 }
 
@@ -650,6 +658,8 @@ void Hv6ConfigStore::save_config_() {
   DeviceConfig snapshot;
   xSemaphoreTake(mutex_, portMAX_DELAY);
   snapshot = config_;
+  snapshot.config_version = CONFIG_VERSION;
+  config_.config_version = CONFIG_VERSION;
   xSemaphoreGive(mutex_);
 
   nvs_handle_t handle;
@@ -659,12 +669,12 @@ void Hv6ConfigStore::save_config_() {
   nvs_set_blob(handle, KEY_CONFIG, &snapshot, sizeof(DeviceConfig));
 
   // Mirror the sensor pairing and zone config to their own keys so they outlive
-  // a CONFIG_VERSION bump.
+  // any reset of the legacy all-in-one config blob.
   save_sensor_config_(handle, snapshot.sensor_config);
   save_zone_config_(handle, snapshot.zones);
 
   // Mirror the remaining global-settings sections likewise — each under its own
-  // versioned key so a CONFIG_VERSION bump no longer wipes the user's settings.
+  // versioned key so legacy main-blob resets no longer wipe the user's settings.
   save_section(handle, KEY_SYSTEM, SYSTEM_CONFIG_VERSION, snapshot.system);
   save_section(handle, KEY_CONTROL, CONTROL_CONFIG_VERSION, snapshot.control);
   save_section(handle, KEY_PROBES, PROBE_CONFIG_VERSION, snapshot.probes);

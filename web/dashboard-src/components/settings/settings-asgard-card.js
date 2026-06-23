@@ -77,6 +77,16 @@ const template = () => `
       <span class="ui-field"><div class="ui-toggle sa-enable" role="switch" aria-label="Toggle Asgard bridge"></div></span>
     </div>
 
+    <div class="ui-section">Minimum zone flow</div>
+    <div class="ui-row">
+      <span class="ui-label">Always enforce <span class="ui-sublabel">use when a modulating heat source is attached without enabling this bridge</span></span>
+      <span class="ui-field"><div class="ui-toggle sa-minflow-always" role="switch" aria-label="Always enforce minimum zone flow"></div></span>
+    </div>
+    <div class="ui-row">
+      <span class="ui-label">Min valve opening (%) <span class="ui-sublabel">floor held on every enabled zone while the bridge or this option is active</span></span>
+      <span class="ui-field"><input class="ui-input sa-minflow" type="number" min="0" max="50" step="1" placeholder="15" /></span>
+    </div>
+
     <div class="gated-body sa-body">
       <div class="ui-row">
         <span class="ui-label">Coordinator <span class="ui-sublabel">pushes to Asgard</span></span>
@@ -105,12 +115,6 @@ const template = () => `
       <div class="ui-row">
         <span class="ui-label">Push interval (s)</span>
         <span class="ui-field"><input class="ui-input sa-interval" type="number" min="5" max="3600" step="1" placeholder="30" /></span>
-      </div>
-
-      <div class="ui-section">Minimum zone flow</div>
-      <div class="ui-row">
-        <span class="ui-label">Min valve opening (%) <span class="ui-sublabel">floor held on every enabled zone so the heat pump always has flow</span></span>
-        <span class="ui-field"><input class="ui-input sa-minflow" type="number" min="0" max="50" step="1" placeholder="15" /></span>
       </div>
 
       <div class="ui-section">Recommended setpoint</div>
@@ -145,6 +149,7 @@ export default component({
     const entityEl  = el.querySelector('.sa-entity');
     const peerEl    = el.querySelector('.sa-peer');
     const intervalEl = el.querySelector('.sa-interval');
+    const minFlowAlwaysBtn = el.querySelector('.sa-minflow-always');
     const minFlowEl  = el.querySelector('.sa-minflow');
     const stPeer    = el.querySelector('.sa-st-peer');
     const stPush    = el.querySelector('.sa-st-push');
@@ -170,6 +175,7 @@ export default component({
     const gate = (on) => body.classList.toggle('is-disabled', !on);
     form.toggle(enableBtn, { read: () => isEntityOn(gkey.asgardEnabled), commit: commitToggle(gkey.asgardEnabled, 'asgard_enabled', 'enabled'), onChange: gate });
     form.toggle(coordBtn,  { read: () => isEntityOn(gkey.asgardCoordinator), commit: commitToggle(gkey.asgardCoordinator, 'asgard_coordinator', 'coordinator') });
+    form.toggle(minFlowAlwaysBtn, { read: () => isEntityOn(gkey.minimumFlowAlways), commit: commitToggle(gkey.minimumFlowAlways, 'minimum_flow_always', 'minimum flow') });
 
     function commitText(key, settingKey) {
       return (v) => {
@@ -224,6 +230,7 @@ export default component({
     }
 
     subscribe(gkey.asgardEnabled,       form.refresh);
+    subscribe(gkey.minimumFlowAlways,   form.refresh);
     subscribe(gkey.asgardCoordinator,   form.refresh);
     subscribe(gkey.asgardRole,          updateStatus);
     subscribe(gkey.asgardPeerStatus,    updateStatus);

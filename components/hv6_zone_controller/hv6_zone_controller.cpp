@@ -1041,6 +1041,15 @@ void Hv6ZoneController::run_cycle_() {
   enforce_minimum_total_opening_(target_positions);
   apply_minimum_flow_(target_positions);
 
+  // The snapshot represents the final commanded target, including safety-flow
+  // floors.  Keeping the pre-floor value here made the dashboard claim that a
+  // configured minimum was not being enforced even when the command path had
+  // raised it.
+  xSemaphoreTake(snapshot_mutex_, portMAX_DELAY);
+  for (uint8_t i = 0; i < NUM_ZONES; i++)
+    snapshots_[i].valve_position_pct = target_positions[i];
+  xSemaphoreGive(snapshot_mutex_);
+
   // ---- Adaptive balancing: accumulate the relative control error, step hourly ----
   if (adaptive_mode) {
     if (adapt_reset_pending_.exchange(false, std::memory_order_acq_rel)) {
@@ -1101,8 +1110,13 @@ void Hv6ZoneController::run_cycle_() {
 
     float current_pos = valve_controller_->get_position(i);
     float diff = std::fabs(target_positions[i] - current_pos);
+    const bool safety_floor_raised = target_positions[i] > pre_floor_positions[i] + 0.01f;
+    const bool below_safety_floor = safety_floor_raised && current_pos + 0.01f < target_positions[i];
 
-    if (diff >= cfg.control.min_movement_pct)
+    // min_movement_pct suppresses normal control chatter.  It must not suppress
+    // a safety-flow correction: a 3% correction toward a 15% floor still needs
+    // to reach the valve even though the ordinary movement deadband is 5%.
+    if (diff >= cfg.control.min_movement_pct || below_safety_floor)
       valve_controller_->request_position(i, target_positions[i]);
   }
 }

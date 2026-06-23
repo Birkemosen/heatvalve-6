@@ -107,6 +107,7 @@ function seed() {
   setEntity(gkey.adaptMin, { value: 0.5 });
   setEntity(gkey.adaptMax, { value: 1.5 });
   setEntity(gkey.minZoneFlowPct, { value: 15 });
+  setEntity(gkey.minimumFlowAlways, { state: 'off' });
   setEntity(gkey.cpuLoadCore0, { value: 18.5 });
   setEntity(gkey.cpuLoadCore1, { value: 7.2 });
   setEntity(gkey.freeInternalKb, { value: 142 });
@@ -361,6 +362,7 @@ export function handleMockPost(body) {
   if (k === 'manifold_return_probe') { setEntity(gkey.manifoldReturnProbe, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
   if (k === 'motor_profile_default') { setEntity(gkey.motorProfileDefault, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
   if (k === 'simple_preheat_enabled') { setEntity(gkey.simplePreheatEnabled, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
+  if (k === 'minimum_flow_always') { setEntity(gkey.minimumFlowAlways, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
   if (k === 'balance_mode') { setEntity(gkey.balanceMode, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
 
   // Text settings

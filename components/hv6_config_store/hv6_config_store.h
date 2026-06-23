@@ -63,11 +63,11 @@ class Hv6ConfigStore : public esphome::Component {
   static constexpr const char *NVS_NAMESPACE = "hv6";
   static constexpr const char *KEY_CONFIG = "config";
   static constexpr const char *KEY_MOTOR_PFX = "mot";
-  static constexpr const char *KEY_SENSORS = "sensors";  // BLE pairing, survives config version bump
-  static constexpr const char *KEY_ZONES = "zones";      // Zone config, survives config version bump
+  static constexpr const char *KEY_SENSORS = "sensors";  // BLE pairing, survives main-blob resets
+  static constexpr const char *KEY_ZONES = "zones";      // Zone config, survives main-blob resets
   // Remaining global-settings sections, each mirrored to its own durable key so
   // user settings (preheat, forecast, asgard, balancing, …) survive a
-  // CONFIG_VERSION bump just like zones/sensors do.
+  // legacy main-config reset just like zones/sensors do.
   static constexpr const char *KEY_SYSTEM = "system";
   static constexpr const char *KEY_CONTROL = "control";
   static constexpr const char *KEY_PROBES = "probes";
@@ -97,7 +97,7 @@ class Hv6ConfigStore : public esphome::Component {
 
   /// Persist/restore the zone configuration array under KEY_ZONES, independent of
   /// the main config blob's version gate (same rationale as the sensor pairing —
-  /// keeps area/pipe/wall settings across a CONFIG_VERSION bump). Called from
+  /// keeps area/pipe/wall settings across legacy main-config resets). Called from
   /// save_config_/load_config_ with an already-open NVS handle.
   void save_zone_config_(nvs_handle_t handle, const ZoneConfig (&zones)[NUM_ZONES]);
   /// Returns true if a valid durable zone blob was found and applied.

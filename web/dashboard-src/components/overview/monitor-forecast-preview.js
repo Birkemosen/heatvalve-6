@@ -19,7 +19,7 @@ const PLOT_B = PAD_T + PLOT_H;   // baseline y
 const template = () => `
   <div class="chart-card forecast-preview">
     <div class="chart-head">
-      <span class="chart-title">Weather Forecast (24h)</span>
+      <span class="chart-title">Weather Forecast</span>
       <span class="chart-sub"></span>
     </div>
     ${legendHtml([
@@ -150,7 +150,7 @@ export default component({
   onMount(ctx, el) {
     const sub = el.querySelector('.chart-sub');
     const body = el.querySelector('.fc-body');
-    const card = el.querySelector('.forecast-preview');
+    const card = el.matches('.forecast-preview') ? el : el.querySelector('.forecast-preview');
     let teardown = null;
 
     function update() {

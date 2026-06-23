@@ -1,5 +1,8 @@
 #!/bin/bash
-# Increment semantic version in version.yaml
+# Increment firmware release semantic version in version.yaml.
+# This intentionally does not touch NVS config schema versions; those live in
+# components/hv6_config_store/hv6_types.h and must only change for incompatible
+# persisted-struct layout changes.
 # Usage: ./bump_patch_version.sh [patch|minor|major]
 # Default: patch
 

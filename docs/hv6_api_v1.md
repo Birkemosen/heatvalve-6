@@ -73,6 +73,7 @@ Implemented global settings keys (selection/number) relevant to balancing:
 - `balance_mode` (select: `Static` | `Adaptive` | `Return Temp`) — hydraulic-balancing strategy
 - `adapt_interval_s`, `adapt_step`, `adapt_min`, `adapt_max` (number) — adaptive outer-loop knobs
 - `min_zone_flow_pct` (number) — per-zone minimum opening with a modulating heat source
+- `minimum_flow_always` (select: `on` | `off`) — enforce that floor even when the Asgard bridge is disabled
 
 ## Response Envelope
 
