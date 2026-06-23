@@ -349,26 +349,19 @@ void Hv6ZoneController::set_control_algorithm(ControlAlgorithm algorithm) {
 }
 
 void Hv6ZoneController::set_simple_preheat_enabled(bool enabled) {
+  (void) enabled;
   if (!config_store_)
     return;
   auto cfg = config_store_->get_config();
-  if (cfg.control.simple_preheat_enabled == enabled)
+  if (cfg.control.simple_preheat_enabled)
     return;
-  cfg.control.simple_preheat_enabled = enabled;
+  cfg.control.simple_preheat_enabled = true;
   config_store_->update_control(cfg.control);
-
-  if (!enabled) {
-    for (uint8_t i = 0; i < NUM_ZONES; i++)
-      reset_simple_preheat_(i);
-  }
-
-  ESP_LOGI(TAG, "Simple preheat: %s", enabled ? "ON" : "OFF");
+  ESP_LOGI(TAG, "Simple preheat is always active; stored disabled flag repaired");
 }
 
 bool Hv6ZoneController::is_simple_preheat_enabled() const {
-  if (!config_store_)
-    return true;
-  return config_store_->get_config().control.simple_preheat_enabled;
+  return true;
 }
 
 ControlAlgorithm Hv6ZoneController::get_control_algorithm() const {
@@ -674,19 +667,28 @@ void Hv6ZoneController::set_zone_sync(uint8_t zone, int8_t target_zone) {
     return;
   if (target_zone >= static_cast<int8_t>(NUM_ZONES))
     return;
+  auto cfg = config_store_->get_config();
   // Prevent self-sync
   if (target_zone == static_cast<int8_t>(zone))
     target_zone = -1;
-  // Prevent circular sync (if target is already synced to this zone)
+
+  // Keep merge groups as stars: if the chosen target is already a secondary,
+  // store the root primary instead of creating a chain.
   if (target_zone >= 0) {
-    auto cfg = config_store_->get_config();
-    if (cfg.zones[target_zone].sync_to_zone == static_cast<int8_t>(zone)) {
-      ESP_LOGW(TAG, "Zone %d sync rejected: Zone %d already syncs to Zone %d",
-               zone + 1, target_zone + 1, zone + 1);
-      return;
+    int8_t root = target_zone;
+    for (uint8_t guard = 0; guard < NUM_ZONES; guard++) {
+      int8_t next = cfg.zones[root].sync_to_zone;
+      if (next < 0 || next >= static_cast<int8_t>(NUM_ZONES))
+        break;
+      root = next;
+      if (root == static_cast<int8_t>(zone)) {
+        ESP_LOGW(TAG, "Zone %d sync rejected: would create a circular group", zone + 1);
+        return;
+      }
     }
+    target_zone = root;
   }
-  auto cfg = config_store_->get_config();
+
   if (cfg.zones[zone].sync_to_zone == target_zone)
     return;
   cfg.zones[zone].sync_to_zone = target_zone;
@@ -918,29 +920,50 @@ void Hv6ZoneController::run_cycle_() {
     zone_setpoints[i] = eff;
   }
 
-  // Apply zone sync: synced zones share the primary zone's setpoint
-  // and use the averaged temperature from both sensors
-  for (uint8_t i = 0; i < NUM_ZONES; i++) {
-    int8_t primary = cfg.zones[i].sync_to_zone;
-    if (primary < 0 || primary >= static_cast<int8_t>(NUM_ZONES))
-      continue;
-    if (!cfg.zones[i].enabled || !cfg.zones[primary].enabled)
+  auto sync_root = [&cfg](uint8_t zone) -> int8_t {
+    int8_t root = static_cast<int8_t>(zone);
+    for (uint8_t guard = 0; guard < NUM_ZONES; guard++) {
+      int8_t next = cfg.zones[root].sync_to_zone;
+      if (next < 0 || next >= static_cast<int8_t>(NUM_ZONES))
+        return root;
+      if (next == static_cast<int8_t>(zone))
+        return static_cast<int8_t>(zone);
+      root = next;
+    }
+    return static_cast<int8_t>(zone);
+  };
+
+  std::array<int8_t, NUM_ZONES> sync_roots{};
+  for (uint8_t i = 0; i < NUM_ZONES; i++)
+    sync_roots[i] = sync_root(i);
+
+  // Apply zone sync groups: one primary may own multiple secondary zones.
+  // Members share the primary setpoint and one true mean room temperature.
+  for (uint8_t root = 0; root < NUM_ZONES; root++) {
+    if (!cfg.zones[root].enabled)
       continue;
 
-    // Use primary zone's setpoint for the synced zone
-    zone_setpoints[i] = zone_setpoints[primary];
+    float temp_sum = 0.0f;
+    uint8_t temp_count = 0;
+    uint8_t member_count = 0;
+    for (uint8_t i = 0; i < NUM_ZONES; i++) {
+      if (!cfg.zones[i].enabled || sync_roots[i] != static_cast<int8_t>(root))
+        continue;
+      member_count++;
+      if (!std::isnan(zone_temps[i])) {
+        temp_sum += zone_temps[i];
+        temp_count++;
+      }
+    }
+    if (member_count <= 1)
+      continue;
 
-    // Average both temperatures (if both are valid)
-    float t_primary = zone_temps[primary];
-    float t_synced = zone_temps[i];
-    if (!std::isnan(t_primary) && !std::isnan(t_synced)) {
-      float avg = (t_primary + t_synced) / 2.0f;
+    const float avg = temp_count > 0 ? temp_sum / temp_count : NAN;
+    for (uint8_t i = 0; i < NUM_ZONES; i++) {
+      if (!cfg.zones[i].enabled || sync_roots[i] != static_cast<int8_t>(root))
+        continue;
+      zone_setpoints[i] = zone_setpoints[root];
       zone_temps[i] = avg;
-      zone_temps[primary] = avg;
-    } else if (!std::isnan(t_primary)) {
-      zone_temps[i] = t_primary;
-    } else if (!std::isnan(t_synced)) {
-      zone_temps[primary] = t_synced;
     }
   }
 
@@ -963,7 +986,7 @@ void Hv6ZoneController::run_cycle_() {
 
     algorithms_[i].set_algorithm(cfg.zones[i].algorithm);
 
-    float preheat_advance = cfg.control.simple_preheat_enabled ? preheat_advance_c_[i] : 0.0f;
+    float preheat_advance = preheat_advance_c_[i];
     float absorb_band = preheat_absorb_active_.load()
         ? cfg.control.preheat_absorb_band_c * floor_absorb_factor(cfg.zones[i].floor_type)
         : 0.0f;
@@ -1004,19 +1027,17 @@ void Hv6ZoneController::run_cycle_() {
     snapshots_[i].was_overheated = was_overheated;
     xSemaphoreGive(snapshot_mutex_);
 
-    if (cfg.control.simple_preheat_enabled) {
-      update_simple_preheat_(i, temp, setpoint, cfg.control.comfort_band_c, state);
-    } else {
-      reset_simple_preheat_(i);
-    }
+    update_simple_preheat_(i, temp, setpoint, cfg.control.comfort_band_c, state);
   }
 
   // Merge: a zone merged into another (sync_to_zone) shares the room, so after its
   // position is computed from the merged (mean) temperature and shared setpoint, force
-  // it to the primary's opening — both valves open EQUALLY instead of diverging on
-  // per-zone hydraulic balance. Temperature averaging already happened above.
+  // it to the root primary's opening — all grouped valves open EQUALLY instead of
+  // diverging on per-zone hydraulic balance. Temperature averaging already happened above.
   for (uint8_t i = 0; i < NUM_ZONES; i++) {
-    int8_t primary = cfg.zones[i].sync_to_zone;
+    int8_t primary = sync_roots[i];
+    if (primary == static_cast<int8_t>(i))
+      continue;
     if (primary < 0 || primary >= static_cast<int8_t>(NUM_ZONES))
       continue;
     if (!cfg.zones[i].enabled || !cfg.zones[primary].enabled)
@@ -1036,7 +1057,7 @@ void Hv6ZoneController::run_cycle_() {
     if (cfg.zones[i].enabled)
       pre_floor_total += pre_floor_positions[i];
   const bool min_total_triggered = (pre_floor_total < cfg.control.min_valve_opening_pct);
-  const bool min_flow_active = (cfg.asgard.enabled || cfg.balancing.modulating_heat_source);
+  const bool min_flow_active = cfg.balancing.modulating_heat_source;
 
   enforce_minimum_total_opening_(target_positions);
   apply_minimum_flow_(target_positions);
@@ -1260,9 +1281,7 @@ void Hv6ZoneController::update_preheat_absorb_(const DeviceConfig &cfg,
       continue;
     temp_sum += temps[i];
     temp_count++;
-    float preheat_advance = cfg.control.simple_preheat_enabled
-        ? std::clamp(preheat_advance_c_[i], 0.0f, SIMPLE_PREHEAT_MAX_ADVANCE_C)
-        : 0.0f;
+    float preheat_advance = std::clamp(preheat_advance_c_[i], 0.0f, SIMPLE_PREHEAT_MAX_ADVANCE_C);
     if (temps[i] < setpoints[i] - cfg.control.comfort_band_c + preheat_advance)
       any_demand = true;
   }
@@ -1653,16 +1672,15 @@ void Hv6ZoneController::reset_balancing() {
   ESP_LOGI(TAG, "Adaptive balancing reset (all balance_adapt = 1.0)");
 }
 
-/// Enforce per-zone minimum flow when a modulating heat source is present (e.g. Ecodan).
-/// This ensures the heat pump always has sufficient flow through the manifold. Active
-/// whenever the Asgard/Ecodan bridge is enabled (the bridge implies a modulating source)
-/// or the explicit `modulating_heat_source` balancing flag is set.
+/// Enforce per-zone minimum flow when the manual modulating-heat-source floor is enabled.
+/// This keeps minimum-flow protection independent from the bridge that publishes weighted
+/// room temperature to an external heat-source controller.
 void Hv6ZoneController::apply_minimum_flow_(std::array<float, NUM_ZONES> &positions) {
   if (!config_store_)
     return;
   const auto cfg = config_store_->get_config();
 
-  if (!cfg.asgard.enabled && !cfg.balancing.modulating_heat_source)
+  if (!cfg.balancing.modulating_heat_source)
     return;
 
   float min_pct = cfg.balancing.minimum_flow_pct;

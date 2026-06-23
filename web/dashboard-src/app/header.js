@@ -172,7 +172,7 @@ const css = `
 
 @media (max-width: 860px) {
   .topbar-head { grid-template-columns: 1fr; }
-  /* Stat pills (uptime / wifi / asgard) ride to the very top, above brand + menu. */
+  /* Stat pills (uptime / wifi / heat source) ride to the very top, above brand + menu. */
   .top-meta { order: -2; justify-items: center; }
   .top-brand { order: -1; justify-self: center; justify-content: center; flex-wrap: wrap; }
   .brand-row { justify-content: center; }
@@ -208,7 +208,7 @@ const template = () => `
           <span id="hdr-sync" class="meta-chip meta-chip-state synced">Synced</span>
           <span class="meta-chip"><span class="meta-chip-label">Uptime</span><span class="meta-chip-value" id="hdr-up">---</span></span>
           <span class="meta-chip"><span class="meta-chip-label">WiFi</span><span class="meta-chip-value" id="hdr-wifi">---</span></span>
-          <span class="meta-chip" id="hdr-asgard" hidden><span class="meta-chip-label">Asgard</span><span class="meta-chip-value" id="hdr-asgard-val">---</span></span>
+          <span class="meta-chip" id="hdr-asgard" hidden><span class="meta-chip-label">Heat Src</span><span class="meta-chip-value" id="hdr-asgard-val">---</span></span>
         </div>
       </div>
     </div>

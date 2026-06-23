@@ -10,6 +10,7 @@
 #ifdef USE_HV6_FORECAST
 #include "../hv6_forecast/hv6_forecast.h"
 #endif
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -1463,7 +1464,7 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
     asgard_cfg.peer_stale_after_s = static_cast<uint16_t>(std::max(30.0f, std::min(3600.0f, num_val)));
     this->config_store_->update_asgard(asgard_cfg);
 
-  // ---- min_zone_flow_pct (active with bridge or minimum_flow_always) ----
+  // ---- min_zone_flow_pct (active when minimum_flow_always is enabled) ----
   } else if (strcmp(key, "min_zone_flow_pct") == 0 && has_num && this->config_store_) {
     auto bal = this->config_store_->get_config().balancing;
     bal.minimum_flow_pct = std::max(0.0f, std::min(50.0f, num_val));
@@ -1612,6 +1613,13 @@ void HV6Dashboard::sample_history_() {
   entry.return_dc = HISTORY_TEMP_NONE;
   entry.demand_pct = HISTORY_DEMAND_NONE;
 
+  float demand_floor_pct = 0.0f;
+  if (this->config_store_ != nullptr) {
+    const auto cfg = this->config_store_->get_config();
+    if (cfg.balancing.modulating_heat_source)
+      demand_floor_pct = std::max(0.0f, std::min(50.0f, cfg.balancing.minimum_flow_pct));
+  }
+
   if (snapshot_lock_ != nullptr && snapshot_ready_ &&
       xSemaphoreTake(snapshot_lock_, pdMS_TO_TICKS(10)) == pdTRUE) {
     for (uint8_t i = 0; i < hv6::NUM_ZONES; i++)
@@ -1620,13 +1628,14 @@ void HV6Dashboard::sample_history_() {
       entry.flow_dc = static_cast<int16_t>(lroundf(snapshot_.manifold_flow_c * 10.0f));
     if (!std::isnan(snapshot_.manifold_return_c))
       entry.return_dc = static_cast<int16_t>(lroundf(snapshot_.manifold_return_c * 10.0f));
-    // Mean open-valve % over zones that report a position (matches the dashboard's
-    // client-side demand index, but persisted server-side for the 24 h window).
+    // Mean open-valve % above the active minimum-flow floor. This keeps the
+    // demand index focused on extra heat demand instead of the manual baseline
+    // flow held for a modulating heat source.
     float demand_sum = 0.0f;
     uint8_t demand_n = 0;
     for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
       if (!std::isnan(snapshot_.zone_valve_pct[i])) {
-        demand_sum += snapshot_.zone_valve_pct[i];
+        demand_sum += std::max(0.0f, snapshot_.zone_valve_pct[i] - demand_floor_pct);
         demand_n++;
       }
     }

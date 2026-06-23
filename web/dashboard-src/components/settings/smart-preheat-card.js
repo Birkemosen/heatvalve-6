@@ -37,13 +37,6 @@ const template = () => `
   <div class="ui-card smart-preheat-card">
     <div class="ui-card-title"><span class="ui-title-text">Preheat${helpBadge('When hot water arrives but no zone is calling for heat, satisfied zones hold their opening instead of closing — absorbing heat an external optimiser pre-buffered, weighted by floor thermal mass.')}</span></div>
     <div class="ui-row">
-      <span class="ui-label">Simple Preheat</span>
-      <span class="ui-field"><div class="ui-toggle preheat-toggle" role="switch" aria-label="Toggle simple preheat"></div></span>
-    </div>
-    <div class="ui-note">Learns a per-zone head-start so a room reaches its setpoint on time despite slab lag.</div>
-
-    <div class="ui-divider"></div>
-    <div class="ui-row">
       <span class="ui-label">Preheat Absorption <span class="absorb-badge">idle</span></span>
       <span class="ui-field"><div class="ui-toggle absorb-toggle" role="switch" aria-label="Toggle preheat absorption"></div></span>
     </div>
@@ -68,25 +61,13 @@ export default component({
   tag: 'smart-preheat-card',
   render: template,
   onMount(ctx, el) {
-    const preheatToggle = el.querySelector('.preheat-toggle');
     const absorbToggle = el.querySelector('.absorb-toggle');
     const absorbBadge = el.querySelector('.absorb-badge');
     const absorbBandEl = el.querySelector('.absorb-band');
     const absorbDeltaEl = el.querySelector('.absorb-delta');
     const absorbBody = el.querySelector('.absorb-body');
 
-    function isPreheatEnabled() {
-      const state = String(es(gkey.simplePreheatEnabled) || '').toLowerCase();
-      return state === 'on' || state === 'true' || state === '1' || state === 'enabled';
-    }
-
     const form = cardForm(el);
-
-    // --- simple preheat (adaptive per-zone head-start) ---
-    form.toggle(preheatToggle, {
-      read: isPreheatEnabled,
-      commit: (on) => setGlobalSelect('simple_preheat_enabled', on ? 'on' : 'off')
-    });
 
     // --- preheat absorption (external pre-buffering, e.g. Odin via Asgard) ---
     const gate = (on) => { if (absorbBody) absorbBody.classList.toggle('is-disabled', !on); };
@@ -115,7 +96,6 @@ export default component({
       absorbBadge.classList.toggle('active', absorbing);
     }
 
-    subscribe(gkey.simplePreheatEnabled, form.refresh);
     subscribe(gkey.preheatAbsorbEnabled, form.refresh);
     subscribe(gkey.preheatAbsorbing,     updateBadge);
     subscribe(gkey.preheatAbsorbBandC,   form.refresh);

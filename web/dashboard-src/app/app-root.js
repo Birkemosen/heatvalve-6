@@ -100,20 +100,18 @@ body {
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 1fr;
   gap: 14px;
   margin-top: 14px;
   align-items: stretch;
 }
 
-.overview-flow-return,
-.overview-demand {
+.overview-flow-return {
   display: flex;
   flex-direction: column;
 }
 
-.overview-flow-return > *,
-.overview-demand > * {
+.overview-flow-return > * {
   flex: 1;
 }
 
@@ -268,12 +266,11 @@ const template = (ctx) => `
       <div class="hdr"></div>
       <section class="sec active" data-section="overview">
         <div class="overview-flow"></div>
+        <div class="overview-forecast" style="margin-top:14px"></div>
         <div class="overview-timeline" style="margin-top:14px"></div>
         <div class="dashboard-grid">
           <div class="overview-flow-return"></div>
-          <div class="overview-demand"></div>
         </div>
-        <div class="overview-forecast" style="margin-top:14px"></div>
       </section>
       <section class="sec" data-section="zones">
         <div class="zone-selector"></div>
@@ -317,10 +314,9 @@ component({
   onMount(ctx, el) {
     el.querySelector('.hdr').appendChild(mountComponent('hv6-header'));
     el.querySelector('.overview-flow').appendChild(mountComponent('flow-diagram'));
+    el.querySelector('.overview-forecast').appendChild(mountComponent('monitor-forecast-preview'));
     el.querySelector('.overview-timeline').appendChild(mountComponent('zone-state-timeline'));
     el.querySelector('.overview-flow-return').appendChild(mountComponent('graph-widgets', { variant: 'flow-return' }));
-    el.querySelector('.overview-demand').appendChild(mountComponent('graph-widgets', { variant: 'demand' }));
-    el.querySelector('.overview-forecast').appendChild(mountComponent('monitor-forecast-preview'));
 
     el.querySelector('.zone-selector').appendChild(mountComponent('zone-grid'));
     el.querySelector('.zone-detail-slot').appendChild(mountComponent('zone-detail', { zone: getDashboardValue('selectedZone') }));
@@ -346,6 +342,7 @@ component({
     const logsSide = el.querySelector('.logs-side-col');
     logsSide.appendChild(mountComponent('connectivity-card'));
     logsSide.appendChild(mountComponent('diag-system-card'));
+    logsSide.appendChild(mountComponent('preheat-factors-card'));
     logsSide.appendChild(mountComponent('diag-zone-motor-card', { zone: getDashboardValue('selectedZone') || 1 }));
     logsSide.appendChild(mountComponent('settings-control-card'));
     logsSide.appendChild(mountComponent('diag-manual-badge'));

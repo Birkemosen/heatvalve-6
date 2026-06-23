@@ -24,6 +24,7 @@ import './components/diagnostics/diag-manual-badge.js';
 import './components/diagnostics/diag-zone-motor-card.js';
 import './components/diagnostics/diag-zone-recovery-card.js';
 import './components/diagnostics/diag-system-card.js';
+import './components/diagnostics/preheat-factors-card.js';
 import './components/settings/settings-manifold-card.js';
 import './components/settings/settings-control-card.js';
 import './components/settings/settings-motor-calibration-card.js';

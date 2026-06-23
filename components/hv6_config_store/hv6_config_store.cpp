@@ -177,12 +177,7 @@ ZoneConfig Hv6ConfigStore::get_zone_config(uint8_t zone) const {
 }
 
 bool Hv6ConfigStore::get_simple_preheat_enabled() const {
-  if (mutex_ == nullptr)
-    return config_.control.simple_preheat_enabled;
-  xSemaphoreTake(mutex_, portMAX_DELAY);
-  bool val = config_.control.simple_preheat_enabled;
-  xSemaphoreGive(mutex_);
-  return val;
+  return true;
 }
 
 ManifoldType Hv6ConfigStore::get_manifold_type() const {

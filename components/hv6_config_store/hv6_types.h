@@ -301,8 +301,8 @@ static constexpr uint32_t FORECAST_CONFIG_VERSION = 1;
 
 struct BalancingConfig {
   bool dynamic_balancing_enabled = false;   ///< Back-compat alias: true ⇒ mode == RETURN_TEMP
-  bool modulating_heat_source = false;      ///< True when heat source can modulate flow temp (e.g. Ecodan)
-  float minimum_flow_pct = 15.0f;           ///< Per-zone minimum valve opening (only active with modulating source)
+  bool modulating_heat_source = false;      ///< Manually enforce per-zone minimum flow for a modulating heat source
+  float minimum_flow_pct = 15.0f;           ///< Per-zone minimum valve opening while manual minimum flow is active
   float flow_increase_threshold_pct = 80.0f;///< Request higher flow temp when avg zone opening exceeds this
   float flow_decrease_threshold_pct = 30.0f;///< Request lower flow temp when avg zone opening drops below this
   float target_delta_t_c = 5.0f;            ///< Target ΔT (flow − return) for dynamic (RETURN_TEMP) balancing

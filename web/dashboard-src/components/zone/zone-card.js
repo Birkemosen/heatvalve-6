@@ -48,6 +48,7 @@ const css = `
 	align-items: center;
 	gap: 5px;
 	line-height: 1;
+	min-width: 0;
 }
 
 .zone-card .zc-dot {
@@ -64,7 +65,25 @@ const css = `
 	text-transform: uppercase;
 	letter-spacing: .55px;
 	color: var(--text-secondary);
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
+
+.zone-card .zc-link {
+	margin-left: auto;
+	padding: 1px 6px 2px;
+	border-radius: 999px;
+	border: 1px solid rgba(255,133,49,.44);
+	background: rgba(255,133,49,.12);
+	color: var(--accent);
+	font-size: 9px;
+	font-weight: 800;
+	line-height: 1.2;
+	letter-spacing: .55px;
+	white-space: nowrap;
+}
+.zone-card .zc-link[hidden] { display: none; }
 
 .zone-card .zc-zone-name {
 	font-size: 14px;
@@ -93,7 +112,7 @@ injectStyle('zone-card', css);
 // ========================================
 const template = (ctx) => `
 	<div class="zone-card" data-zone="${ctx.zone}">
-		<div class="zc-state-row"><span class="zc-dot"></span><span class="zc-state-label">---</span></div>
+		<div class="zc-state-row"><span class="zc-dot"></span><span class="zc-state-label">---</span><span class="zc-link" hidden>LINK</span></div>
 		<div class="zc-zone-name">${zoneLabel(ctx.zone)}</div>
 		<div class="zc-friendly">${zoneTag(ctx.zone) || '---'}</div>
 	</div>
@@ -115,8 +134,14 @@ export default component({
 			const enabledKey = key.enabled(zone);
 			const stateEl = el.querySelector('.zc-state-label');
 			const dotEl = el.querySelector('.zc-dot');
+			const linkEl = el.querySelector('.zc-link');
 			const nameEl = el.querySelector('.zc-zone-name');
 			const friendlyEl = el.querySelector('.zc-friendly');
+
+			function syncTarget(value) {
+				const match = String(value || '').match(/\d+/);
+				return match ? Number(match[0]) : 0;
+			}
 
 			function update() {
 				const enabled = isEntityOn(enabledKey);
@@ -132,7 +157,22 @@ export default component({
 				nameEl.textContent = zoneLabel(zone);
 				friendlyEl.textContent = friendlyTag || fmtT(ev(tempKey));
 				stateEl.textContent = enabled ? state : 'OFF';
-				el.title = hasFault ? ('Fault: ' + lastFault) : '';
+				const ownTarget = syncTarget(es(key.syncTo(zone)));
+				const linkedFrom = [];
+				for (let z = 1; z <= 6; z++) {
+					if (z !== zone && syncTarget(es(key.syncTo(z))) === zone) {
+						linkedFrom.push(z);
+					}
+				}
+				const hasLink = (ownTarget > 0 && ownTarget !== zone) || linkedFrom.length > 0;
+				linkEl.hidden = !hasLink;
+				linkEl.textContent = ownTarget > 0 && ownTarget !== zone
+					? ('LINK Z' + ownTarget)
+					: (linkedFrom.length > 1 ? ('GROUP +' + linkedFrom.length) : ('LINK Z' + linkedFrom[0]));
+				const linkTitle = ownTarget > 0 && ownTarget !== zone
+					? ('Grouped with ' + zoneLabel(ownTarget))
+					: (linkedFrom.length > 0 ? ('Grouped with ' + linkedFrom.map(zoneLabel).join(', ')) : '');
+				el.title = hasFault ? ('Fault: ' + lastFault) : linkTitle;
 
 				const displayState = enabled ? state : 'OFF';
 				const stateColor =
@@ -167,6 +207,7 @@ export default component({
 			subscribe(stateKey, update);
 			subscribe(enabledKey, update);
 			subscribe(key.motorLastFault(zone), update);
+			for (let z = 1; z <= 6; z++) subscribe(key.syncTo(z), update);
 			subscribeDashboard('selectedZone', update);
 			subscribeDashboard('zoneNames', update);
 			update();

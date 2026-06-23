@@ -68,32 +68,22 @@ injectStyle('settings-asgard-card', css);
 const template = () => `
   <div class="ui-card settings-asgard-card">
     <div class="ui-card-title">
-      <span class="ui-title-text">Asgard / Ecodan Bridge${helpBadge('Pushes the house-weighted room temperature to the Ecodan/Asgard virtual thermostat. One board is the coordinator and aggregates zones from both boards; the other is a slave.')}</span>
+      <span class="ui-title-text">Modulating Heat Source${helpBadge('Pushes the house-weighted room temperature to a modulating heat-source controller. One board is the coordinator and aggregates zones from both boards; the other is a slave.')}</span>
       <span class="asgard-role-badge slave">slave</span>
     </div>
 
     <div class="ui-row">
-      <span class="ui-label">Bridge enabled</span>
-      <span class="ui-field"><div class="ui-toggle sa-enable" role="switch" aria-label="Toggle Asgard bridge"></div></span>
-    </div>
-
-    <div class="ui-section">Minimum zone flow</div>
-    <div class="ui-row">
-      <span class="ui-label">Always enforce <span class="ui-sublabel">use when a modulating heat source is attached without enabling this bridge</span></span>
-      <span class="ui-field"><div class="ui-toggle sa-minflow-always" role="switch" aria-label="Always enforce minimum zone flow"></div></span>
-    </div>
-    <div class="ui-row">
-      <span class="ui-label">Min valve opening (%) <span class="ui-sublabel">floor held on every enabled zone while the bridge or this option is active</span></span>
-      <span class="ui-field"><input class="ui-input sa-minflow" type="number" min="0" max="50" step="1" placeholder="15" /></span>
+      <span class="ui-label">Bridge enabled <span class="ui-sublabel">send weighted house temperature to the heat-source controller</span></span>
+      <span class="ui-field"><div class="ui-toggle sa-enable" role="switch" aria-label="Toggle heat-source bridge"></div></span>
     </div>
 
     <div class="gated-body sa-body">
       <div class="ui-row">
-        <span class="ui-label">Coordinator <span class="ui-sublabel">pushes to Asgard</span></span>
+        <span class="ui-label">Coordinator <span class="ui-sublabel">pushes to the heat source</span></span>
         <span class="ui-field"><div class="ui-toggle sa-coord" role="switch" aria-label="Toggle coordinator role"></div></span>
       </div>
 
-      <div class="ui-section">Asgard</div>
+      <div class="ui-section">Heat Source Endpoint</div>
       <div class="ui-row">
         <span class="ui-label">Host</span>
         <span class="ui-field"><input class="ui-input wide sa-host" type="text" placeholder="ecodan-heatpump.local" maxlength="63" /></span>
@@ -120,7 +110,7 @@ const template = () => `
       <div class="ui-section">Recommended setpoint</div>
       <div class="setpoint-box">
         <span class="setpoint-val sa-st-setpoint">—</span>
-        <span class="ui-note">Fixed value to set as the virtual thermostat setpoint in Asgard — the area-weighted target of all enabled zones (derived from static zone settings, not live status).</span>
+        <span class="ui-note">Fixed value to set as the virtual thermostat setpoint — the area-weighted target of all enabled zones (derived from static zone settings, not live status).</span>
       </div>
 
       <div class="ui-section">Status</div>
@@ -149,8 +139,6 @@ export default component({
     const entityEl  = el.querySelector('.sa-entity');
     const peerEl    = el.querySelector('.sa-peer');
     const intervalEl = el.querySelector('.sa-interval');
-    const minFlowAlwaysBtn = el.querySelector('.sa-minflow-always');
-    const minFlowEl  = el.querySelector('.sa-minflow');
     const stPeer    = el.querySelector('.sa-st-peer');
     const stPush    = el.querySelector('.sa-st-push');
     const stSetpoint = el.querySelector('.sa-st-setpoint');
@@ -175,7 +163,6 @@ export default component({
     const gate = (on) => body.classList.toggle('is-disabled', !on);
     form.toggle(enableBtn, { read: () => isEntityOn(gkey.asgardEnabled), commit: commitToggle(gkey.asgardEnabled, 'asgard_enabled', 'enabled'), onChange: gate });
     form.toggle(coordBtn,  { read: () => isEntityOn(gkey.asgardCoordinator), commit: commitToggle(gkey.asgardCoordinator, 'asgard_coordinator', 'coordinator') });
-    form.toggle(minFlowAlwaysBtn, { read: () => isEntityOn(gkey.minimumFlowAlways), commit: commitToggle(gkey.minimumFlowAlways, 'minimum_flow_always', 'minimum flow') });
 
     function commitText(key, settingKey) {
       return (v) => {
@@ -195,7 +182,6 @@ export default component({
     }
     form.num(portEl,     { read: () => ev(gkey.asgardPort), commit: commitNum(gkey.asgardPort, 'asgard_port') });
     form.num(intervalEl, { read: () => ev(gkey.asgardPushIntervalS), commit: commitNum(gkey.asgardPushIntervalS, 'asgard_push_interval_s') });
-    form.num(minFlowEl,  { read: () => ev(gkey.minZoneFlowPct), commit: commitNum(gkey.minZoneFlowPct, 'min_zone_flow_pct') });
 
     function updateStatus() {
       const role = es(gkey.asgardRole) || 'slave';
@@ -230,7 +216,6 @@ export default component({
     }
 
     subscribe(gkey.asgardEnabled,       form.refresh);
-    subscribe(gkey.minimumFlowAlways,   form.refresh);
     subscribe(gkey.asgardCoordinator,   form.refresh);
     subscribe(gkey.asgardRole,          updateStatus);
     subscribe(gkey.asgardPeerStatus,    updateStatus);
@@ -245,7 +230,6 @@ export default component({
     subscribe(gkey.asgardPeerHost,      form.refresh);
     subscribe(gkey.asgardPort,          form.refresh);
     subscribe(gkey.asgardPushIntervalS, form.refresh);
-    subscribe(gkey.minZoneFlowPct,      form.refresh);
 
     form.refresh();
     updateStatus();
