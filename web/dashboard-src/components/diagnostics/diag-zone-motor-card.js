@@ -28,13 +28,15 @@ const css = `
   border-bottom: 1px solid var(--panel-border);
 }
 .diag-zone-motor .cfg-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(104px, 140px) minmax(0, 1fr);
   gap: 10px;
   margin-bottom: 12px;
   align-items: center;
+  min-width: 0;
 }
 .diag-zone-motor .cfg-row.manual-row {
-  justify-content: space-between;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   padding: 8px 0 12px;
   border-bottom: 1px solid var(--panel-border);
@@ -44,11 +46,12 @@ const css = `
   color: var(--text-secondary);
   font-size: .82rem;
   font-weight: 600;
+  min-width: 0;
 }
 .diag-zone-motor .lbl {
   font-weight: 600;
   color: var(--text);
-  min-width: 140px;
+  min-width: 0;
 }
 .diag-zone-motor .mn-wrap {
   display: flex;
@@ -63,13 +66,14 @@ const css = `
   color: var(--text);
   font-family: var(--mono);
   font-size: .95rem;
-  min-width: 140px;
+  width: 100%;
+  min-width: 0;
   transition: border-color .15s ease;
 }
 .diag-zone-motor .sel:focus {
-  outline: 2px solid rgba(124,155,208,.6);
+  outline: 2px solid var(--focus-ring-soft);
   outline-offset: 1px;
-  border-color: rgba(124,155,208,.55);
+  border-color: var(--focus-border);
 }
 .diag-zone-motor .mn-inp {
   background: var(--control-bg);
@@ -83,9 +87,9 @@ const css = `
   transition: border-color .15s ease;
 }
 .diag-zone-motor .mn-inp:focus {
-  outline: 2px solid rgba(124,155,208,.6);
+  outline: 2px solid var(--focus-ring-soft);
   outline-offset: 1px;
-  border-color: rgba(124,155,208,.55);
+  border-color: var(--focus-border);
 }
 .diag-zone-motor .mn-unit {
   color: var(--muted);
@@ -114,17 +118,17 @@ const css = `
 }
 .diag-zone-motor .btn:hover {
   background: var(--control-bg-hover);
-  border-color: rgba(255,133,49,.5);
-  color: #ffe8ba;
+  border-color: var(--accent-border-hover);
+  color: var(--accent-text-soft);
 }
 .diag-zone-motor .btn.warn {
-  background: rgba(255,118,118,.2);
-  border-color: rgba(255,118,118,.4);
-  color: #FFD9D9;
+  background: var(--danger-bg);
+  border-color: var(--danger-border-soft);
+  color: var(--danger-text);
 }
 .diag-zone-motor .btn.warn:hover {
-  background: linear-gradient(135deg, rgba(255,100,100,.3), rgba(255,100,100,.15));
-  border-color: rgba(255,100,100,.5);
+  background: linear-gradient(135deg, var(--danger-bg-strong), var(--danger-bg-soft));
+  border-color: var(--danger-border);
 }
 .diag-zone-motor .sw {
   width: 50px;
@@ -145,16 +149,16 @@ const css = `
   width: 20px;
   height: 20px;
   border-radius: 999px;
-  background: #efe6dd;
+  background: var(--control-knob);
   transition: .2s ease;
 }
 .diag-zone-motor .sw.on {
   background: var(--blue);
-  border-color: rgba(124,155,208,.4);
+  border-color: var(--control-border-strong);
 }
 .diag-zone-motor .sw.on::after {
   transform: translateX(22px);
-  background: #042a3b;
+  background: var(--text-on-accent);
 }
 .diag-zone-motor .gated {
   transition: opacity .18s ease;

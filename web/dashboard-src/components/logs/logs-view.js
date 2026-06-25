@@ -11,7 +11,7 @@ const LEVELS = {
   1: { label: 'E', color: '#ff6361' },
   2: { label: 'W', color: '#ffd380' },
   3: { label: 'I', color: '#79d17e' },
-  4: { label: 'C', color: '#8a508f' },
+  4: { label: 'C', color: '#7aa7ce' },
   5: { label: 'D', color: 'rgba(214,228,255,.7)' },
   6: { label: 'V', color: 'rgba(214,228,255,.5)' },
   7: { label: 'VV', color: 'rgba(214,228,255,.4)' },

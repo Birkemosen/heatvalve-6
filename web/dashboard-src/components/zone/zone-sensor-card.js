@@ -129,10 +129,10 @@ const css = `
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  background: rgba(0,32,46,.34);
+  background: rgba(0,19,29,.42);
 }
 .zone-sensor-card .merge-pill.secondary {
-  border-color: rgba(138,80,143,.42);
+  border-color: rgba(122,167,206,.42);
 }
 .zone-sensor-card .merge-pill.primary {
   border-color: rgba(255,133,49,.52);

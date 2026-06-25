@@ -4,61 +4,13 @@ import { cardForm, helpBadgeI18n } from '../../core/ui-kit.js';
 import { es, ev, isEntityOn, setEntity } from '../../core/store.js';
 import { setGlobalSelect, setGlobalNumber, setGlobalText } from '../../core/api.js';
 import { gkey } from '../../utils/keys.js';
-import { localize, subscribeLanguage, t } from '../../core/i18n.js';
+import { localize, subscribeLanguage } from '../../core/i18n.js';
 
 // ========================================
 // CSS — reuses the helios card visual language
 // ========================================
 const css = `
-.settings-asgard-card .asgard-role-badge {
-  font-size: .72rem;
-  font-weight: 800;
-  letter-spacing: .9px;
-  text-transform: uppercase;
-  padding: 3px 10px;
-  border-radius: 8px;
-  flex-shrink: 0;
-}
-.settings-asgard-card .asgard-role-badge.master {
-  background: rgba(45,110,45,.36);
-  color: #CBFFD0;
-  border: 1px solid rgba(100,255,100,.35);
-}
-.settings-asgard-card .asgard-role-badge.slave {
-  background: rgba(70,70,70,.28);
-  color: #ADADAD;
-  border: 1px solid rgba(150,150,150,.25);
-}
-
-.settings-asgard-card .setpoint-box {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px;
-  border: 1px solid var(--control-border);
-  border-radius: 12px;
-  background: var(--control-bg);
-  margin-top: 8px;
-}
-.settings-asgard-card .setpoint-val {
-  font-size: 1.6rem;
-  font-weight: 800;
-  letter-spacing: .3px;
-  color: var(--accent);
-  line-height: 1;
-  font-family: var(--mono);
-}
-
-.settings-asgard-card .status-grid {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 6px 14px;
-  font-size: .82rem;
-  color: var(--text-secondary);
-  margin-top: 8px;
-}
-.settings-asgard-card .status-grid .val { color: var(--text); font-weight: 600; }
-.settings-asgard-card .status-grid .val.warn { color: #FFE9A0; }
+.settings-asgard-card .ui-row:last-child { margin-bottom: 0; }
 `;
 
 injectStyle('settings-asgard-card', css);
@@ -70,7 +22,6 @@ const template = () => `
   <div class="ui-card settings-asgard-card">
     <div class="ui-card-title">
       <span class="ui-title-text"><span data-i18n="settings.asgard.title">Modulating Heat Source</span>${helpBadgeI18n('settings.asgard.help')}</span>
-      <span class="asgard-role-badge slave">slave</span>
     </div>
 
     <div class="ui-row">
@@ -107,20 +58,6 @@ const template = () => `
         <span class="ui-label" data-i18n="settings.asgard.pushInterval">Push interval (s)</span>
         <span class="ui-field"><input class="ui-input sa-interval" type="number" min="5" max="3600" step="1" placeholder="30" /></span>
       </div>
-
-      <div class="ui-section" data-i18n="settings.asgard.recommendedSetpoint">Recommended setpoint</div>
-      <div class="setpoint-box">
-        <span class="setpoint-val sa-st-setpoint">—</span>
-        <span class="ui-note" data-i18n="settings.asgard.setpointNote">Fixed value to set as the virtual thermostat setpoint - the area-weighted target of all enabled zones (derived from static zone settings, not live status).</span>
-      </div>
-
-      <div class="ui-section" data-i18n="settings.asgard.status">Status</div>
-      <div class="status-grid">
-        <span data-i18n="settings.asgard.peer">Peer</span><span class="val sa-st-peer">n/a</span>
-        <span data-i18n="settings.asgard.lastPush">Last push</span><span class="val sa-st-push">—</span>
-        <span data-i18n="settings.asgard.zonesWeighted">Zones weighted</span><span class="val sa-st-zones">—</span>
-        <span data-i18n="settings.asgard.lastError">Last error</span><span class="val sa-st-err">—</span>
-      </div>
     </div>
   </div>
 `;
@@ -132,7 +69,6 @@ export default component({
   tag: 'settings-asgard-card',
   render: template,
   onMount(ctx, el) {
-    const badge     = el.querySelector('.asgard-role-badge');
     const enableBtn = el.querySelector('.sa-enable');
     const coordBtn  = el.querySelector('.sa-coord');
     const hostEl    = el.querySelector('.sa-host');
@@ -140,11 +76,6 @@ export default component({
     const entityEl  = el.querySelector('.sa-entity');
     const peerEl    = el.querySelector('.sa-peer');
     const intervalEl = el.querySelector('.sa-interval');
-    const stPeer    = el.querySelector('.sa-st-peer');
-    const stPush    = el.querySelector('.sa-st-push');
-    const stSetpoint = el.querySelector('.sa-st-setpoint');
-    const stZones   = el.querySelector('.sa-st-zones');
-    const stErr     = el.querySelector('.sa-st-err');
     const body      = el.querySelector('.sa-body');
 
     const form = cardForm(el);
@@ -184,59 +115,16 @@ export default component({
     form.num(portEl,     { read: () => ev(gkey.asgardPort), commit: commitNum(gkey.asgardPort, 'asgard_port') });
     form.num(intervalEl, { read: () => ev(gkey.asgardPushIntervalS), commit: commitNum(gkey.asgardPushIntervalS, 'asgard_push_interval_s') });
 
-    function updateStatus() {
-      const role = es(gkey.asgardRole) || 'slave';
-      badge.textContent = role;
-      badge.className = 'asgard-role-badge ' + (role === 'master' ? 'master' : 'slave');
-
-      const peer = es(gkey.asgardPeerStatus) || t('common.na');
-      stPeer.textContent = peer;
-      stPeer.classList.toggle('warn', peer === 'stale' || peer === 'unreachable');
-
-      const pushC = ev(gkey.asgardLastPushC);
-      const age = ev(gkey.asgardLastPushAgeS);
-      if (pushC != null && Number.isFinite(pushC) && age != null) {
-        const ageStr = age < 120
-          ? t('settings.asgard.ageSeconds', { value: Math.round(age) })
-          : t('settings.asgard.ageMinutes', { value: Math.round(age / 60) });
-        stPush.textContent = `${pushC.toFixed(2)}°C (${ageStr})`;
-      } else {
-        stPush.textContent = '—';
-      }
-
-      const setpointC = ev(gkey.asgardSetpointC);
-      stSetpoint.textContent = (setpointC != null && Number.isFinite(setpointC))
-        ? `${setpointC.toFixed(1)}°C`
-        : '—';
-
-      const local = ev(gkey.asgardLocalZones);
-      const remote = ev(gkey.asgardPeerZones);
-      stZones.textContent = (local != null) ? `${local} ${t('common.local')} + ${remote || 0} ${t('common.peer')}` : '—';
-
-      const err = es(gkey.asgardLastError);
-      stErr.textContent = err || '—';
-      stErr.classList.toggle('warn', !!err);
-    }
-
     subscribe(gkey.asgardEnabled,       form.refresh);
     subscribe(gkey.asgardCoordinator,   form.refresh);
-    subscribe(gkey.asgardRole,          updateStatus);
-    subscribe(gkey.asgardPeerStatus,    updateStatus);
-    subscribe(gkey.asgardLastPushC,     updateStatus);
-    subscribe(gkey.asgardSetpointC,     updateStatus);
-    subscribe(gkey.asgardLastPushAgeS,  updateStatus);
-    subscribe(gkey.asgardLocalZones,    updateStatus);
-    subscribe(gkey.asgardPeerZones,     updateStatus);
-    subscribe(gkey.asgardLastError,     updateStatus);
     subscribe(gkey.asgardHost,          form.refresh);
     subscribe(gkey.asgardEntityName,    form.refresh);
     subscribe(gkey.asgardPeerHost,      form.refresh);
     subscribe(gkey.asgardPort,          form.refresh);
     subscribe(gkey.asgardPushIntervalS, form.refresh);
-    subscribeLanguage(() => { localize(el); updateStatus(); });
+    subscribeLanguage(() => localize(el));
     localize(el);
 
     form.refresh();
-    updateStatus();
   }
 });

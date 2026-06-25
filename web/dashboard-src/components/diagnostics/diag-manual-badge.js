@@ -9,8 +9,8 @@ const css = `
   align-items: center;
   gap: 10px;
   margin-bottom: 12px;
-  border: 1px solid rgba(255,118,118,.45);
-  background: rgba(83,32,32,.40);
+  border: 1px solid var(--danger-border-soft);
+  background: var(--danger-bg);
   border-radius: 12px;
   padding: 10px 12px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
@@ -25,11 +25,11 @@ const css = `
   height: 9px;
   border-radius: 999px;
   background: var(--state-danger);
-  box-shadow: 0 0 10px rgba(255,118,118,.6);
+  box-shadow: 0 0 10px var(--danger-border);
 }
 
 .diag-manual-text {
-  color: #FFD9D9;
+  color: var(--danger-text);
   font-size: .8rem;
   font-weight: 700;
   letter-spacing: .35px;

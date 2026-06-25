@@ -11,8 +11,8 @@ import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 // ========================================
 const css = `
 .zone-detail {
-  background: rgba(0,63,92,.30);
-  border: 1px solid rgba(120,146,200,.30);
+  background: var(--panel-bg-flat);
+  border: 1px solid var(--panel-border);
   border-radius: 18px;
   padding: 16px 18px;
   box-shadow: var(--panel-shadow);
@@ -65,9 +65,9 @@ const css = `
 }
 
 .zone-detail .zd-badge.badge-idle {
-  background: rgba(121,209,126,.12);
-  color: var(--state-ok);
-  border-color: rgba(121,209,126,.24);
+  background: rgba(122,167,206,.13);
+  color: var(--series-cool);
+  border-color: rgba(122,167,206,.28);
 }
 
 .zone-detail .zd-badge.badge-disabled {

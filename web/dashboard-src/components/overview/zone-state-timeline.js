@@ -13,10 +13,10 @@ import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 // ========================================
 const STATE_PALETTE = {
   0:   { labelKey: 'state.off',         color: '#2c4875' },
-  1:   { labelKey: 'state.manual',      color: '#d07bb5' },
+  1:   { labelKey: 'state.manual',      color: '#7aa7ce' },
   2:   { labelKey: 'state.calibrating', color: '#ffd380' },
-  3:   { labelKey: 'state.waitCal',     color: '#6B5C84' },
-  4:   { labelKey: 'state.waitTemp',    color: '#6B5C84' },
+  3:   { labelKey: 'state.waitCal',     color: '#4e6977' },
+  4:   { labelKey: 'state.waitTemp',    color: '#4e6977' },
   5:   { labelKey: 'state.heating',     color: '#ff8531' },
   6:   { labelKey: 'state.idle',        color: '#39354c' },
   7:   { labelKey: 'state.overheated',  color: '#ff6361' },
@@ -33,8 +33,8 @@ const AXIS_H     = 32;
 const PAD_TOP    = 4;
 const BAND_H     = 10;          // preheat-absorption band height
 const BAND_GAP   = 6;           // gap between zone rows and the absorption band
-const ABSORB_COLOR = '#bc5090'; // magenta — distinct from heating (orange) / idle (blue)
-const FORECAST_PRELOAD_COLOR = '#38b2ff'; // blue — distinct from heating and clearly forecast preload
+const ABSORB_COLOR = '#ffc14d'; // gold — slab absorption / current-hour highlight
+const FORECAST_PRELOAD_COLOR = '#7aa7ce'; // muted blue — cool weather preload signal
 const DEFAULT_COMFORT_BAND_C = 0.5;
 const OBSERVED_BAR_H = 9;
 const EXPECTED_BAR_H = 6;

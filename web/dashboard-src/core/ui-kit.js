@@ -20,6 +20,7 @@ const css = `
 
 /* ---- Titles & section headers ---- */
 .ui-card-title {
+  font-family: var(--font-display);
   font-size: .84rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -45,8 +46,8 @@ const css = `
   height: 16px;
   margin-left: 7px;
   border-radius: 999px;
-  border: 1.5px solid rgba(180,180,180,.55);
-  color: rgba(210,210,220,.9);
+  border: 1.5px solid var(--control-border-strong);
+  color: var(--text-secondary);
   font-size: .65rem;
   font-weight: 700;
   font-family: inherit;
@@ -64,7 +65,7 @@ const css = `
   left: 0;
   width: max-content;
   max-width: 240px;
-  background: rgba(4,18,28,.97);
+  background: var(--overlay-bg);
   border: 1px solid var(--panel-border);
   border-radius: 8px;
   padding: 8px 10px;
@@ -76,7 +77,7 @@ const css = `
   letter-spacing: .2px;
   text-align: left;
   white-space: normal;
-  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  box-shadow: var(--panel-shadow);
   opacity: 0;
   pointer-events: none;
   transition: opacity .12s ease;
@@ -85,6 +86,7 @@ const css = `
 .help-badge:hover .help-tip, .help-badge:focus-visible .help-tip { opacity: 1; }
 
 .ui-section {
+  font-family: var(--font-display);
   color: var(--text-secondary);
   font-size: .7rem;
   font-weight: 700;
@@ -100,21 +102,21 @@ const css = `
   justify-content: space-between;
   gap: 16px;
   padding: 11px 0;
-  border-bottom: 1px solid rgba(255,255,255,.07);
+  border-bottom: 1px solid var(--divider);
 }
 .ui-row:last-child { border-bottom: none; }
 
 .ui-label {
   color: var(--text);
-  font-size: .9rem;
+  font-size: .96rem;
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.22;
   min-width: 0;
 }
 .ui-sublabel {
   display: block;
   color: var(--text-faint);
-  font-size: .72rem;
+  font-size: .78rem;
   font-weight: 500;
   font-style: italic;
   margin-top: 2px;
@@ -137,7 +139,7 @@ const css = `
   color: var(--text);
   border-radius: 10px;
   padding: 8px 10px;
-  font-size: .88rem;
+  font-size: .92rem;
   font-family: var(--mono);
   transition: border-color .15s ease;
 }
@@ -152,18 +154,18 @@ const css = `
   color: var(--text);
   border-radius: 10px;
   padding: 8px 10px;
-  font-size: .88rem;
+  font-size: .92rem;
   transition: border-color .15s ease;
 }
 
 .ui-input:focus,
 .ui-select:focus {
-  outline: 2px solid rgba(124,155,208,.6);
+  outline: 2px solid var(--focus-ring-soft);
   outline-offset: 1px;
-  border-color: rgba(124,155,208,.55);
+  border-color: var(--focus-border);
 }
 
-.ui-unit { color: var(--text-faint); font-size: .72rem; font-weight: 600; }
+.ui-unit { color: var(--text-faint); font-size: .78rem; font-weight: 600; }
 
 /* ---- Numeric stepper (− value +) ----
    The value reads as plain text (flat, no input chrome) between the buttons;
@@ -216,8 +218,8 @@ const css = `
   margin: 0 0 6px;
   padding: 8px 12px;
   border-radius: 10px;
-  background: rgba(255,166,0,.12);
-  border: 1px solid rgba(255,166,0,.42);
+  background: var(--warn-bg-soft);
+  border: 1px solid var(--warn-border);
 }
 .ui-form-banner.show { display: flex; }
 .ui-form-banner-msg { color: var(--state-warn); font-size: .76rem; font-weight: 700; }
@@ -234,7 +236,7 @@ const css = `
 }
 .ui-form-discard { background: transparent; color: var(--text-secondary); }
 .ui-form-discard:hover { color: var(--text); border-color: var(--text-secondary); }
-.ui-form-apply { background: var(--accent); color: #042a3b; border-color: var(--accent); }
+.ui-form-apply { background: var(--accent); color: var(--text-on-accent); border-color: var(--accent); }
 .ui-form-apply:hover { filter: brightness(1.08); }
 
 /* ---- Green pill toggle (canonical) ---- */
@@ -256,17 +258,17 @@ const css = `
   left: 3px;
   width: 18px;
   height: 18px;
-  background: #efe6dd;
+  background: var(--control-knob);
   border-radius: 999px;
   transition: transform .2s ease;
 }
-.ui-toggle.on { background: rgba(121,209,126,.25); border-color: rgba(121,209,126,.5); }
-.ui-toggle.on::after { transform: translateX(22px); background: #042a3b; }
+.ui-toggle.on { background: var(--success-bg-soft); border-color: var(--success-border); }
+.ui-toggle.on::after { transform: translateX(22px); background: var(--text-on-accent); }
 
 /* ---- Notes & dividers ---- */
 .ui-note {
   color: var(--text-secondary);
-  font-size: .75rem;
+  font-size: .82rem;
   line-height: 1.4;
   margin-top: 8px;
 }
@@ -291,9 +293,9 @@ const css = `
   font-size: .82rem;
   transition: .18s ease;
 }
-.ui-btn:hover { background: var(--control-bg-hover); border-color: rgba(120,146,200,.52); }
-.ui-btn.warn { border-color: rgba(255,118,118,.5); background: rgba(255,118,118,.2); color: #FFD9D9; }
-.ui-btn.warn:hover { background: rgba(255,100,100,.3); border-color: rgba(255,100,100,.6); }
+.ui-btn:hover { background: var(--control-bg-hover); border-color: var(--control-border-hover); }
+.ui-btn.warn { border-color: var(--danger-border); background: var(--danger-bg); color: var(--danger-text); }
+.ui-btn.warn:hover { background: var(--danger-bg-strong); border-color: var(--danger-border-strong); }
 
 @media (max-width: 520px) {
   .ui-row { align-items: flex-start; flex-direction: column; gap: 6px; }

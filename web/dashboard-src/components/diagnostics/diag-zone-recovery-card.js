@@ -70,9 +70,9 @@ const css = `
   transition: border-color .15s ease;
 }
 .diag-zone-recovery .sel:focus {
-  outline: 2px solid rgba(124,155,208,.6);
+  outline: 2px solid var(--focus-ring-soft);
   outline-offset: 1px;
-  border-color: rgba(124,155,208,.55);
+  border-color: var(--focus-border);
 }
 .diag-zone-recovery .btn {
   flex: 1;
@@ -90,17 +90,17 @@ const css = `
 }
 .diag-zone-recovery .btn:hover {
   background: var(--control-bg-hover);
-  border-color: rgba(255,133,49,.5);
-  color: #ffe8ba;
+  border-color: var(--accent-border-hover);
+  color: var(--accent-text-soft);
 }
 .diag-zone-recovery .btn.warn {
-  background: rgba(255,118,118,.2);
-  border-color: rgba(255,118,118,.4);
-  color: #FFD9D9;
+  background: var(--danger-bg);
+  border-color: var(--danger-border-soft);
+  color: var(--danger-text);
 }
 .diag-zone-recovery .btn.warn:hover {
-  background: linear-gradient(135deg, rgba(255,100,100,.3), rgba(255,100,100,.15));
-  border-color: rgba(255,100,100,.5);
+  background: linear-gradient(135deg, var(--danger-bg-strong), var(--danger-bg-soft));
+  border-color: var(--danger-border);
 }
 `;
 

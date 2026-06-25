@@ -9,18 +9,18 @@ const ZONES = 6;
 
 const COLOR_DISABLED = '#6E7E96';
 const COLOR_EMPTY = '#5C6B85';
-const COLOR_FLOW_LOW = '#8a508f';
-const COLOR_FLOW_MID = '#BC5090';
+const COLOR_FLOW_LOW = '#7aa7ce';
+const COLOR_FLOW_MID = '#9DBC78';
 const COLOR_FLOW_HIGH = '#FF8531';
 const COLOR_FLOW_HOT = '#FFA600';
-const COLOR_RETURN = '#8a508f';
+const COLOR_RETURN = '#7aa7ce';
 const COLOR_ZONE_ON = '#FFEAD2';
 const COLOR_ZONE_OFF = '#6E7E96';
-const COLOR_FRIENDLY_ON = '#C7B6CE';
+const COLOR_FRIENDLY_ON = '#B9CBD8';
 const COLOR_FRIENDLY_OFF = '#5C6B85';
-const COLOR_COL_HEAD = '#A38FB0';
-const COLOR_DT_LABEL = '#9A86A8';
-const COLOR_DT_LOW = '#8a508f';
+const COLOR_COL_HEAD = '#A6B9C7';
+const COLOR_DT_LABEL = '#A6B9C7';
+const COLOR_DT_LOW = '#7aa7ce';
 const COLOR_DT_OK = '#66BB6A';
 const COLOR_DT_HIGH = '#FF6361';
 
@@ -48,7 +48,7 @@ const css = `
   overflow: hidden;
   border: 1px solid var(--panel-border);
   box-shadow: var(--panel-shadow);
-  background: #042a3b;
+  background: var(--card);
 }
 
 .flow-svg {
@@ -114,7 +114,7 @@ function bgDefs(layout) {
   for (let z = 1; z <= ZONES; z++) {
     p.push('<linearGradient id="' + layout + '-rg' + z + '" x1="0" y1="0" x2="' + dir.split(' ')[0] + '" y2="' + dir.split(' ')[1] + '">');
     p.push('<stop id="' + layout + '-rgs' + z + '" offset="0%" stop-color="#ff8531"/>');
-    p.push('<stop id="' + layout + '-rga' + z + '" offset="100%" stop-color="#8a508f"/>');
+    p.push('<stop id="' + layout + '-rga' + z + '" offset="100%" stop-color="#7aa7ce"/>');
     p.push('</linearGradient>');
   }
   p.push('</defs>');
@@ -149,7 +149,7 @@ function mobileRibbon(zIdx, hwSrc, hwDst) {
 }
 
 function background(w, h, layout) {
-  return '<rect width="' + w + '" height="' + h + '" rx="22" fill="#042a3b"/>' +
+  return '<rect width="' + w + '" height="' + h + '" rx="22" fill="var(--card)"/>' +
     '<rect width="' + w + '" height="' + h + '" rx="22" fill="url(#' + layout + '-fdots)" opacity="0.48"/>' +
     '<rect width="' + w + '" height="' + h + '" rx="22" fill="url(#' + layout + '-fglow)"/>';
 }
@@ -159,8 +159,8 @@ function sourceBox(layout) {
   const labelY = layout === 'desktop' ? g.boxY + 27 : g.boxY + 29;
   const valueY = layout === 'desktop' ? g.boxY + 56 : g.boxY + 58;
   return '<rect x="' + g.boxX + '" y="' + g.boxY + '" width="' + g.boxW + '" height="' + g.boxH + '" rx="7" fill="#ff8531"/>' +
-    '<text id="' + layout + '-fd-flow-label" x="' + (g.boxX + g.boxW / 2) + '" y="' + labelY + '" text-anchor="middle" font-size="' + (layout === 'desktop' ? 18 : 17) + '" font-weight="800" fill="#00202e" letter-spacing="2">' + t('overview.flowDiagram.flow') + '</text>' +
-    '<text id="' + layout + '-fd-flow-temp" class="flow-metric" x="' + (g.boxX + g.boxW / 2) + '" y="' + valueY + '" text-anchor="middle" font-size="' + (layout === 'desktop' ? 26 : 24) + '" fill="#00202e">---</text>';
+    '<text id="' + layout + '-fd-flow-label" x="' + (g.boxX + g.boxW / 2) + '" y="' + labelY + '" text-anchor="middle" font-size="' + (layout === 'desktop' ? 18 : 17) + '" font-weight="800" fill="var(--text-on-accent)" letter-spacing="2">' + t('overview.flowDiagram.flow') + '</text>' +
+    '<text id="' + layout + '-fd-flow-temp" class="flow-metric" x="' + (g.boxX + g.boxW / 2) + '" y="' + valueY + '" text-anchor="middle" font-size="' + (layout === 'desktop' ? 26 : 24) + '" fill="var(--text-on-accent)">---</text>';
 }
 
 function desktopSvg() {
@@ -172,11 +172,11 @@ function desktopSvg() {
   p.push(background(W, H, 'desktop'));
   p.push('<rect x="' + DESKTOP.boxX + '" y="' + DESKTOP.topBarY + '" width="' + DESKTOP.boxW + '" height="' + DESKTOP.topBarH + '" fill="url(#desktop-boxgrad)" rx="5"/>');
   p.push(sourceBox('desktop'));
-  p.push('<text id="desktop-fd-ret-temp" x="' + (DESKTOP.boxX + DESKTOP.boxW + 24) + '" y="' + (DESKTOP.boxY + 20) + '" font-size="15" font-weight="800" fill="#8a508f" font-family="var(--mono)">' + t('overview.flowDiagram.returnShort') + ' ---</text>');
+  p.push('<text id="desktop-fd-ret-temp" x="' + (DESKTOP.boxX + DESKTOP.boxW + 24) + '" y="' + (DESKTOP.boxY + 20) + '" font-size="15" font-weight="800" fill="#7aa7ce" font-family="var(--mono)">' + t('overview.flowDiagram.returnShort') + ' ---</text>');
   p.push('<text id="desktop-fd-dt-label" x="' + (DESKTOP.boxX + DESKTOP.boxW + 24) + '" y="' + (DESKTOP.boxY + 42) + '" font-size="12" font-weight="800" fill="' + COLOR_DT_LABEL + '" letter-spacing="2">' + t('overview.flowDiagram.dt') + '</text>');
   p.push('<text id="desktop-fd-dt" x="' + (DESKTOP.boxX + DESKTOP.boxW + 24) + '" y="' + (DESKTOP.boxY + 65) + '" class="flow-metric" font-size="22" fill="#ff8531">---</text>');
 
-  for (let z = 1; z <= ZONES; z++) p.push('<path d="' + desktopRibbon(z - 1, DESKTOP.srcHW, DESKTOP.bgDstHW) + '" fill="#062a3a" opacity="0.86"/>');
+  for (let z = 1; z <= ZONES; z++) p.push('<path d="' + desktopRibbon(z - 1, DESKTOP.srcHW, DESKTOP.bgDstHW) + '" fill="#021824" opacity="0.9"/>');
   for (let z = 1; z <= ZONES; z++) p.push('<path id="desktop-fd-path-' + z + '" class="flow-ribbon" d="' + desktopRibbon(z - 1, DESKTOP.srcHW, DESKTOP.bgDstHW) + '" fill="url(#desktop-rg' + z + ')" opacity="1"/>');
 
   p.push('<line x1="54" y1="' + lineY + '" x2="' + (W - 54) + '" y2="' + lineY + '" stroke="#ff8531" stroke-width="2" opacity=".42"/>');
@@ -185,11 +185,11 @@ function desktopSvg() {
     p.push('<g class="flow-zone-hit">');
     p.push('<line x1="' + x + '" y1="' + (lineY - 8) + '" x2="' + x + '" y2="' + (lineY + 8) + '" stroke="#ff8531" stroke-width="2" opacity=".5"/>');
     p.push('<text id="desktop-fd-zn' + z + '" x="' + x + '" y="' + (lineY - 13) + '" text-anchor="middle" font-size="13" fill="#FFEAD2" font-weight="800" letter-spacing="1.8">Z' + z + '</text>');
-    p.push('<text id="desktop-fd-zf' + z + '" x="' + x + '" y="' + (lineY + 20) + '" text-anchor="middle" font-size="9.5" fill="#B6A6C0" font-weight="700" letter-spacing=".8">---</text>');
+    p.push('<text id="desktop-fd-zf' + z + '" x="' + x + '" y="' + (lineY + 20) + '" text-anchor="middle" font-size="9.5" fill="#AFC1CD" font-weight="700" letter-spacing=".8">---</text>');
     p.push('<text id="desktop-fd-zsp' + z + '" x="' + x + '" y="' + (lineY + 20) + '" text-anchor="middle" font-size="9" fill="' + COLOR_FRIENDLY_OFF + '" font-weight="600" font-family="var(--mono)"></text>');
     p.push('<text id="desktop-fd-zt' + z + '" x="' + x + '" y="' + (lineY + 42) + '" text-anchor="middle" class="flow-metric" font-size="15" fill="#F6ECE0">---°C</text>');
-    p.push('<text id="desktop-fd-zv' + z + '" x="' + (x - 28) + '" y="' + (lineY + 61) + '" text-anchor="middle" class="flow-metric" font-size="13" fill="#C7B7D0">---%</text>');
-    p.push('<text id="desktop-fd-zr' + z + '" x="' + (x + 28) + '" y="' + (lineY + 61) + '" text-anchor="middle" class="flow-metric" font-size="13" fill="#C7B7D0">---</text>');
+    p.push('<text id="desktop-fd-zv' + z + '" x="' + (x - 28) + '" y="' + (lineY + 61) + '" text-anchor="middle" class="flow-metric" font-size="13" fill="#C3D0D9">---%</text>');
+    p.push('<text id="desktop-fd-zr' + z + '" x="' + (x + 28) + '" y="' + (lineY + 61) + '" text-anchor="middle" class="flow-metric" font-size="13" fill="#C3D0D9">---</text>');
     p.push('</g>');
   }
   p.push('</svg>');
@@ -205,10 +205,10 @@ function mobileSvg() {
   p.push('<rect x="0" y="' + MOBILE.boxY + '" width="' + (MOBILE.boxX - 6) + '" height="' + MOBILE.boxH + '" fill="url(#mobile-boxgrad)" rx="4"/>');
   p.push(sourceBox('mobile'));
 
-  for (let z = 1; z <= ZONES; z++) p.push('<path d="' + mobileRibbon(z - 1, MOBILE.srcHW, MOBILE.bgDstHW) + '" fill="#062a3a" opacity="0.86"/>');
+  for (let z = 1; z <= ZONES; z++) p.push('<path d="' + mobileRibbon(z - 1, MOBILE.srcHW, MOBILE.bgDstHW) + '" fill="#021824" opacity="0.9"/>');
   for (let z = 1; z <= ZONES; z++) p.push('<path id="mobile-fd-path-' + z + '" class="flow-ribbon" d="' + mobileRibbon(z - 1, MOBILE.srcHW, MOBILE.bgDstHW) + '" fill="url(#mobile-rg' + z + ')" opacity="1"/>');
-  p.push('<rect x="' + (MOBILE.boxX + 9) + '" y="' + (MOBILE.boxY + MOBILE.boxH + 9) + '" width="' + (MOBILE.boxW - 18) + '" height="60" rx="8" fill="rgba(4,42,59,.64)"/>');
-  p.push('<text id="mobile-fd-ret-temp" x="' + (MOBILE.boxX + MOBILE.boxW / 2) + '" y="' + (MOBILE.boxY + MOBILE.boxH + 27) + '" text-anchor="middle" font-size="12.5" font-weight="800" fill="#8a508f" font-family="var(--mono)">' + t('overview.flowDiagram.returnShort') + ' ---</text>');
+  p.push('<rect x="' + (MOBILE.boxX + 9) + '" y="' + (MOBILE.boxY + MOBILE.boxH + 9) + '" width="' + (MOBILE.boxW - 18) + '" height="60" rx="8" fill="rgba(2,29,43,.74)"/>');
+  p.push('<text id="mobile-fd-ret-temp" x="' + (MOBILE.boxX + MOBILE.boxW / 2) + '" y="' + (MOBILE.boxY + MOBILE.boxH + 27) + '" text-anchor="middle" font-size="12.5" font-weight="800" fill="#7aa7ce" font-family="var(--mono)">' + t('overview.flowDiagram.returnShort') + ' ---</text>');
   p.push('<text id="mobile-fd-dt-label" x="' + (MOBILE.boxX + MOBILE.boxW / 2) + '" y="' + (MOBILE.boxY + MOBILE.boxH + 43) + '" text-anchor="middle" font-size="9.5" font-weight="800" fill="' + COLOR_DT_LABEL + '" letter-spacing="1.1">' + t('overview.flowDiagram.dt') + '</text>');
   p.push('<text id="mobile-fd-dt" x="' + (MOBILE.boxX + MOBILE.boxW / 2) + '" y="' + (MOBILE.boxY + MOBILE.boxH + 63) + '" text-anchor="middle" class="flow-metric" font-size="19" fill="#ff8531">---</text>');
   p.push('<line x1="' + MOBILE.endX + '" y1="34" x2="' + MOBILE.endX + '" y2="' + (H - 34) + '" stroke="#ff8531" stroke-width="2" opacity=".48"/>');
@@ -220,11 +220,11 @@ function mobileSvg() {
     const y = MOBILE.zoneYs[z - 1];
     p.push('<line x1="' + (MOBILE.endX - 8) + '" y1="' + y + '" x2="' + (MOBILE.endX + 8) + '" y2="' + y + '" stroke="#ff8531" stroke-width="2" opacity=".5"/>');
     p.push('<text id="mobile-fd-zn' + z + '" x="' + (MOBILE.endX - 14) + '" y="' + (y + 4) + '" text-anchor="end" font-size="12" fill="#FFEAD2" font-weight="800" letter-spacing="1.4">Z' + z + '</text>');
-    p.push('<text id="mobile-fd-zf' + z + '" x="' + MOBILE.nameX + '" y="' + (y - 8) + '" text-anchor="middle" font-size="9" fill="#B6A6C0" font-weight="700" letter-spacing=".7">---</text>');
+    p.push('<text id="mobile-fd-zf' + z + '" x="' + MOBILE.nameX + '" y="' + (y - 8) + '" text-anchor="middle" font-size="9" fill="#AFC1CD" font-weight="700" letter-spacing=".7">---</text>');
     p.push('<text id="mobile-fd-zsp' + z + '" x="' + MOBILE.nameX + '" y="' + (y + 7) + '" text-anchor="middle" font-size="8.5" fill="' + COLOR_FRIENDLY_OFF + '" font-weight="600" font-family="var(--mono)"></text>');
     p.push('<text id="mobile-fd-zt' + z + '" x="506" y="' + (y + 4) + '" class="flow-metric" font-size="13.5" fill="#F6ECE0">---°C</text>');
-    p.push('<text id="mobile-fd-zv' + z + '" x="592" y="' + (y + 4) + '" class="flow-metric" font-size="13.5" fill="#C7B7D0">---%</text>');
-    p.push('<text id="mobile-fd-zr' + z + '" x="678" y="' + (y + 4) + '" class="flow-metric" font-size="13.5" fill="#C7B7D0">---</text>');
+    p.push('<text id="mobile-fd-zv' + z + '" x="592" y="' + (y + 4) + '" class="flow-metric" font-size="13.5" fill="#C3D0D9">---%</text>');
+    p.push('<text id="mobile-fd-zr' + z + '" x="678" y="' + (y + 4) + '" class="flow-metric" font-size="13.5" fill="#C3D0D9">---</text>');
   }
   p.push('</svg>');
   return p.join('');
@@ -309,7 +309,7 @@ component({
         path.setAttribute('d', layout === 'desktop'
           ? desktopRibbon(zone - 1, 1, 2)
           : mobileRibbon(zone - 1, 1, 2));
-        path.setAttribute('fill', '#062a3a');
+        path.setAttribute('fill', '#021824');
         path.setAttribute('opacity', '0.38');
       } else {
         const cfg = layout === 'desktop' ? DESKTOP : MOBILE;

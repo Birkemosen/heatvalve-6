@@ -66,7 +66,7 @@ const css = `
   text-decoration: none;
   color: var(--text-secondary);
   border: 1px solid var(--control-border);
-  background: rgba(0,63,92,.54);
+  background: var(--control-bg);
   border-radius: 11px;
   padding: 10px 12px;
   font-size: .78rem;
@@ -78,8 +78,8 @@ const css = `
 
 .menu-link:hover {
   color: var(--text-strong);
-  background: rgba(0,84,120,.56);
-  border-color: rgba(120,146,200,.52);
+  background: var(--control-bg-hover);
+  border-color: var(--control-border-hover);
 }
 
 .menu-link.active {
@@ -111,8 +111,8 @@ const css = `
   height: 34px;
   padding: 4px 10px;
   border-radius: 14px;
-  border: 1px solid rgba(120,146,200,.32);
-  background: rgba(0,63,92,.48);
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
 }
 
 .meta-chip-label {
@@ -139,20 +139,20 @@ const css = `
 
 .meta-chip-state.synced {
   color: var(--state-ok);
-  border-color: rgba(121,209,126,.25);
-  background: rgba(20,52,34,.42);
+  border-color: var(--success-border-soft);
+  background: var(--success-bg);
 }
 
 .meta-chip-state.saving {
   color: var(--state-warn);
-  border-color: rgba(255,133,49,.35);
-  background: rgba(83,56,20,.42);
+  border-color: var(--accent-border);
+  background: var(--warn-bg-soft);
 }
 
 .meta-chip-state.offline {
   color: var(--text-secondary);
-  border-color: rgba(120,146,200,.24);
-  background: rgba(0,63,92,.32);
+  border-color: var(--panel-border-soft);
+  background: var(--control-bg);
 }
 
 .brand-fw {
@@ -174,7 +174,7 @@ const css = `
 
 .top-dot.on {
   background: var(--state-ok);
-  box-shadow: 0 0 12px rgba(121,209,126,.55);
+  box-shadow: 0 0 12px var(--success-border);
 }
 
 @media (max-width: 860px) {

@@ -26,7 +26,7 @@ const css = `
 .zone-card:hover {
 	border-color: rgba(124,155,208,.42);
 	border-left-color: rgba(124,155,208,.7);
-	background: rgba(28,58,103,.50);
+	background: rgba(0,47,69,.56);
 }
 .zone-card.active {
 	border-color: rgba(255,133,49,.44);
@@ -40,7 +40,7 @@ const css = `
 }
 
 .zone-card.zs-heating { border-left-color: #ff8531; }
-.zone-card.zs-idle { border-left-color: #8a508f; }
+.zone-card.zs-idle { border-left-color: #7aa7ce; }
 .zone-card.zs-fault { border-left-color: #ff6361; }
 .zone-card.zs-off { border-left-color: rgba(120,146,200,.4); }
 
@@ -185,12 +185,12 @@ export default component({
 
 				const stateColor =
 					displayState === 'HEATING' ? '#ffd380' :
-					displayState === 'IDLE'    ? '#79d17e' :
+					displayState === 'IDLE'    ? '#7aa7ce' :
 					displayState === 'FAULT'   ? '#ff6361' :
 					'#6E7E96';
 				const dotColor =
 					displayState === 'HEATING' ? '#ff8531' :
-					displayState === 'IDLE'    ? '#79d17e' :
+					displayState === 'IDLE'    ? '#7aa7ce' :
 					displayState === 'FAULT'   ? '#ff6361' :
 					'rgba(120,146,200,.35)';
 				stateEl.style.color = stateColor;

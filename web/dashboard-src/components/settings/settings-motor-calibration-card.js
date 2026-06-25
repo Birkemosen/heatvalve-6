@@ -17,6 +17,54 @@ const css = `
   padding: 8px 10px;
   margin: 10px 0 2px;
 }
+
+.settings-motor-cal-card .mc-advanced {
+  margin-top: 14px;
+  border-top: 1px dashed var(--panel-border);
+  padding-top: 12px;
+}
+
+.settings-motor-cal-card .mc-advanced > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.settings-motor-cal-card .mc-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-motor-cal-card .mc-advanced > summary::after {
+  content: '+';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  color: var(--accent);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.settings-motor-cal-card .mc-advanced[open] > summary::after {
+  content: '-';
+}
+
+.settings-motor-cal-card .mc-advanced-body {
+  margin-top: 8px;
+}
 `;
 
 injectStyle('settings-motor-calibration-card', css);
@@ -40,6 +88,7 @@ const template = () => {
   let rows = '';
   for (let i = 0; i < FIELDS.length; i++) {
     const field = FIELDS[i];
+    if (field.key === 'generic_runtime_limit_seconds') continue;
     const step = isIntegerSetting(field.key) ? '1' : '0.1';
     rows += '<div class="ui-row">' +
       '<span class="ui-label"><span data-i18n="' + field.labelKey + '">' + t(field.labelKey) + '</span> (' + field.unit + ')</span>' +
@@ -66,9 +115,15 @@ const template = () => {
         </select></span>
       </div>
       <div class="runtime-note" data-i18n="settings.motor.runtimeNote">HmIP-VDMot safety: runtime is fixed to 40s to prevent piston overtravel. Generic allows editable runtime.</div>
+      <div class="ui-row">
+        <span class="ui-label"><span data-i18n="settings.motor.maxSafeRuntime">Max Safe Runtime</span> (s)</span>
+        <span class="ui-field"><input type="number" class="ui-input smc-safe-runtime" value="0" step="1"></span>
+      </div>
 
-      <div class="ui-section" data-i18n="settings.motor.thresholds">Thresholds &amp; Learning</div>
-      ${rows}
+      <details class="mc-advanced">
+        <summary data-i18n="settings.motor.advanced">Advanced motor learning</summary>
+        <div class="mc-advanced-body">${rows}</div>
+      </details>
     </div>
   `;
 };

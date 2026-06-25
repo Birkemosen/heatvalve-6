@@ -1,8 +1,8 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
 import { cardForm, helpBadgeI18n } from '../../core/ui-kit.js';
-import { es, ev, isEntityOn, setEntity } from '../../core/store.js';
-import { setGlobalSelect, setGlobalNumber } from '../../core/api.js';
+import { es, ev } from '../../core/store.js';
+import { setGlobalSelect } from '../../core/api.js';
 import { gkey, key } from '../../utils/keys.js';
 import { fmtT } from '../../utils/format.js';
 import { localize, subscribeLanguage } from '../../core/i18n.js';
@@ -74,16 +74,6 @@ const template = () => {
       </div>
       <div class="ui-section" data-i18n="settings.manifold.probeTemps">Probe Temperatures</div>
       <div class="probe-grid">${probes}</div>
-
-      <div class="ui-section" data-i18n="settings.manifold.minZoneFlow">Minimum Zone Flow</div>
-      <div class="ui-row">
-        <span class="ui-label"><span data-i18n="common.enabled">Enabled</span> <span class="ui-sublabel" data-i18n="settings.manifold.minFlowEnabledSub">manual floor for a modulating heat source, independent of the bridge</span></span>
-        <span class="ui-field"><div class="ui-toggle sm-minflow-always" role="switch" data-i18n-label="settings.manifold.minZoneFlow" aria-label="Enable minimum zone flow"></div></span>
-      </div>
-      <div class="ui-row">
-        <span class="ui-label"><span data-i18n="settings.manifold.minValveOpening">Min valve opening (%)</span> <span class="ui-sublabel" data-i18n="settings.manifold.minValveOpeningSub">floor held on every enabled zone while active</span></span>
-        <span class="ui-field"><input class="ui-input sm-minflow" type="number" min="0" max="50" step="1" placeholder="15" /></span>
-      </div>
     </div>
   `;
 };
@@ -98,29 +88,11 @@ export default component({
     const typeEl = el.querySelector('.sm-type');
     const flowEl = el.querySelector('.sm-flow');
     const retEl = el.querySelector('.sm-ret');
-    const minFlowAlwaysBtn = el.querySelector('.sm-minflow-always');
-    const minFlowEl = el.querySelector('.sm-minflow');
 
     const form = cardForm(el);
     form.select(typeEl, { read: () => es(gkey.manifoldType) || 'NO (Normally Open)', commit: (v) => setGlobalSelect('manifold_type', v) });
     form.select(flowEl, { read: () => es(gkey.manifoldFlowProbe) || 'Probe 7', commit: (v) => setGlobalSelect('manifold_flow_probe', v) });
     form.select(retEl, { read: () => es(gkey.manifoldReturnProbe) || 'Probe 8', commit: (v) => setGlobalSelect('manifold_return_probe', v) });
-    form.toggle(minFlowAlwaysBtn, {
-      read: () => isEntityOn(gkey.minimumFlowAlways),
-      commit: (on) => {
-        const next = on ? 'on' : 'off';
-        setEntity(gkey.minimumFlowAlways, { state: next });
-        setGlobalSelect('minimum_flow_always', next)
-          .catch(() => setEntity(gkey.minimumFlowAlways, { state: on ? 'off' : 'on' }));
-      }
-    });
-    form.num(minFlowEl, {
-      read: () => ev(gkey.minZoneFlowPct),
-      commit: (v) => {
-        setEntity(gkey.minZoneFlowPct, { value: v });
-        setGlobalNumber('min_zone_flow_pct', v);
-      }
-    });
 
     function updateProbes() {
       for (let probe = 1; probe <= 8; probe++) {
@@ -132,8 +104,6 @@ export default component({
     subscribe(gkey.manifoldType, form.refresh);
     subscribe(gkey.manifoldFlowProbe, form.refresh);
     subscribe(gkey.manifoldReturnProbe, form.refresh);
-    subscribe(gkey.minimumFlowAlways, form.refresh);
-    subscribe(gkey.minZoneFlowPct, form.refresh);
     for (let probe = 1; probe <= 8; probe++) subscribe(key.probeTemp(probe), updateProbes);
     subscribeLanguage(() => localize(el));
     localize(el);

@@ -8,7 +8,7 @@ const PREVIEW_HOURS = 48;        // two days from hours_[0] (00:00 local today)
 const SOLAR_REF = 1000;          // W/m² mapped to full plot height (clear-sky ceiling)
 
 const TEMP_COLOR = '#ff8531';
-const WIND_COLOR = '#4dc7ff';
+const WIND_COLOR = '#7aa7ce';
 const SOLAR_COLOR = '#ffce5b';
 const WIND_ARROW_STEP = 2;       // draw every other hour to keep the plot readable
 
@@ -61,19 +61,19 @@ const css = `
   background: transparent;
 }
 .forecast-preview .fc-toggle[data-layer="temp"] { color: var(--series-warm); }
-.forecast-preview .fc-toggle[data-layer="wind"] { color: #4dc7ff; }
+.forecast-preview .fc-toggle[data-layer="wind"] { color: var(--series-cool); }
 .forecast-preview .fc-toggle[data-layer="solar"] { color: var(--series-solar); }
 .forecast-preview .fc-wind-guide {
   opacity: .58;
 }
 .forecast-preview .fc-wind-arrow {
-  fill: #4dc7ff;
-  stroke: rgba(4,18,28,.35);
+  fill: var(--series-cool);
+  stroke: var(--overlay-bg-soft);
   stroke-width: .28;
   stroke-linejoin: round;
   opacity: .88;
   vector-effect: non-scaling-stroke;
-  filter: drop-shadow(0 0 2px rgba(77,199,255,.22));
+  filter: drop-shadow(0 0 2px rgba(122,167,206,.22));
 }
 .forecast-preview .fc-wind-arrow.now {
   fill: var(--series-solar);

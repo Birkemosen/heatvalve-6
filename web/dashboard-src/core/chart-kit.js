@@ -108,7 +108,7 @@ const css = `
   position: absolute;
   pointer-events: none;
   z-index: 20;
-  background: rgba(4,18,28,.94);
+  background: var(--overlay-bg);
   border: 1px solid var(--panel-border);
   border-radius: 8px;
   padding: 7px 9px;

@@ -3,26 +3,13 @@ import { injectStyle } from '../../core/style.js';
 import { cardForm, helpBadgeI18n } from '../../core/ui-kit.js';
 import { es, ev, setEntity } from '../../core/store.js';
 import { setGlobalSelect, setGlobalNumber, resetBalancing } from '../../core/api.js';
-import { key, gkey } from '../../utils/keys.js';
+import { gkey } from '../../utils/keys.js';
 import { localize, subscribeLanguage } from '../../core/i18n.js';
-
-const ZONES = [1, 2, 3, 4, 5, 6];
 
 // ========================================
 // CSS — reuses the forecast/asgard card language
 // ========================================
 const css = `
-.settings-balancing-card .zone-table { width: 100%; border-collapse: collapse; font-size: .8rem; margin-top: 4px; }
-.settings-balancing-card .zone-table th {
-  color: var(--text-secondary); font-size: .68rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .4px; text-align: center; padding: 4px 2px;
-}
-.settings-balancing-card .zone-table th:first-child { text-align: left; }
-.settings-balancing-card .zone-table td { padding: 4px 2px; text-align: center; font-family: var(--mono); color: var(--text-secondary); }
-.settings-balancing-card .zone-table td:first-child { text-align: left; color: var(--text); font-weight: 600; white-space: nowrap; font-family: inherit; }
-.settings-balancing-card .zone-table .eff { color: var(--text-strong); font-weight: 700; }
-.settings-balancing-card .zone-table .err.cold { color: #FFB4B4; }
-.settings-balancing-card .zone-table .err.warm { color: #CBFFD0; }
 .settings-balancing-card .bal-reset { width: 100%; }
 `;
 
@@ -31,16 +18,6 @@ injectStyle('settings-balancing-card', css);
 // ========================================
 // TEMPLATE
 // ========================================
-const zoneRow = (z) => `
-  <tr data-zone="${z}">
-    <td><span data-i18n="common.zone">Zone</span> ${z}</td>
-    <td class="bal-static">—</td>
-    <td class="bal-adapt">—</td>
-    <td class="bal-eff eff">—</td>
-    <td class="bal-err err">—</td>
-  </tr>
-`;
-
 const template = () => `
   <div class="ui-card settings-balancing-card">
     <div class="ui-card-title"><span class="ui-title-text"><span data-i18n="settings.balancing.title">Hydraulic Balancing</span>${helpBadgeI18n('settings.balancing.help')}</span></div>
@@ -53,17 +30,6 @@ const template = () => `
       </select></span>
     </div>
     <div class="ui-note" data-i18n="settings.balancing.note">Static splits flow from the resistance-aware design model (area, pipe, floor). Adaptive adds a slow room-temperature correction on top - no return probes - nudging chronically cold loops open and over-served loops closed over days. It only redistributes flow between loops, never raises total demand.</div>
-
-    <div class="ui-section" data-i18n="settings.balancing.perZone">Per-zone factors</div>
-    <table class="zone-table">
-      <thead>
-        <tr><th data-i18n="common.zone">Zone</th><th data-i18n="settings.balancing.prior">Prior</th><th data-i18n="settings.balancing.learned">Learned</th><th data-i18n="settings.balancing.effective">Effective</th><th data-i18n="settings.balancing.error">Error</th></tr>
-      </thead>
-      <tbody class="bal-zone-body">
-        ${ZONES.map(zoneRow).join('')}
-      </tbody>
-    </table>
-    <div class="ui-note" data-i18n="settings.balancing.factorNote">Prior = static design factor · Learned = adaptive multiplier · Effective = prior × learned (the valve scale applied). Error is the long-window setpoint-room average a cold (+) loop is boosted on, a warm (-) loop throttled.</div>
 
     <div class="gated-body bal-adaptive-body">
       <div class="ui-section" data-i18n="settings.balancing.tuning">Adaptive tuning</div>
@@ -129,43 +95,15 @@ export default component({
       resetBalancing().catch(err => console.error('[Balancing] reset failed:', err));
     });
 
-    const fmt = (v, d = 2) => (v != null && Number.isFinite(Number(v))) ? Number(v).toFixed(d) : '—';
-
-    function updateZones() {
-      el.querySelectorAll('.bal-zone-body tr').forEach((row) => {
-        const z = parseInt(row.getAttribute('data-zone'), 10);
-        row.querySelector('.bal-static').textContent = fmt(ev(key.staticFactor(z)));
-        row.querySelector('.bal-adapt').textContent = fmt(ev(key.balanceAdapt(z)));
-        row.querySelector('.bal-eff').textContent = fmt(ev(key.balanceFactor(z)));
-        const err = ev(key.adaptErr(z));
-        const cell = row.querySelector('.bal-err');
-        cell.classList.remove('cold', 'warm');
-        if (err == null || !Number.isFinite(Number(err))) {
-          cell.textContent = '—';
-        } else {
-          cell.textContent = (err >= 0 ? '+' : '') + Number(err).toFixed(2);
-          const errorClass = err > 0.05 ? 'cold' : (err < -0.05 ? 'warm' : '');
-          if (errorClass) cell.classList.add(errorClass);
-        }
-      });
-    }
-
     subscribe(gkey.balanceMode, () => { form.refresh(); gate(es(gkey.balanceMode) || 'Static'); });
     subscribe(gkey.adaptIntervalS, form.refresh);
     subscribe(gkey.adaptStep, form.refresh);
     subscribe(gkey.adaptMin, form.refresh);
     subscribe(gkey.adaptMax, form.refresh);
-    ZONES.forEach((z) => {
-      subscribe(key.staticFactor(z), updateZones);
-      subscribe(key.balanceAdapt(z), updateZones);
-      subscribe(key.balanceFactor(z), updateZones);
-      subscribe(key.adaptErr(z), updateZones);
-    });
     subscribeLanguage(() => localize(el));
     localize(el);
 
     form.refresh();
     gate(es(gkey.balanceMode) || 'Static');
-    updateZones();
   }
 });
