@@ -2,13 +2,14 @@ import { component } from '../../core/component.js';
 import { getForecastHours, subscribeDashboard } from '../../core/store.js';
 import { svgEl, smoothPath, niceRange, attachTooltip } from '../../core/chart-kit.js';
 import { injectStyle } from '../../core/style.js';
+import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 
 const PREVIEW_HOURS = 48;        // two days from hours_[0] (00:00 local today)
 const SOLAR_REF = 1000;          // W/m² mapped to full plot height (clear-sky ceiling)
 
-const TEMP_COLOR = 'var(--series-warm)';
-const WIND_COLOR = 'var(--series-cool)';
-const SOLAR_COLOR = 'var(--series-solar)';
+const TEMP_COLOR = '#ff8531';
+const WIND_COLOR = '#4dc7ff';
+const SOLAR_COLOR = '#ffce5b';
 const WIND_ARROW_STEP = 2;       // draw every other hour to keep the plot readable
 
 // chart geometry (viewBox units; CSS scales width to 100%)
@@ -60,19 +61,19 @@ const css = `
   background: transparent;
 }
 .forecast-preview .fc-toggle[data-layer="temp"] { color: var(--series-warm); }
-.forecast-preview .fc-toggle[data-layer="wind"] { color: var(--series-cool); }
+.forecast-preview .fc-toggle[data-layer="wind"] { color: #4dc7ff; }
 .forecast-preview .fc-toggle[data-layer="solar"] { color: var(--series-solar); }
 .forecast-preview .fc-wind-guide {
-  opacity: .34;
+  opacity: .58;
 }
 .forecast-preview .fc-wind-arrow {
-  fill: var(--series-cool);
+  fill: #4dc7ff;
   stroke: rgba(4,18,28,.35);
   stroke-width: .28;
   stroke-linejoin: round;
-  opacity: .76;
+  opacity: .88;
   vector-effect: non-scaling-stroke;
-  filter: drop-shadow(0 0 2px rgba(188,80,144,.22));
+  filter: drop-shadow(0 0 2px rgba(77,199,255,.22));
 }
 .forecast-preview .fc-wind-arrow.now {
   fill: var(--series-solar);
@@ -84,28 +85,29 @@ injectStyle('monitor-forecast-preview', css);
 const template = () => `
   <div class="chart-card forecast-preview">
     <div class="chart-head">
-      <span class="chart-title">Weather Forecast</span>
+      <span class="chart-title" data-i18n="overview.weather.title">Weather Forecast</span>
       <span class="chart-sub"></span>
     </div>
-    <div class="fc-controls" role="toolbar" aria-label="Forecast chart layers">
-      <button type="button" class="fc-toggle" data-layer="temp" aria-pressed="true">Temp</button>
-      <button type="button" class="fc-toggle" data-layer="wind" aria-pressed="true">Wind + dir</button>
-      <button type="button" class="fc-toggle" data-layer="solar" aria-pressed="true">Solar</button>
+    <div class="fc-controls" role="toolbar" aria-label="Forecast chart layers" data-i18n-label="overview.graph.layers.forecast">
+      <button type="button" class="fc-toggle" data-layer="temp" aria-pressed="true" data-i18n="overview.graph.layers.temp">Temp</button>
+      <button type="button" class="fc-toggle" data-layer="wind" aria-pressed="true" data-i18n="overview.graph.layers.windDir">Wind + dir</button>
+      <button type="button" class="fc-toggle" data-layer="solar" aria-pressed="true" data-i18n="overview.graph.layers.solar">Solar</button>
     </div>
     <div class="fc-body"></div>
   </div>
 `;
 
 function fmtFetchTime(epoch) {
-  if (!epoch) return 'No data';
-  if (epoch < 1600000000) return 'Clock syncing…';   // ESP clock not SNTP-synced yet
+  if (!epoch) return t('common.noData');
+  if (epoch < 1600000000) return t('common.clockSyncing');   // ESP clock not SNTP-synced yet
   const d = new Date(epoch * 1000);
   const hhmm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const now = new Date();
   const sameDay = d.getFullYear() === now.getFullYear() &&
                   d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-  return 'Updated ' + (sameDay ? hhmm
-    : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + hhmm);
+  return t('overview.weather.updated', {
+    time: sameDay ? hhmm : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + hhmm
+  });
 }
 
 function compassLabel(deg) {
@@ -214,7 +216,7 @@ function renderChart(data, visible) {
     s.appendChild(svgEl('path', { d: smoothPath(winds.map((v, i) => ({ x: xAt(i), y: yWind(v) }))),
       class: 'fc-wind-guide', fill: 'none', stroke: WIND_COLOR, 'stroke-width': '1.5',
       'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
-    const windArrowLayer = svgEl('g', { class: 'fc-wind-arrows', 'aria-label': 'Wind direction arrows' });
+    const windArrowLayer = svgEl('g', { class: 'fc-wind-arrows', 'aria-label': t('overview.weather.windArrows') });
     for (let i = 0; i < n; i++) {
       if (i % WIND_ARROW_STEP !== 0 && i !== nowHour) continue;
       const dir = Number(dirs[i]);
@@ -252,12 +254,12 @@ function renderChart(data, visible) {
       dots: (i) => dotFns.map((fn) => fn(i)),
       rows: (i) => {
         const rows = [];
-        if (visible.temp) rows.push({ color: TEMP_COLOR, label: 'Temp', value: temps[i].toFixed(1) + '°' });
+        if (visible.temp) rows.push({ color: TEMP_COLOR, label: t('overview.graph.layers.temp'), value: temps[i].toFixed(1) + '°' });
         if (visible.wind) {
-          rows.push({ color: WIND_COLOR, label: 'Wind', value: winds[i].toFixed(1) + ' m/s' });
-          rows.push({ color: WIND_COLOR, label: 'From', value: fmtDirection(dirs[i]) });
+          rows.push({ color: WIND_COLOR, label: t('overview.graph.layers.windDir'), value: winds[i].toFixed(1) + ' m/s' });
+          rows.push({ color: WIND_COLOR, label: t('overview.weather.tooltip.from'), value: fmtDirection(dirs[i]) });
         }
-        if (visible.solar) rows.push({ color: SOLAR_COLOR, label: 'Solar', value: Math.round(solars[i]) + ' W/m²' });
+        if (visible.solar) rows.push({ color: SOLAR_COLOR, label: t('overview.graph.layers.solar'), value: Math.round(solars[i]) + ' W/m²' });
         return rows;
       },
     },
@@ -290,8 +292,8 @@ export default component({
       const count = data ? (data.count || hours.length) : 0;
 
       if (!count || !hours.length || !data.base_epoch) {
-        sub.textContent = 'No data';
-        body.innerHTML = '<div style="color:var(--text-secondary);font-size:.8rem;text-align:center;padding:34px">No forecast fetched yet. Enable Forecast Preload in Settings and check the location.</div>';
+        sub.textContent = t('common.noData');
+        body.innerHTML = '<div style="color:var(--text-secondary);font-size:.8rem;text-align:center;padding:34px">' + t('overview.weather.notFetched') + '</div>';
         return;
       }
 
@@ -312,6 +314,8 @@ export default component({
     });
 
     subscribeDashboard('forecastHours', update);
+    subscribeLanguage(() => { localize(el); update(); });
+    localize(el);
     paintControls();
     update();
   }

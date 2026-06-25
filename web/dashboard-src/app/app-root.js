@@ -1,6 +1,7 @@
 import { component, mountComponent } from '../core/component.js';
 import { injectStyle } from '../core/style.js';
 import { getDashboardValue, subscribeDashboard } from '../core/store.js';
+import { localize, subscribeLanguage } from '../core/i18n.js';
 
 // =====================
 // CSS
@@ -39,8 +40,8 @@ const css = `
   --text-on-accent: #00202e;
   --soft: rgba(124,155,208,.12);
   --panel-border: rgba(120,146,200,.28);
-  --panel-bg: linear-gradient(180deg, rgba(0,63,92,.40), rgba(0,32,46,.40));
-  --panel-bg-vibrant: radial-gradient(900px 300px at 90% -40%, rgba(255,166,0,.14), transparent 62%), linear-gradient(180deg, rgba(0,63,92,.44), rgba(0,32,46,.40));
+  --panel-bg: rgba(0,63,92,.40);
+  --panel-bg-vibrant: rgba(0,63,92,.44);
   --panel-shadow: inset 0 1px 0 rgba(255,255,255,.03), 0 24px 60px rgba(0,0,0,.42);
   --state-ok: #79d17e;
   --state-warn: #ffa600;
@@ -185,7 +186,7 @@ body {
 }
 
 .placeholder-card {
-  background: linear-gradient(180deg, rgba(0,63,92,.40), rgba(0,32,46,.40));
+  background: var(--panel-bg);
   border: 1px solid var(--border);
   border-radius: 18px;
   padding: 20px;
@@ -292,13 +293,13 @@ const template = (ctx) => `
           <div class="settings-balancing-slot"></div>
         </div>
       </section>
-      <section class="sec" data-section="logs">
+      <section class="sec" data-section="diagnostics">
         <div class="logs-layout">
           <div class="logs-main-col"></div>
           <div class="logs-side-col"></div>
         </div>
       </section>
-      <div class="ftr">HEATVALVE-6 · UFH CONTROLLER</div>
+      <div class="ftr" data-i18n="footer.product">HEATVALVE-6 · UFH CONTROLLER</div>
     </main>
   </div>
 `;
@@ -358,6 +359,8 @@ component({
     }
 
     subscribeDashboard('section', updateSection);
+    subscribeLanguage(() => localize(el));
+    localize(el);
     updateSection();
   }
 });

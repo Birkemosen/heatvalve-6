@@ -1,9 +1,10 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { cardForm, helpBadge } from '../../core/ui-kit.js';
+import { cardForm, helpBadgeI18n } from '../../core/ui-kit.js';
 import { ev, es, isEntityOn } from '../../core/store.js';
 import { setGlobalNumber, setGlobalSelect, setDriversEnabled } from '../../core/api.js';
 import { gkey } from '../../utils/keys.js';
+import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 
 const css = `
 .settings-motor-cal-card .runtime-note {
@@ -21,18 +22,18 @@ const css = `
 injectStyle('settings-motor-calibration-card', css);
 
 const FIELDS = [
-  { cls: 'safe-runtime', key: 'generic_runtime_limit_seconds', id: gkey.genericRuntimeLimitSeconds, label: 'Max Safe Runtime', unit: 's' },
-  { cls: 'close-threshold', key: 'close_threshold_multiplier', id: gkey.closeThresholdMultiplier, label: 'Close Endstop Threshold', unit: 'x' },
-  { cls: 'close-slope-threshold', key: 'close_slope_threshold', id: gkey.closeSlopeThreshold, label: 'Close Endstop Slope', unit: 'mA/s' },
-  { cls: 'close-slope-floor', key: 'close_slope_current_factor', id: gkey.closeSlopeCurrentFactor, label: 'Close Endstop Slope Floor', unit: 'x' },
-  { cls: 'open-threshold', key: 'open_threshold_multiplier', id: gkey.openThresholdMultiplier, label: 'Open Endstop Threshold', unit: 'x' },
-  { cls: 'open-slope-threshold', key: 'open_slope_threshold', id: gkey.openSlopeThreshold, label: 'Open Endstop Slope', unit: 'mA/s' },
-  { cls: 'open-slope-floor', key: 'open_slope_current_factor', id: gkey.openSlopeCurrentFactor, label: 'Open Endstop Slope Floor', unit: 'x' },
-  { cls: 'open-ripple-limit', key: 'open_ripple_limit_factor', id: gkey.openRippleLimitFactor, label: 'Open Ripple Limit', unit: 'x' },
-  { cls: 'relearn-movements', key: 'relearn_after_movements', id: gkey.relearnAfterMovements, label: 'Relearn After Movements', unit: 'count' },
-  { cls: 'relearn-hours', key: 'relearn_after_hours', id: gkey.relearnAfterHours, label: 'Relearn After Hours', unit: 'h' },
-  { cls: 'learn-min-samples', key: 'learned_factor_min_samples', id: gkey.learnedFactorMinSamples, label: 'Learned Factor Min Samples', unit: 'count' },
-  { cls: 'learn-max-deviation', key: 'learned_factor_max_deviation_pct', id: gkey.learnedFactorMaxDeviationPct, label: 'Learned Factor Max Deviation', unit: '%' }
+  { cls: 'safe-runtime', key: 'generic_runtime_limit_seconds', id: gkey.genericRuntimeLimitSeconds, labelKey: 'settings.motor.maxSafeRuntime', unit: 's' },
+  { cls: 'close-threshold', key: 'close_threshold_multiplier', id: gkey.closeThresholdMultiplier, labelKey: 'settings.motor.closeThreshold', unit: 'x' },
+  { cls: 'close-slope-threshold', key: 'close_slope_threshold', id: gkey.closeSlopeThreshold, labelKey: 'settings.motor.closeSlope', unit: 'mA/s' },
+  { cls: 'close-slope-floor', key: 'close_slope_current_factor', id: gkey.closeSlopeCurrentFactor, labelKey: 'settings.motor.closeSlopeFloor', unit: 'x' },
+  { cls: 'open-threshold', key: 'open_threshold_multiplier', id: gkey.openThresholdMultiplier, labelKey: 'settings.motor.openThreshold', unit: 'x' },
+  { cls: 'open-slope-threshold', key: 'open_slope_threshold', id: gkey.openSlopeThreshold, labelKey: 'settings.motor.openSlope', unit: 'mA/s' },
+  { cls: 'open-slope-floor', key: 'open_slope_current_factor', id: gkey.openSlopeCurrentFactor, labelKey: 'settings.motor.openSlopeFloor', unit: 'x' },
+  { cls: 'open-ripple-limit', key: 'open_ripple_limit_factor', id: gkey.openRippleLimitFactor, labelKey: 'settings.motor.openRippleLimit', unit: 'x' },
+  { cls: 'relearn-movements', key: 'relearn_after_movements', id: gkey.relearnAfterMovements, labelKey: 'settings.motor.relearnMovements', unit: 'count' },
+  { cls: 'relearn-hours', key: 'relearn_after_hours', id: gkey.relearnAfterHours, labelKey: 'settings.motor.relearnHours', unit: 'h' },
+  { cls: 'learn-min-samples', key: 'learned_factor_min_samples', id: gkey.learnedFactorMinSamples, labelKey: 'settings.motor.learnMinSamples', unit: 'count' },
+  { cls: 'learn-max-deviation', key: 'learned_factor_max_deviation_pct', id: gkey.learnedFactorMaxDeviationPct, labelKey: 'settings.motor.learnMaxDeviation', unit: '%' }
 ];
 
 const template = () => {
@@ -41,7 +42,7 @@ const template = () => {
     const field = FIELDS[i];
     const step = isIntegerSetting(field.key) ? '1' : '0.1';
     rows += '<div class="ui-row">' +
-      '<span class="ui-label">' + field.label + ' (' + field.unit + ')</span>' +
+      '<span class="ui-label"><span data-i18n="' + field.labelKey + '">' + t(field.labelKey) + '</span> (' + field.unit + ')</span>' +
       '<span class="ui-field">' +
       '<input type="number" class="ui-input smc-' + field.cls + '" value="0" step="' + step + '">' +
       '</span></div>';
@@ -49,24 +50,24 @@ const template = () => {
 
   return `
     <div class="ui-card settings-motor-cal-card">
-      <div class="ui-card-title"><span class="ui-title-text">Motor Calibration &amp; Learning${helpBadge('Per-valve endstop learning and motor runtime profiles. Calibration drives each valve fully open and closed to learn its travel time and ripple count.')}</span></div>
+      <div class="ui-card-title"><span class="ui-title-text"><span data-i18n="settings.motor.title">Motor Calibration &amp; Learning</span>${helpBadgeI18n('settings.motor.help')}</span></div>
       <div class="ui-row">
-        <span class="ui-label">Motor Drivers</span>
-        <span class="ui-field"><div class="ui-toggle mc-drivers-toggle" role="switch" aria-label="Toggle motor drivers"></div></span>
+        <span class="ui-label" data-i18n="settings.motor.drivers">Motor Drivers</span>
+        <span class="ui-field"><div class="ui-toggle mc-drivers-toggle" role="switch" data-i18n-label="settings.motor.toggleDrivers" aria-label="Toggle motor drivers"></div></span>
       </div>
-      <div class="ui-note">Default starting thresholds and learning bounds used by the motor controller.</div>
+      <div class="ui-note" data-i18n="settings.motor.note">Default starting thresholds and learning bounds used by the motor controller.</div>
 
-      <div class="ui-section">Profile</div>
+      <div class="ui-section" data-i18n="settings.motor.profile">Profile</div>
       <div class="ui-row">
-        <span class="ui-label">Motor Type (Default Profile)</span>
+        <span class="ui-label" data-i18n="settings.motor.motorType">Motor Type (Default Profile)</span>
         <span class="ui-field"><select class="ui-select smc-profile">
           <option value="Generic">Generic</option>
           <option value="HmIP VdMot">HmIP VdMot</option>
         </select></span>
       </div>
-      <div class="runtime-note">HmIP-VDMot safety: runtime is fixed to 40s to prevent piston overtravel. Generic allows editable runtime.</div>
+      <div class="runtime-note" data-i18n="settings.motor.runtimeNote">HmIP-VDMot safety: runtime is fixed to 40s to prevent piston overtravel. Generic allows editable runtime.</div>
 
-      <div class="ui-section">Thresholds &amp; Learning</div>
+      <div class="ui-section" data-i18n="settings.motor.thresholds">Thresholds &amp; Learning</div>
       ${rows}
     </div>
   `;
@@ -138,6 +139,8 @@ export default component({
     subscribe(gkey.motorProfileDefault, () => { form.refresh(); updateRuntimeDisabled(); });
     subscribe(gkey.genericRuntimeLimitSeconds, form.refresh);
     subscribe(gkey.hmipRuntimeLimitSeconds, form.refresh);
+    subscribeLanguage(() => localize(el));
+    localize(el);
 
     enforceProfileRuntime(es(gkey.motorProfileDefault) || 'HmIP VdMot');
     form.refresh();

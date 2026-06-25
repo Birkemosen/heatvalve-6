@@ -3,6 +3,7 @@ import { injectStyle } from '../../core/style.js';
 import { ev, es } from '../../core/store.js';
 import { fmtUp } from '../../utils/format.js';
 import { gkey } from '../../utils/keys.js';
+import { localize, subscribeLanguage } from '../../core/i18n.js';
 
 // ========================================
 // CSS
@@ -43,12 +44,12 @@ injectStyle('connectivity-card', css);
 // ========================================
 const template = () => `
   <div class="connectivity-card">
-    <div class="card-title">Connectivity</div>
+    <div class="card-title" data-i18n="overview.connectivity.title">Connectivity</div>
     <table class="st">
-      <tr><td>IP Address</td><td class="cc-ip">---</td></tr>
+      <tr><td data-i18n="overview.connectivity.ip">IP Address</td><td class="cc-ip">---</td></tr>
       <tr><td>SSID</td><td class="cc-ssid">---</td></tr>
-      <tr><td>MAC Address</td><td class="cc-mac">---</td></tr>
-      <tr><td>Uptime</td><td class="cc-up">---</td></tr>
+      <tr><td data-i18n="overview.connectivity.mac">MAC Address</td><td class="cc-mac">---</td></tr>
+      <tr><td data-i18n="meta.uptime">Uptime</td><td class="cc-up">---</td></tr>
     </table>
   </div>
 `;
@@ -76,6 +77,8 @@ export default component({
     subscribe(gkey.ssid, update);
     subscribe(gkey.mac, update);
     subscribe(gkey.uptime, update);
+    subscribeLanguage(() => localize(el));
+    localize(el);
     update();
   }
 });

@@ -1,9 +1,10 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { cardForm, helpBadge } from '../../core/ui-kit.js';
+import { cardForm, helpBadgeI18n } from '../../core/ui-kit.js';
 import { es, ev, isEntityOn, setEntity } from '../../core/store.js';
 import { setGlobalSelect, setGlobalNumber, command, fetchForecastHours } from '../../core/api.js';
 import { key, gkey } from '../../utils/keys.js';
+import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 
 const ZONES = [1, 2, 3, 4, 5, 6];
 
@@ -96,7 +97,7 @@ injectStyle('settings-forecast-card', css);
 // ========================================
 const zoneRow = (z) => `
   <tr data-zone="${z}">
-    <td>Zone ${z}</td>
+    <td><span data-i18n="common.zone">Zone</span> ${z}</td>
     <td class="offset-cell fc-offset">—</td>
   </tr>
 `;
@@ -104,53 +105,53 @@ const zoneRow = (z) => `
 const template = () => `
   <div class="ui-card settings-forecast-card">
     <div class="ui-card-title">
-      <span class="ui-title-text">Forecast Preload${helpBadge('Charges the slab before incoming weather: raises a zone setpoint when forecast wind on its exterior walls is about to spike. Solar gain offsets it. Fetched from Open-Meteo hourly.')}</span>
+      <span class="ui-title-text"><span data-i18n="settings.forecast.title">Forecast Preload</span>${helpBadgeI18n('settings.forecast.help')}</span>
       <span class="fc-badge">disabled</span>
     </div>
 
     <div class="fc-meta">
       <span class="fc-age"></span>
       <span class="fc-error"></span>
-      <button class="fc-fetch-btn">Fetch Now</button>
+      <button class="fc-fetch-btn" data-i18n="settings.forecast.fetchNow">Fetch Now</button>
     </div>
 
     <div class="ui-row">
-      <span class="ui-label">Wind preload enabled</span>
-      <span class="ui-field"><div class="ui-toggle fc-enable" role="switch" aria-label="Toggle forecast preload"></div></span>
+      <span class="ui-label" data-i18n="settings.forecast.windEnabled">Wind preload enabled</span>
+      <span class="ui-field"><div class="ui-toggle fc-enable" role="switch" data-i18n-label="settings.forecast.toggle" aria-label="Toggle forecast preload"></div></span>
     </div>
-    <div class="ui-note">Charges the slab before an incoming storm: raises a zone's setpoint when forecast wind hitting its exterior walls is about to spike. The fetched forecast is shown on the Monitor page.</div>
+    <div class="ui-note" data-i18n="settings.forecast.note">Charges the slab before an incoming storm: raises a zone's setpoint when forecast wind hitting its exterior walls is about to spike. The fetched forecast is shown on the Monitor page.</div>
 
     <div class="gated-body fc-body">
-      <div class="ui-section">Location</div>
+      <div class="ui-section" data-i18n="settings.forecast.location">Location</div>
       <div class="ui-row">
-        <span class="ui-label">Latitude</span>
+        <span class="ui-label" data-i18n="settings.forecast.latitude">Latitude</span>
         <span class="ui-field"><input class="ui-input wide fc-lat" type="number" min="-90" max="90" step="0.0001" placeholder="55.6761" data-nostep /></span>
       </div>
       <div class="ui-row">
-        <span class="ui-label">Longitude</span>
+        <span class="ui-label" data-i18n="settings.forecast.longitude">Longitude</span>
         <span class="ui-field"><input class="ui-input wide fc-lon" type="number" min="-180" max="180" step="0.0001" placeholder="12.5683" data-nostep /></span>
       </div>
 
-      <div class="ui-section">Model</div>
+      <div class="ui-section" data-i18n="settings.forecast.model">Model</div>
       <div class="ui-row">
-        <span class="ui-label">Load threshold</span>
+        <span class="ui-label" data-i18n="settings.forecast.loadThreshold">Load threshold</span>
         <span class="ui-field"><input class="ui-input fc-threshold" type="number" min="0.1" max="10" step="0.1" placeholder="1.0" /></span>
       </div>
       <div class="ui-row">
-        <span class="ui-label">Max offset (°C)</span>
+        <span class="ui-label" data-i18n="settings.forecast.maxOffset">Max offset (°C)</span>
         <span class="ui-field"><input class="ui-input fc-maxoffset" type="number" min="0" max="3" step="0.1" placeholder="1.5" /></span>
       </div>
 
-      <div class="ui-section">Per-zone preload (now)</div>
+      <div class="ui-section" data-i18n="settings.forecast.perZoneNow">Per-zone preload (now)</div>
       <table class="zone-table">
         <thead>
-          <tr><th>Zone</th><th>Active offset</th></tr>
+          <tr><th data-i18n="settings.forecast.zone">Zone</th><th data-i18n="settings.forecast.activeOffset">Active offset</th></tr>
         </thead>
         <tbody class="fc-zone-body">
           ${ZONES.map(zoneRow).join('')}
         </tbody>
       </table>
-      <div class="ui-note fc-note">Live forecast preload offset applied to each zone right now (the hours-ahead figure is when the load peak is expected). Per-zone wind exposure, solar gain and thermal lead are configured in the Zone card alongside Exterior Walls.</div>
+      <div class="ui-note fc-note" data-i18n="settings.forecast.zoneNote">Live forecast preload offset applied to each zone right now (the hours-ahead figure is when the load peak is expected). Per-zone wind exposure, solar gain and thermal lead are configured in the Zone card alongside Exterior Walls.</div>
     </div>
   </div>
 `;
@@ -177,7 +178,7 @@ export default component({
 
     function fmtFetchTime(epoch) {
       if (!epoch) return '';
-      if (epoch < 1600000000) return 'clock syncing…';
+      if (epoch < 1600000000) return t('common.clockSyncing');
       const d = new Date(epoch * 1000);
       const hhmm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const now = new Date();
@@ -189,20 +190,20 @@ export default component({
 
     function updateMeta() {
       const ts = fmtFetchTime(ev(gkey.forecastFetchEpoch));
-      ageEl.textContent = ts ? `Last fetch: ${ts}` : '';
+      ageEl.textContent = ts ? t('settings.forecast.lastFetch', { time: ts }) : '';
       const err = es(gkey.forecastLastError);
       errorEl.textContent = err || '';
     }
 
     fetchBtn.addEventListener('click', () => {
       fetchBtn.disabled = true;
-      fetchBtn.textContent = 'Fetching…';
+      fetchBtn.textContent = t('settings.forecast.fetching');
       command('trigger_forecast_fetch').catch(() => {});
       // Refresh the monitor graph after giving the firmware time to fetch (~15 s)
       setTimeout(() => { fetchForecastHours(); }, 15000);
       setTimeout(() => {
         fetchBtn.disabled = false;
-        fetchBtn.textContent = 'Fetch Now';
+        fetchBtn.textContent = t('settings.forecast.fetchNow');
       }, 20000);
     });
 
@@ -267,6 +268,8 @@ export default component({
     ZONES.forEach((z) => {
       subscribe(key.forecastOffset(z), updateOffsets);
     });
+    subscribeLanguage(() => { localize(el); updateMeta(); });
+    localize(el);
 
     updateStatus();
     updateMeta();

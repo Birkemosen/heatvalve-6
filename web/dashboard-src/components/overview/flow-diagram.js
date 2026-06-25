@@ -3,6 +3,7 @@ import { ev, es, isEntityOn, subscribeDashboard, zoneTag } from '../../core/stor
 import { fmtT, fmtV } from '../../utils/format.js';
 import { injectStyle } from '../../core/style.js';
 import { key, gkey } from '../../utils/keys.js';
+import { subscribeLanguage, t } from '../../core/i18n.js';
 
 const ZONES = 6;
 
@@ -158,7 +159,7 @@ function sourceBox(layout) {
   const labelY = layout === 'desktop' ? g.boxY + 27 : g.boxY + 29;
   const valueY = layout === 'desktop' ? g.boxY + 56 : g.boxY + 58;
   return '<rect x="' + g.boxX + '" y="' + g.boxY + '" width="' + g.boxW + '" height="' + g.boxH + '" rx="7" fill="#ff8531"/>' +
-    '<text x="' + (g.boxX + g.boxW / 2) + '" y="' + labelY + '" text-anchor="middle" font-size="' + (layout === 'desktop' ? 18 : 17) + '" font-weight="800" fill="#00202e" letter-spacing="2">FLOW</text>' +
+    '<text id="' + layout + '-fd-flow-label" x="' + (g.boxX + g.boxW / 2) + '" y="' + labelY + '" text-anchor="middle" font-size="' + (layout === 'desktop' ? 18 : 17) + '" font-weight="800" fill="#00202e" letter-spacing="2">' + t('overview.flowDiagram.flow') + '</text>' +
     '<text id="' + layout + '-fd-flow-temp" class="flow-metric" x="' + (g.boxX + g.boxW / 2) + '" y="' + valueY + '" text-anchor="middle" font-size="' + (layout === 'desktop' ? 26 : 24) + '" fill="#00202e">---</text>';
 }
 
@@ -171,8 +172,8 @@ function desktopSvg() {
   p.push(background(W, H, 'desktop'));
   p.push('<rect x="' + DESKTOP.boxX + '" y="' + DESKTOP.topBarY + '" width="' + DESKTOP.boxW + '" height="' + DESKTOP.topBarH + '" fill="url(#desktop-boxgrad)" rx="5"/>');
   p.push(sourceBox('desktop'));
-  p.push('<text id="desktop-fd-ret-temp" x="' + (DESKTOP.boxX + DESKTOP.boxW + 24) + '" y="' + (DESKTOP.boxY + 20) + '" font-size="15" font-weight="800" fill="#8a508f" font-family="var(--mono)">RET ---</text>');
-  p.push('<text x="' + (DESKTOP.boxX + DESKTOP.boxW + 24) + '" y="' + (DESKTOP.boxY + 42) + '" font-size="12" font-weight="800" fill="' + COLOR_DT_LABEL + '" letter-spacing="2">ΔT FLOW-RETURN</text>');
+  p.push('<text id="desktop-fd-ret-temp" x="' + (DESKTOP.boxX + DESKTOP.boxW + 24) + '" y="' + (DESKTOP.boxY + 20) + '" font-size="15" font-weight="800" fill="#8a508f" font-family="var(--mono)">' + t('overview.flowDiagram.returnShort') + ' ---</text>');
+  p.push('<text id="desktop-fd-dt-label" x="' + (DESKTOP.boxX + DESKTOP.boxW + 24) + '" y="' + (DESKTOP.boxY + 42) + '" font-size="12" font-weight="800" fill="' + COLOR_DT_LABEL + '" letter-spacing="2">' + t('overview.flowDiagram.dt') + '</text>');
   p.push('<text id="desktop-fd-dt" x="' + (DESKTOP.boxX + DESKTOP.boxW + 24) + '" y="' + (DESKTOP.boxY + 65) + '" class="flow-metric" font-size="22" fill="#ff8531">---</text>');
 
   for (let z = 1; z <= ZONES; z++) p.push('<path d="' + desktopRibbon(z - 1, DESKTOP.srcHW, DESKTOP.bgDstHW) + '" fill="#062a3a" opacity="0.86"/>');
@@ -207,14 +208,14 @@ function mobileSvg() {
   for (let z = 1; z <= ZONES; z++) p.push('<path d="' + mobileRibbon(z - 1, MOBILE.srcHW, MOBILE.bgDstHW) + '" fill="#062a3a" opacity="0.86"/>');
   for (let z = 1; z <= ZONES; z++) p.push('<path id="mobile-fd-path-' + z + '" class="flow-ribbon" d="' + mobileRibbon(z - 1, MOBILE.srcHW, MOBILE.bgDstHW) + '" fill="url(#mobile-rg' + z + ')" opacity="1"/>');
   p.push('<rect x="' + (MOBILE.boxX + 9) + '" y="' + (MOBILE.boxY + MOBILE.boxH + 9) + '" width="' + (MOBILE.boxW - 18) + '" height="60" rx="8" fill="rgba(4,42,59,.64)"/>');
-  p.push('<text id="mobile-fd-ret-temp" x="' + (MOBILE.boxX + MOBILE.boxW / 2) + '" y="' + (MOBILE.boxY + MOBILE.boxH + 27) + '" text-anchor="middle" font-size="12.5" font-weight="800" fill="#8a508f" font-family="var(--mono)">RET ---</text>');
-  p.push('<text x="' + (MOBILE.boxX + MOBILE.boxW / 2) + '" y="' + (MOBILE.boxY + MOBILE.boxH + 43) + '" text-anchor="middle" font-size="9.5" font-weight="800" fill="' + COLOR_DT_LABEL + '" letter-spacing="1.1">ΔT FLOW-RETURN</text>');
+  p.push('<text id="mobile-fd-ret-temp" x="' + (MOBILE.boxX + MOBILE.boxW / 2) + '" y="' + (MOBILE.boxY + MOBILE.boxH + 27) + '" text-anchor="middle" font-size="12.5" font-weight="800" fill="#8a508f" font-family="var(--mono)">' + t('overview.flowDiagram.returnShort') + ' ---</text>');
+  p.push('<text id="mobile-fd-dt-label" x="' + (MOBILE.boxX + MOBILE.boxW / 2) + '" y="' + (MOBILE.boxY + MOBILE.boxH + 43) + '" text-anchor="middle" font-size="9.5" font-weight="800" fill="' + COLOR_DT_LABEL + '" letter-spacing="1.1">' + t('overview.flowDiagram.dt') + '</text>');
   p.push('<text id="mobile-fd-dt" x="' + (MOBILE.boxX + MOBILE.boxW / 2) + '" y="' + (MOBILE.boxY + MOBILE.boxH + 63) + '" text-anchor="middle" class="flow-metric" font-size="19" fill="#ff8531">---</text>');
   p.push('<line x1="' + MOBILE.endX + '" y1="34" x2="' + MOBILE.endX + '" y2="' + (H - 34) + '" stroke="#ff8531" stroke-width="2" opacity=".48"/>');
 
-  p.push('<text x="506" y="30" font-size="10" fill="' + COLOR_COL_HEAD + '" font-weight="700" letter-spacing="1.5">TEMP</text>');
-  p.push('<text x="592" y="30" font-size="10" fill="' + COLOR_COL_HEAD + '" font-weight="700" letter-spacing="1.5">FLOW</text>');
-  p.push('<text x="678" y="30" font-size="10" fill="' + COLOR_COL_HEAD + '" font-weight="700" letter-spacing="1.5">RET</text>');
+  p.push('<text id="mobile-fd-temp-head" x="506" y="30" font-size="10" fill="' + COLOR_COL_HEAD + '" font-weight="700" letter-spacing="1.5">' + t('overview.graph.layers.temp').toUpperCase() + '</text>');
+  p.push('<text id="mobile-fd-flow-head" x="592" y="30" font-size="10" fill="' + COLOR_COL_HEAD + '" font-weight="700" letter-spacing="1.5">' + t('overview.flowDiagram.flow') + '</text>');
+  p.push('<text id="mobile-fd-ret-head" x="678" y="30" font-size="10" fill="' + COLOR_COL_HEAD + '" font-weight="700" letter-spacing="1.5">' + t('overview.flowDiagram.returnShort') + '</text>');
   for (let z = 1; z <= ZONES; z++) {
     const y = MOBILE.zoneYs[z - 1];
     p.push('<line x1="' + (MOBILE.endX - 8) + '" y1="' + y + '" x2="' + (MOBILE.endX + 8) + '" y2="' + y + '" stroke="#ff8531" stroke-width="2" opacity=".5"/>');
@@ -240,7 +241,9 @@ component({
     layouts.forEach((layout) => {
       refs[layout] = {
         flowEl: el.querySelector('#' + layout + '-fd-flow-temp'),
+        flowLabelEl: el.querySelector('#' + layout + '-fd-flow-label'),
         retEl: el.querySelector('#' + layout + '-fd-ret-temp'),
+        dtLabelEl: el.querySelector('#' + layout + '-fd-dt-label'),
         dtEl: el.querySelector('#' + layout + '-fd-dt'),
         zones: new Array(ZONES + 1)
       };
@@ -263,10 +266,18 @@ component({
 
     function updateLayout(layout, flow, ret, dt, dtColor) {
       const r = refs[layout];
+      setText(r.flowLabelEl, t('overview.flowDiagram.flow'));
       setText(r.flowEl, fmtT(flow));
-      setText(r.retEl, 'RET ' + fmtT(ret));
+      setText(r.retEl, t('overview.flowDiagram.returnShort') + ' ' + fmtT(ret));
+      setText(r.dtLabelEl, t('overview.flowDiagram.dt'));
       setText(r.dtEl, dt == null ? '---' : dt.toFixed(1) + '°C');
       if (r.dtEl) r.dtEl.setAttribute('fill', dtColor);
+    }
+
+    function updateStaticLabels() {
+      setText(el.querySelector('#mobile-fd-temp-head'), t('overview.graph.layers.temp').toUpperCase());
+      setText(el.querySelector('#mobile-fd-flow-head'), t('overview.flowDiagram.flow'));
+      setText(el.querySelector('#mobile-fd-ret-head'), t('overview.flowDiagram.returnShort'));
     }
 
     function updateZoneLayout(layout, zone, data) {
@@ -346,6 +357,8 @@ component({
       subscribe(key.tempSource(zone), update);
     }
     for (let probe = 1; probe <= 8; probe++) subscribe(key.probeTemp(probe), update);
+    subscribeLanguage(() => { updateStaticLabels(); update(); });
+    updateStaticLabels();
     update();
   }
 });

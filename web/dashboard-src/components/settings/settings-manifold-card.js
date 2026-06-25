@@ -1,10 +1,11 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { cardForm, helpBadge } from '../../core/ui-kit.js';
+import { cardForm, helpBadgeI18n } from '../../core/ui-kit.js';
 import { es, ev, isEntityOn, setEntity } from '../../core/store.js';
 import { setGlobalSelect, setGlobalNumber } from '../../core/api.js';
 import { gkey, key } from '../../utils/keys.js';
 import { fmtT } from '../../utils/format.js';
+import { localize, subscribeLanguage } from '../../core/i18n.js';
 
 // ========================================
 // CSS
@@ -58,29 +59,29 @@ const template = () => {
 
   return `
     <div class="ui-card settings-manifold-card">
-      <div class="ui-card-title"><span class="ui-title-text">Manifold Configuration${helpBadge('Manifold valve polarity (Normally Open/Closed) and which probes read the flow and return water temperature for the flow–return delta.')}</span></div>
+      <div class="ui-card-title"><span class="ui-title-text"><span data-i18n="settings.manifold.title">Manifold Configuration</span>${helpBadgeI18n('settings.manifold.help')}</span></div>
       <div class="ui-row">
-        <span class="ui-label">Manifold Type</span>
-        <span class="ui-field"><select class="ui-select sm-type"><option value="NO (Normally Open)">Normally Open (NO)</option><option value="NC (Normally Closed)">Normally Closed (NC)</option></select></span>
+        <span class="ui-label" data-i18n="settings.manifold.type">Manifold Type</span>
+        <span class="ui-field"><select class="ui-select sm-type"><option value="NO (Normally Open)" data-i18n="settings.manifold.normallyOpen">Normally Open (NO)</option><option value="NC (Normally Closed)" data-i18n="settings.manifold.normallyClosed">Normally Closed (NC)</option></select></span>
       </div>
       <div class="ui-row">
-        <span class="ui-label">Flow Probe</span>
+        <span class="ui-label" data-i18n="settings.manifold.flowProbe">Flow Probe</span>
         <span class="ui-field"><select class="ui-select sm-flow">${probeOptions}</select></span>
       </div>
       <div class="ui-row">
-        <span class="ui-label">Return Probe</span>
+        <span class="ui-label" data-i18n="settings.manifold.returnProbe">Return Probe</span>
         <span class="ui-field"><select class="ui-select sm-ret">${probeOptions}</select></span>
       </div>
-      <div class="ui-section">Probe Temperatures</div>
+      <div class="ui-section" data-i18n="settings.manifold.probeTemps">Probe Temperatures</div>
       <div class="probe-grid">${probes}</div>
 
-      <div class="ui-section">Minimum Zone Flow</div>
+      <div class="ui-section" data-i18n="settings.manifold.minZoneFlow">Minimum Zone Flow</div>
       <div class="ui-row">
-        <span class="ui-label">Enabled <span class="ui-sublabel">manual floor for a modulating heat source, independent of the bridge</span></span>
-        <span class="ui-field"><div class="ui-toggle sm-minflow-always" role="switch" aria-label="Enable minimum zone flow"></div></span>
+        <span class="ui-label"><span data-i18n="common.enabled">Enabled</span> <span class="ui-sublabel" data-i18n="settings.manifold.minFlowEnabledSub">manual floor for a modulating heat source, independent of the bridge</span></span>
+        <span class="ui-field"><div class="ui-toggle sm-minflow-always" role="switch" data-i18n-label="settings.manifold.minZoneFlow" aria-label="Enable minimum zone flow"></div></span>
       </div>
       <div class="ui-row">
-        <span class="ui-label">Min valve opening (%) <span class="ui-sublabel">floor held on every enabled zone while active</span></span>
+        <span class="ui-label"><span data-i18n="settings.manifold.minValveOpening">Min valve opening (%)</span> <span class="ui-sublabel" data-i18n="settings.manifold.minValveOpeningSub">floor held on every enabled zone while active</span></span>
         <span class="ui-field"><input class="ui-input sm-minflow" type="number" min="0" max="50" step="1" placeholder="15" /></span>
       </div>
     </div>
@@ -134,6 +135,8 @@ export default component({
     subscribe(gkey.minimumFlowAlways, form.refresh);
     subscribe(gkey.minZoneFlowPct, form.refresh);
     for (let probe = 1; probe <= 8; probe++) subscribe(key.probeTemp(probe), updateProbes);
+    subscribeLanguage(() => localize(el));
+    localize(el);
     form.refresh();
     updateProbes();
   }

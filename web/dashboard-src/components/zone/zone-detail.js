@@ -4,13 +4,14 @@ import { ev, es, getDashboardValue, isEntityOn, subscribeDashboard, zoneLabel } 
 import { fmtT, fmtV } from '../../utils/format.js';
 import { setEnabled, setSetpoint } from '../../core/api.js';
 import { key } from '../../utils/keys.js';
+import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 
 // ========================================
 // CSS (scoped by class)
 // ========================================
 const css = `
 .zone-detail {
-  background: linear-gradient(180deg, rgba(0,63,92,.30), rgba(0,32,46,.24));
+  background: rgba(0,63,92,.30);
   border: 1px solid rgba(120,146,200,.30);
   border-radius: 18px;
   padding: 16px 18px;
@@ -213,34 +214,34 @@ const template = (ctx) => `
     <div class="zd-head">
       <div class="zd-title">${zoneLabel(ctx.zone)}</div>
       <div class="zd-head-ctrl">
-        <div class="ui-toggle btn-toggle" role="switch" aria-label="Zone enabled" title="Zone enabled"></div>
+        <div class="ui-toggle btn-toggle" role="switch" data-i18n-label="zone.detail.enabled" data-i18n-title="zone.detail.enabled" aria-label="Zone enabled" title="Zone enabled"></div>
         <span class="zd-badge">---</span>
       </div>
     </div>
     <div class="zd-body">
       <div>
-        <div class="zd-kicker">Target Temperature</div>
+        <div class="zd-kicker" data-i18n="zone.detail.targetTemperature">Target Temperature</div>
         <div class="zd-target-row">
-          <button class="spb btn-dec">−</button>
+          <button class="spb btn-dec" data-i18n-label="common.decrease" aria-label="decrease">−</button>
           <div class="zd-setpoint">---</div>
-          <button class="spb btn-inc">+</button>
+          <button class="spb btn-inc" data-i18n-label="common.increase" aria-label="increase">+</button>
         </div>
       </div>
       <div class="zd-stats">
-        <div class="zd-stat"><div class="zd-stat-label">Current Temp</div><div class="zd-stat-value zd-temp">---</div></div>
-        <div class="zd-stat"><div class="zd-stat-label">Return Temp</div><div class="zd-stat-value zd-ret">---</div></div>
-        <div class="zd-stat"><div class="zd-stat-label">Flow %</div><div class="zd-stat-value zd-valve">---</div></div>
+        <div class="zd-stat"><div class="zd-stat-label" data-i18n="zone.detail.currentTemp">Current Temp</div><div class="zd-stat-value zd-temp">---</div></div>
+        <div class="zd-stat"><div class="zd-stat-label" data-i18n="zone.detail.returnTemp">Return Temp</div><div class="zd-stat-value zd-ret">---</div></div>
+        <div class="zd-stat"><div class="zd-stat-label" data-i18n="zone.detail.flowPct">Flow %</div><div class="zd-stat-value zd-valve">---</div></div>
       </div>
       <div class="zd-motor">
-        <div class="zd-motor-title">Motor learned parameters</div>
+        <div class="zd-motor-title" data-i18n="zone.detail.motorLearned">Motor learned parameters</div>
         <div class="zd-stats">
-          <div class="zd-stat"><div class="zd-stat-label">Open Ripples</div><div class="zd-stat-value zd-orip">---</div></div>
-          <div class="zd-stat"><div class="zd-stat-label">Close Ripples</div><div class="zd-stat-value zd-crip">---</div></div>
-          <div class="zd-stat"><div class="zd-stat-label">Open Factor</div><div class="zd-stat-value zd-ofac">---</div></div>
-          <div class="zd-stat"><div class="zd-stat-label">Close Factor</div><div class="zd-stat-value zd-cfac">---</div></div>
-          <div class="zd-stat"><div class="zd-stat-label">Preheat Adv.</div><div class="zd-stat-value zd-ph">---</div></div>
+          <div class="zd-stat"><div class="zd-stat-label" data-i18n="zone.detail.openRipples">Open Ripples</div><div class="zd-stat-value zd-orip">---</div></div>
+          <div class="zd-stat"><div class="zd-stat-label" data-i18n="zone.detail.closeRipples">Close Ripples</div><div class="zd-stat-value zd-crip">---</div></div>
+          <div class="zd-stat"><div class="zd-stat-label" data-i18n="zone.detail.openFactor">Open Factor</div><div class="zd-stat-value zd-ofac">---</div></div>
+          <div class="zd-stat"><div class="zd-stat-label" data-i18n="zone.detail.closeFactor">Close Factor</div><div class="zd-stat-value zd-cfac">---</div></div>
+          <div class="zd-stat"><div class="zd-stat-label" data-i18n="zone.detail.preheatAdv">Preheat Adv.</div><div class="zd-stat-value zd-ph">---</div></div>
         </div>
-        <div class="zd-fault" hidden><span class="zd-fault-label">Last fault</span><span class="zd-fault-val">NONE</span></div>
+        <div class="zd-fault" hidden><span class="zd-fault-label" data-i18n="zone.detail.lastFault">Last fault</span><span class="zd-fault-val">NONE</span></div>
       </div>
     </div>
   </div>
@@ -249,6 +250,18 @@ const template = (ctx) => `
 function fmtFactor(v) { return v != null ? Number(v).toFixed(2) + 'x' : '---'; }
 function fmtRipples(v) { return v != null ? Number(v).toFixed(0) : '---'; }
 function fmtPreheat(v) { return v != null ? Number(v).toFixed(2) + 'C' : '---'; }
+function stateLabel(state, enabled) {
+  if (!enabled) return t('common.disabled');
+  const s = String(state || 'IDLE').toUpperCase();
+  if (s === 'HEATING') return t('state.heating');
+  if (s === 'IDLE') return t('state.idle');
+  if (s === 'OFF') return t('state.off');
+  if (s === 'FAULT') return t('common.fault');
+  if (s === 'MANUAL') return t('state.manual');
+  if (s === 'OVERHEATED') return t('state.overheated');
+  if (s === 'CALIBRATING') return t('state.calibrating');
+  return s;
+}
 
 // ========================================
 // COMPONENT
@@ -280,7 +293,7 @@ export default component({
       refs.ret.textContent = fmtT(ev('sensor-manifold_return_temperature'));
       refs.valve.textContent = fmtV(ev(key.valve(zone)));
       const badge = refs.badge;
-      badge.textContent = enabled ? (state || 'IDLE') : 'DISABLED';
+      badge.textContent = stateLabel(state, enabled);
       const badgeClass = !enabled ? 'badge-disabled' : state === 'HEATING' ? 'badge-heating' : state === 'IDLE' ? 'badge-idle' : state === 'FAULT' ? 'badge-fault' : '';
       badge.className = 'zd-badge' + (badgeClass ? ' ' + badgeClass : '');
       refs.toggle.classList.toggle('on', enabled);
@@ -370,6 +383,8 @@ export default component({
     }
     subscribe('sensor-manifold_return_temperature', update);
     subscribeDashboard('selectedZone', update);
+    subscribeLanguage(() => { localize(el); update(); });
+    localize(el);
     update();
   }
 });

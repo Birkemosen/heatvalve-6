@@ -3,6 +3,7 @@ import { injectStyle } from '../../core/style.js';
 import { es, ev, isEntityOn, getDashboardValue, subscribeDashboard, zoneLabel } from '../../core/store.js';
 import { fmtT, fmtV } from '../../utils/format.js';
 import { key, gkey } from '../../utils/keys.js';
+import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 
 // ========================================
 // CSS
@@ -83,7 +84,7 @@ const css = `
 @media (max-width: 560px) { .dz-grid { grid-template-columns: 1fr; } }
 
 .dz-zone-card {
-  background: linear-gradient(180deg, rgba(0,63,92,.30), rgba(0,32,46,.24));
+  background: rgba(0,63,92,.30);
   border: 1px solid rgba(120,146,200,.30);
   border-radius: 14px;
   padding: 12px 14px;
@@ -247,6 +248,18 @@ function fmtPreheat(v) {
   return v != null ? Number(v).toFixed(2) + 'C' : '---';
 }
 
+function stateText(state, enabled) {
+  if (!enabled) return t('state.off');
+  const s = String(state || 'OFF').toUpperCase();
+  if (s === 'HEATING') return t('state.heating');
+  if (s === 'IDLE') return t('state.idle');
+  if (s === 'FAULT') return t('common.fault');
+  if (s === 'MANUAL') return t('state.manual');
+  if (s === 'OVERHEATED') return t('state.overheated');
+  if (s === 'CALIBRATING') return t('state.calibrating');
+  return s;
+}
+
 // ========================================
 // TEMPLATE — a single zone snapshot following the selected zone
 // ========================================
@@ -257,21 +270,21 @@ const zoneCardHtml = (zone) => `
       <span class="dz-state-badge" data-dz-state="${zone}">---</span>
     </div>
     <div class="dz-stats">
-      <div class="dz-stat"><span class="dz-stat-label">Room Temp</span><span class="dz-stat-value" data-dz-temp="${zone}">---</span></div>
-      <div class="dz-stat"><span class="dz-stat-label">Flow %</span><span class="dz-stat-value" data-dz-valve="${zone}">---</span></div>
-      <div class="dz-stat"><span class="dz-stat-label">Return</span><span class="dz-stat-value" data-dz-ret="${zone}">---</span></div>
+      <div class="dz-stat"><span class="dz-stat-label" data-i18n="diagnostics.zoneSnapshot.roomTemp">Room Temp</span><span class="dz-stat-value" data-dz-temp="${zone}">---</span></div>
+      <div class="dz-stat"><span class="dz-stat-label" data-i18n="zone.detail.flowPct">Flow %</span><span class="dz-stat-value" data-dz-valve="${zone}">---</span></div>
+      <div class="dz-stat"><span class="dz-stat-label" data-i18n="zone.detail.returnTemp">Return</span><span class="dz-stat-value" data-dz-ret="${zone}">---</span></div>
     </div>
     <div class="dz-motor-section">
-      <div class="dz-motor-label">Motor ${zone} learned parameters</div>
+      <div class="dz-motor-label">${t('diagnostics.zoneSnapshot.motorLearned', { zone })}</div>
       <div class="dz-motor-grid">
-        <div class="dz-motor-param"><span class="dz-motor-param-name">Open ripples</span><span class="dz-motor-param-val" data-dz-orip="${zone}">---</span></div>
-        <div class="dz-motor-param"><span class="dz-motor-param-name">Close ripples</span><span class="dz-motor-param-val" data-dz-crip="${zone}">---</span></div>
-        <div class="dz-motor-param"><span class="dz-motor-param-name">Open factor</span><span class="dz-motor-param-val" data-dz-ofac="${zone}">---</span></div>
-        <div class="dz-motor-param"><span class="dz-motor-param-name">Close factor</span><span class="dz-motor-param-val" data-dz-cfac="${zone}">---</span></div>
-        <div class="dz-motor-param preheat-advance"><span class="dz-motor-param-name">Preheat advance</span><span class="dz-motor-param-val" data-dz-ph="${zone}">---</span></div>
+        <div class="dz-motor-param"><span class="dz-motor-param-name" data-i18n="zone.detail.openRipples">Open ripples</span><span class="dz-motor-param-val" data-dz-orip="${zone}">---</span></div>
+        <div class="dz-motor-param"><span class="dz-motor-param-name" data-i18n="zone.detail.closeRipples">Close ripples</span><span class="dz-motor-param-val" data-dz-crip="${zone}">---</span></div>
+        <div class="dz-motor-param"><span class="dz-motor-param-name" data-i18n="zone.detail.openFactor">Open factor</span><span class="dz-motor-param-val" data-dz-ofac="${zone}">---</span></div>
+        <div class="dz-motor-param"><span class="dz-motor-param-name" data-i18n="zone.detail.closeFactor">Close factor</span><span class="dz-motor-param-val" data-dz-cfac="${zone}">---</span></div>
+        <div class="dz-motor-param preheat-advance"><span class="dz-motor-param-name" data-i18n="zone.detail.preheatAdv">Preheat advance</span><span class="dz-motor-param-val" data-dz-ph="${zone}">---</span></div>
       </div>
       <div class="dz-fault-row" data-dz-faultrow="${zone}" style="display:none">
-        <span class="dz-fault-label">Last fault</span>
+        <span class="dz-fault-label" data-i18n="zone.detail.lastFault">Last fault</span>
         <span class="dz-fault-val" data-dz-fault="${zone}">NONE</span>
       </div>
     </div>
@@ -280,10 +293,10 @@ const zoneCardHtml = (zone) => `
 const template = () => `
   <div class="diag-zone">
     <div class="card-title">
-      <span>Zone Snapshot</span>
+      <span data-i18n="diagnostics.zoneSnapshot.title">Zone Snapshot</span>
       <div class="card-title-preheat off" role="status" aria-live="polite" data-preheat-badge>
         <span class="card-title-preheat-dot off"></span>
-        <span>Preheat: Off</span>
+        <span data-preheat-text>${t('diagnostics.zoneSnapshot.preheatOff')}</span>
       </div>
     </div>
     <div class="dz-single"></div>
@@ -307,7 +320,7 @@ export default component({
       const enabled = isEntityOn(key.enabled(zone));
 
       const badgeEl = el.querySelector('[data-dz-state="' + zone + '"]');
-      badgeEl.textContent = enabled ? state : 'OFF';
+      badgeEl.textContent = stateText(state, enabled);
       badgeEl.className = 'dz-state-badge' + (enabled ? ' ' + stateClass(state) : '');
 
       el.querySelector('[data-dz-temp="' + zone + '"]').textContent = fmtT(ev(key.temp(zone)));
@@ -329,6 +342,7 @@ export default component({
 
     function renderCard() {
       single.innerHTML = zoneCardHtml(currentZone);
+      localize(single);
       updateZone(currentZone);
     }
 
@@ -359,7 +373,7 @@ export default component({
     function updatePreheatBadge() {
       const badgeEl = el.querySelector('[data-preheat-badge]');
       const dotEl = badgeEl.querySelector('.card-title-preheat-dot');
-      const textEl = badgeEl.querySelector('span:last-child');
+      const textEl = badgeEl.querySelector('[data-preheat-text]');
       const state = (es(gkey.simplePreheatEnabled) || 'off').toString().toLowerCase();
       const isOn = state === 'on';
       
@@ -367,10 +381,12 @@ export default component({
       badgeEl.classList.toggle('off', !isOn);
       dotEl.classList.toggle('on', isOn);
       dotEl.classList.toggle('off', !isOn);
-      textEl.textContent = isOn ? 'Preheat: On' : 'Preheat: Off';
+      textEl.textContent = isOn ? t('diagnostics.zoneSnapshot.preheatOn') : t('diagnostics.zoneSnapshot.preheatOff');
     }
 
     subscribe(gkey.simplePreheatEnabled, updatePreheatBadge);
+    subscribeLanguage(() => { localize(el); renderCard(); updatePreheatBadge(); });
+    localize(el);
     updatePreheatBadge();
   }
 });

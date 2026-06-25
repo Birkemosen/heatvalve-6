@@ -1,6 +1,7 @@
 import { component } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
 import { command } from '../../core/api.js';
+import { localize, subscribeLanguage } from '../../core/i18n.js';
 
 // ========================================
 // CSS
@@ -143,11 +144,11 @@ injectStyle('settings-control-card', css);
 // ========================================
 const template = () => `
   <div class="settings-card settings-action-card">
-    <div class="card-title">Device Control</div>
+    <div class="card-title" data-i18n="settings.control.title">Device Control</div>
     <div class="btn-row">
-      <button class="btn sc-reset-probe-map">Reset 1-Wire Probe Map</button>
-      <button class="btn sc-dump-1wire">Dump 1-Wire Diagnostics</button>
-      <button class="btn warn sc-restart">Restart Device</button>
+      <button class="btn sc-reset-probe-map" data-i18n="settings.control.resetProbeMap">Reset 1-Wire Probe Map</button>
+      <button class="btn sc-dump-1wire" data-i18n="settings.control.dump1wire">Dump 1-Wire Diagnostics</button>
+      <button class="btn warn sc-restart" data-i18n="settings.control.restart">Restart Device</button>
     </div>
   </div>
 `;
@@ -159,6 +160,9 @@ export default component({
   tag: 'settings-control-card',
   render: template,
   onMount(ctx, el) {
+    subscribeLanguage(() => localize(el));
+    localize(el);
+
     el.querySelector('.sc-reset-probe-map').addEventListener('click', () => {
       command('reset_1wire_probe_map_reboot');
     });

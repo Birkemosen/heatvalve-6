@@ -1,9 +1,10 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { cardForm, helpBadge } from '../../core/ui-kit.js';
+import { cardForm, helpBadgeI18n } from '../../core/ui-kit.js';
 import { es, ev, isEntityOn, setEntity } from '../../core/store.js';
 import { setGlobalSelect, setGlobalNumber, setGlobalText } from '../../core/api.js';
 import { gkey } from '../../utils/keys.js';
+import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 
 // ========================================
 // CSS — reuses the helios card visual language
@@ -68,57 +69,57 @@ injectStyle('settings-asgard-card', css);
 const template = () => `
   <div class="ui-card settings-asgard-card">
     <div class="ui-card-title">
-      <span class="ui-title-text">Modulating Heat Source${helpBadge('Pushes the house-weighted room temperature to a modulating heat-source controller. One board is the coordinator and aggregates zones from both boards; the other is a slave.')}</span>
+      <span class="ui-title-text"><span data-i18n="settings.asgard.title">Modulating Heat Source</span>${helpBadgeI18n('settings.asgard.help')}</span>
       <span class="asgard-role-badge slave">slave</span>
     </div>
 
     <div class="ui-row">
-      <span class="ui-label">Bridge enabled <span class="ui-sublabel">send weighted house temperature to the heat-source controller</span></span>
-      <span class="ui-field"><div class="ui-toggle sa-enable" role="switch" aria-label="Toggle heat-source bridge"></div></span>
+      <span class="ui-label"><span data-i18n="settings.asgard.bridgeEnabled">Bridge enabled</span> <span class="ui-sublabel" data-i18n="settings.asgard.bridgeSub">send weighted house temperature to the heat-source controller</span></span>
+      <span class="ui-field"><div class="ui-toggle sa-enable" role="switch" data-i18n-label="settings.asgard.bridgeEnabled" aria-label="Toggle heat-source bridge"></div></span>
     </div>
 
     <div class="gated-body sa-body">
       <div class="ui-row">
-        <span class="ui-label">Coordinator <span class="ui-sublabel">pushes to the heat source</span></span>
-        <span class="ui-field"><div class="ui-toggle sa-coord" role="switch" aria-label="Toggle coordinator role"></div></span>
+        <span class="ui-label"><span data-i18n="settings.asgard.coordinator">Coordinator</span> <span class="ui-sublabel" data-i18n="settings.asgard.coordinatorSub">pushes to the heat source</span></span>
+        <span class="ui-field"><div class="ui-toggle sa-coord" role="switch" data-i18n-label="settings.asgard.coordinator" aria-label="Toggle coordinator role"></div></span>
       </div>
 
-      <div class="ui-section">Heat Source Endpoint</div>
+      <div class="ui-section" data-i18n="settings.asgard.endpoint">Heat Source Endpoint</div>
       <div class="ui-row">
-        <span class="ui-label">Host</span>
+        <span class="ui-label" data-i18n="settings.asgard.host">Host</span>
         <span class="ui-field"><input class="ui-input wide sa-host" type="text" placeholder="ecodan-heatpump.local" maxlength="63" /></span>
       </div>
       <div class="ui-row">
-        <span class="ui-label">Port</span>
+        <span class="ui-label" data-i18n="settings.asgard.port">Port</span>
         <span class="ui-field"><input class="ui-input sa-port" type="number" min="1" max="65535" step="1" placeholder="80" /></span>
       </div>
       <div class="ui-row">
-        <span class="ui-label">Number entity <span class="ui-sublabel">REST object_id for the weighted house temp</span></span>
+        <span class="ui-label"><span data-i18n="settings.asgard.entity">Number entity</span> <span class="ui-sublabel" data-i18n="settings.asgard.entitySub">REST object_id for the weighted house temp</span></span>
         <span class="ui-field"><input class="ui-input wide sa-entity" type="text" maxlength="47" placeholder="virtual_thermostat_input_z1" /></span>
       </div>
 
-      <div class="ui-section">Peer board</div>
+      <div class="ui-section" data-i18n="settings.asgard.peerBoard">Peer board</div>
       <div class="ui-row">
-        <span class="ui-label">Peer host</span>
-        <span class="ui-field"><input class="ui-input wide sa-peer" type="text" placeholder="empty = single board" maxlength="63" /></span>
+        <span class="ui-label" data-i18n="settings.asgard.peerHost">Peer host</span>
+        <span class="ui-field"><input class="ui-input wide sa-peer" type="text" placeholder="empty = single board" data-i18n-placeholder="settings.asgard.peerPlaceholder" maxlength="63" /></span>
       </div>
       <div class="ui-row">
-        <span class="ui-label">Push interval (s)</span>
+        <span class="ui-label" data-i18n="settings.asgard.pushInterval">Push interval (s)</span>
         <span class="ui-field"><input class="ui-input sa-interval" type="number" min="5" max="3600" step="1" placeholder="30" /></span>
       </div>
 
-      <div class="ui-section">Recommended setpoint</div>
+      <div class="ui-section" data-i18n="settings.asgard.recommendedSetpoint">Recommended setpoint</div>
       <div class="setpoint-box">
         <span class="setpoint-val sa-st-setpoint">—</span>
-        <span class="ui-note">Fixed value to set as the virtual thermostat setpoint — the area-weighted target of all enabled zones (derived from static zone settings, not live status).</span>
+        <span class="ui-note" data-i18n="settings.asgard.setpointNote">Fixed value to set as the virtual thermostat setpoint - the area-weighted target of all enabled zones (derived from static zone settings, not live status).</span>
       </div>
 
-      <div class="ui-section">Status</div>
+      <div class="ui-section" data-i18n="settings.asgard.status">Status</div>
       <div class="status-grid">
-        <span>Peer</span><span class="val sa-st-peer">n/a</span>
-        <span>Last push</span><span class="val sa-st-push">—</span>
-        <span>Zones weighted</span><span class="val sa-st-zones">—</span>
-        <span>Last error</span><span class="val sa-st-err">—</span>
+        <span data-i18n="settings.asgard.peer">Peer</span><span class="val sa-st-peer">n/a</span>
+        <span data-i18n="settings.asgard.lastPush">Last push</span><span class="val sa-st-push">—</span>
+        <span data-i18n="settings.asgard.zonesWeighted">Zones weighted</span><span class="val sa-st-zones">—</span>
+        <span data-i18n="settings.asgard.lastError">Last error</span><span class="val sa-st-err">—</span>
       </div>
     </div>
   </div>
@@ -188,14 +189,16 @@ export default component({
       badge.textContent = role;
       badge.className = 'asgard-role-badge ' + (role === 'master' ? 'master' : 'slave');
 
-      const peer = es(gkey.asgardPeerStatus) || 'n/a';
+      const peer = es(gkey.asgardPeerStatus) || t('common.na');
       stPeer.textContent = peer;
       stPeer.classList.toggle('warn', peer === 'stale' || peer === 'unreachable');
 
       const pushC = ev(gkey.asgardLastPushC);
       const age = ev(gkey.asgardLastPushAgeS);
       if (pushC != null && Number.isFinite(pushC) && age != null) {
-        const ageStr = age < 120 ? `${Math.round(age)}s ago` : `${Math.round(age / 60)}m ago`;
+        const ageStr = age < 120
+          ? t('settings.asgard.ageSeconds', { value: Math.round(age) })
+          : t('settings.asgard.ageMinutes', { value: Math.round(age / 60) });
         stPush.textContent = `${pushC.toFixed(2)}°C (${ageStr})`;
       } else {
         stPush.textContent = '—';
@@ -208,7 +211,7 @@ export default component({
 
       const local = ev(gkey.asgardLocalZones);
       const remote = ev(gkey.asgardPeerZones);
-      stZones.textContent = (local != null) ? `${local} local + ${remote || 0} peer` : '—';
+      stZones.textContent = (local != null) ? `${local} ${t('common.local')} + ${remote || 0} ${t('common.peer')}` : '—';
 
       const err = es(gkey.asgardLastError);
       stErr.textContent = err || '—';
@@ -230,6 +233,8 @@ export default component({
     subscribe(gkey.asgardPeerHost,      form.refresh);
     subscribe(gkey.asgardPort,          form.refresh);
     subscribe(gkey.asgardPushIntervalS, form.refresh);
+    subscribeLanguage(() => { localize(el); updateStatus(); });
+    localize(el);
 
     form.refresh();
     updateStatus();

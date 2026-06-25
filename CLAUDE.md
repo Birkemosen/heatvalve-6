@@ -15,10 +15,8 @@ make config
 # Build firmware (also rebuilds the dashboard JS)
 make build
 
-# Build with version bump
-make build-patch    # x.x.N+1
-make build-minor    # x.N+1.0
-make build-major    # N+1.0.0
+# Versioning
+# Update version.yaml manually before build/release when the firmware version changes.
 
 # Deploy — auto-detects USB port, falls back to mDNS discovery or HOST
 make deploy

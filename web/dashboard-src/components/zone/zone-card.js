@@ -3,6 +3,7 @@ import { injectStyle } from '../../core/style.js';
 import { ev, es, getDashboardValue, isEntityOn, setSelectedZone, subscribeDashboard, zoneLabel, zoneTag } from '../../core/store.js';
 import { fmtT } from '../../utils/format.js';
 import { key } from '../../utils/keys.js';
+import { subscribeLanguage, t } from '../../core/i18n.js';
 
 // ========================================
 // CSS (scoped by class)
@@ -25,12 +26,12 @@ const css = `
 .zone-card:hover {
 	border-color: rgba(124,155,208,.42);
 	border-left-color: rgba(124,155,208,.7);
-	background: linear-gradient(180deg, rgba(28,58,103,.52), rgba(18,39,72,.46));
+	background: rgba(28,58,103,.50);
 }
 .zone-card.active {
 	border-color: rgba(255,133,49,.44);
 	border-left-color: rgba(255,133,49,.84);
-	background: linear-gradient(180deg, rgba(255,133,49,.12), rgba(255,133,49,.04));
+	background: rgba(255,133,49,.10);
 }
 
 .zone-card.disabled {
@@ -156,7 +157,15 @@ export default component({
 
 				nameEl.textContent = zoneLabel(zone);
 				friendlyEl.textContent = friendlyTag || fmtT(ev(tempKey));
-				stateEl.textContent = enabled ? state : 'OFF';
+				const displayState = enabled ? state : 'OFF';
+				stateEl.textContent =
+					displayState === 'HEATING' ? t('state.heating') :
+					displayState === 'IDLE' ? t('state.idle') :
+					displayState === 'FAULT' ? t('common.fault') :
+					displayState === 'MANUAL' ? t('state.manual') :
+					displayState === 'OVERHEATED' ? t('state.overheated') :
+					displayState === 'CALIBRATING' ? t('state.calibrating') :
+					t('state.off');
 				const ownTarget = syncTarget(es(key.syncTo(zone)));
 				const linkedFrom = [];
 				for (let z = 1; z <= 6; z++) {
@@ -167,14 +176,13 @@ export default component({
 				const hasLink = (ownTarget > 0 && ownTarget !== zone) || linkedFrom.length > 0;
 				linkEl.hidden = !hasLink;
 				linkEl.textContent = ownTarget > 0 && ownTarget !== zone
-					? ('LINK Z' + ownTarget)
-					: (linkedFrom.length > 1 ? ('GROUP +' + linkedFrom.length) : ('LINK Z' + linkedFrom[0]));
+					? t('zone.card.linkZone', { zone: ownTarget })
+					: (linkedFrom.length > 1 ? t('zone.card.groupCount', { count: linkedFrom.length }) : t('zone.card.linkZone', { zone: linkedFrom[0] }));
 				const linkTitle = ownTarget > 0 && ownTarget !== zone
-					? ('Grouped with ' + zoneLabel(ownTarget))
-					: (linkedFrom.length > 0 ? ('Grouped with ' + linkedFrom.map(zoneLabel).join(', ')) : '');
-				el.title = hasFault ? ('Fault: ' + lastFault) : linkTitle;
+					? t('zone.card.groupedWith', { zones: zoneLabel(ownTarget) })
+					: (linkedFrom.length > 0 ? t('zone.card.groupedWith', { zones: linkedFrom.map(zoneLabel).join(', ') }) : '');
+				el.title = hasFault ? t('zone.card.fault', { fault: lastFault }) : linkTitle;
 
-				const displayState = enabled ? state : 'OFF';
 				const stateColor =
 					displayState === 'HEATING' ? '#ffd380' :
 					displayState === 'IDLE'    ? '#79d17e' :
@@ -210,6 +218,7 @@ export default component({
 			for (let z = 1; z <= 6; z++) subscribe(key.syncTo(z), update);
 			subscribeDashboard('selectedZone', update);
 			subscribeDashboard('zoneNames', update);
+			subscribeLanguage(update);
 			update();
 		}
 });

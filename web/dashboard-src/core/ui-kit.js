@@ -5,6 +5,7 @@
 // Read-only Monitor/Logs cards intentionally do NOT use this kit.
 
 import { injectStyle } from './style.js';
+import { localize, subscribeLanguage, t } from './i18n.js';
 
 const css = `
 /* ---- Card panel ---- */
@@ -313,6 +314,13 @@ export function helpBadge(text) {
     `<span class="help-tip">${text}</span></span>`;
 }
 
+export function helpBadgeI18n(key) {
+  const text = t(key);
+  const safe = String(text).replace(/"/g, '&quot;');
+  return `<span class="help-badge" tabindex="0" role="img" aria-label="${safe}" data-i18n-label="${key}">?` +
+    `<span class="help-tip" data-i18n="${key}">${text}</span></span>`;
+}
+
 // Magnitude-aware step: the increment follows the size of the number so big
 // values move in big jumps and small values stay fine-grained. Below 1000 the
 // field keeps its declared precision (e.g. 168 → ±1, 1.70 → ±0.10); from 1000
@@ -344,10 +352,10 @@ export function cardForm(el, opts = {}) {
   const banner = document.createElement('div');
   banner.className = 'ui-form-banner';
   banner.innerHTML =
-    '<span class="ui-form-banner-msg">Unsaved changes</span>' +
+    '<span class="ui-form-banner-msg" data-i18n="form.unsaved">Unsaved changes</span>' +
     '<span class="ui-form-banner-btns">' +
-      '<button type="button" class="ui-form-discard">Discard</button>' +
-      '<button type="button" class="ui-form-apply">Apply</button>' +
+      '<button type="button" class="ui-form-discard" data-i18n="form.discard">Discard</button>' +
+      '<button type="button" class="ui-form-apply" data-i18n="form.apply">Apply</button>' +
     '</span>';
   if (titleEl) titleEl.insertAdjacentElement('afterend', banner);
   else el.insertAdjacentElement('afterbegin', banner);
@@ -375,9 +383,9 @@ export function cardForm(el, opts = {}) {
       stepper.className = 'ui-stepper';
       input.parentNode.insertBefore(stepper, input);
       const dec = document.createElement('button');
-      dec.type = 'button'; dec.className = 'ui-step-btn'; dec.textContent = '−'; dec.tabIndex = -1; dec.setAttribute('aria-label', 'decrease');
+      dec.type = 'button'; dec.className = 'ui-step-btn'; dec.textContent = '−'; dec.tabIndex = -1; dec.setAttribute('aria-label', t('common.decrease'));
       const inc = document.createElement('button');
-      inc.type = 'button'; inc.className = 'ui-step-btn'; inc.textContent = '+'; inc.tabIndex = -1; inc.setAttribute('aria-label', 'increase');
+      inc.type = 'button'; inc.className = 'ui-step-btn'; inc.textContent = '+'; inc.tabIndex = -1; inc.setAttribute('aria-label', t('common.increase'));
       stepper.appendChild(dec); stepper.appendChild(input); stepper.appendChild(inc);
       input.readOnly = true;
 
@@ -466,6 +474,13 @@ export function cardForm(el, opts = {}) {
 
   banner.querySelector('.ui-form-apply').addEventListener('click', apply);
   banner.querySelector('.ui-form-discard').addEventListener('click', discard);
+  subscribeLanguage(() => {
+    localize(banner);
+    el.querySelectorAll('.ui-step-btn').forEach((btn) => {
+      btn.setAttribute('aria-label', btn.textContent === '+' ? t('common.increase') : t('common.decrease'));
+    });
+  });
+  localize(banner);
 
   return { num, text, select, toggle, custom, refresh, apply, discard, isDirty: () => fields.some(f => f.dirty) };
 }

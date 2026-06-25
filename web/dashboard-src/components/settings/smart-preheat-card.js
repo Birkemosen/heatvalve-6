@@ -1,9 +1,10 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { cardForm, helpBadge } from '../../core/ui-kit.js';
+import { cardForm, helpBadgeI18n } from '../../core/ui-kit.js';
 import { setGlobalSelect, setGlobalNumber } from '../../core/api.js';
 import { es, ev, isEntityOn, setEntity } from '../../core/store.js';
 import { gkey } from '../../utils/keys.js';
+import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 
 // ========================================
 // CSS — reuses the control/forecast card language
@@ -35,19 +36,19 @@ injectStyle('smart-preheat-card', css);
 // ========================================
 const template = () => `
   <div class="ui-card smart-preheat-card">
-    <div class="ui-card-title"><span class="ui-title-text">Preheat${helpBadge('When hot water arrives but no zone is calling for heat, satisfied zones hold their opening instead of closing — absorbing heat an external optimiser pre-buffered, weighted by floor thermal mass.')}</span></div>
+    <div class="ui-card-title"><span class="ui-title-text"><span data-i18n="settings.preheat.title">Preheat</span>${helpBadgeI18n('settings.preheat.help')}</span></div>
     <div class="ui-row">
-      <span class="ui-label">Preheat Absorption <span class="absorb-badge">idle</span></span>
-      <span class="ui-field"><div class="ui-toggle absorb-toggle" role="switch" aria-label="Toggle preheat absorption"></div></span>
+      <span class="ui-label"><span data-i18n="settings.preheat.absorption">Preheat Absorption</span> <span class="absorb-badge">idle</span></span>
+      <span class="ui-field"><div class="ui-toggle absorb-toggle" role="switch" data-i18n-label="settings.preheat.toggle" aria-label="Toggle preheat absorption"></div></span>
     </div>
-    <div class="ui-note">When an external optimizer pushes hot water with no zone demanding heat, keeps satisfied zones open so the slab soaks it up instead of fighting it. Releases the instant any zone calls for heat.</div>
+    <div class="ui-note" data-i18n="settings.preheat.note">When an external optimizer pushes hot water with no zone demanding heat, keeps satisfied zones open so the slab soaks it up instead of fighting it. Releases the instant any zone calls for heat.</div>
     <div class="gated-body absorb-body">
       <div class="ui-row">
-        <span class="ui-label">Absorb band (°C)</span>
+        <span class="ui-label" data-i18n="settings.preheat.absorbBand">Absorb band (°C)</span>
         <span class="ui-field"><input class="ui-input absorb-band" type="number" min="0" max="5" step="0.1" placeholder="1.0" /></span>
       </div>
       <div class="ui-row">
-        <span class="ui-label">Detect delta (°C)</span>
+        <span class="ui-label" data-i18n="settings.preheat.detectDelta">Detect delta (°C)</span>
         <span class="ui-field"><input class="ui-input absorb-delta" type="number" min="2" max="25" step="0.5" placeholder="8.0" /></span>
       </div>
     </div>
@@ -92,7 +93,7 @@ export default component({
     // Live "absorbing" badge reflects the running device state.
     function updateBadge() {
       const absorbing = String(es(gkey.preheatAbsorbing) || '').toLowerCase() === 'active';
-      absorbBadge.textContent = absorbing ? 'active' : 'idle';
+      absorbBadge.textContent = absorbing ? t('common.active') : t('common.idle');
       absorbBadge.classList.toggle('active', absorbing);
     }
 
@@ -100,6 +101,8 @@ export default component({
     subscribe(gkey.preheatAbsorbing,     updateBadge);
     subscribe(gkey.preheatAbsorbBandC,   form.refresh);
     subscribe(gkey.preheatDetectDeltaC,  form.refresh);
+    subscribeLanguage(() => { localize(el); updateBadge(); });
+    localize(el);
     form.refresh();
     updateBadge();
   }

@@ -3,6 +3,7 @@ import { injectStyle } from '../../core/style.js';
 import { ev, getDashboardValue, subscribeDashboard } from '../../core/store.js';
 import { key } from '../../utils/keys.js';
 import { setMotorTarget, openMotorTimed, closeMotorTimed, stopMotor, setManualMode } from '../../core/api.js';
+import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 
 // ========================================
 // CSS
@@ -177,31 +178,31 @@ const template = (ctx) => {
   const zone = ctx.zone || getDashboardValue('selectedZone') || 1;
   let zoneOptions = '';
   for (let z = 1; z <= 6; z++) {
-    zoneOptions += '<option value="' + z + '"' + (z === zone ? ' selected' : '') + '>Zone ' + z + '</option>';
+    zoneOptions += '<option value="' + z + '"' + (z === zone ? ' selected' : '') + '>' + t('common.zone') + ' ' + z + '</option>';
   }
   return `
     <div class="diag-zone-motor">
-      <div class="card-title">Motor Control</div>
+      <div class="card-title" data-i18n="diagnostics.motor.title">Motor Control</div>
       <div class="cfg-row manual-row">
-        <span class="manual-note">Enable manual mode to suspend automatic management and unlock motor controls.</span>
-        <div class="sw manual-mode-toggle" role="switch" aria-checked="false" tabindex="0"></div>
+        <span class="manual-note" data-i18n="diagnostics.motor.manualNote">Enable manual mode to suspend automatic management and unlock motor controls.</span>
+        <div class="sw manual-mode-toggle" role="switch" data-i18n-label="diagnostics.motor.manualNote" aria-checked="false" tabindex="0"></div>
       </div>
       <div class="gated motor-gated locked">
         <div class="cfg-row">
-          <span class="lbl">Motor</span>
+          <span class="lbl" data-i18n="diagnostics.motor.motor">Motor</span>
           <select class="sel motor-zone-select">${zoneOptions}</select>
         </div>
         <div class="cfg-row">
-          <span class="lbl">Motor Target</span>
+          <span class="lbl" data-i18n="diagnostics.motor.target">Motor Target</span>
           <div class="mn-wrap">
             <input type="number" class="mn-inp motor-target-input" min="0" max="100" step="1" value="0">
             <span class="mn-unit">%</span>
           </div>
         </div>
         <div class="btn-row">
-          <button class="btn motor-open-btn">Open 10s</button>
-          <button class="btn motor-close-btn">Close 10s</button>
-          <button class="btn warn motor-stop-btn">Stop</button>
+          <button class="btn motor-open-btn" data-i18n="diagnostics.motor.open10">Open 10s</button>
+          <button class="btn motor-close-btn" data-i18n="diagnostics.motor.close10">Close 10s</button>
+          <button class="btn warn motor-stop-btn" data-i18n="diagnostics.motor.stop">Stop</button>
         </div>
       </div>
     </div>
@@ -224,6 +225,13 @@ export default component({
     const openBtn = el.querySelector('.motor-open-btn');
     const closeBtn = el.querySelector('.motor-close-btn');
     const stopBtn = el.querySelector('.motor-stop-btn');
+    const rebuildZoneOptions = () => {
+      const current = zoneSelect.value || String(zone);
+      let html = '';
+      for (let z = 1; z <= 6; z++) html += '<option value="' + z + '">' + t('common.zone') + ' ' + z + '</option>';
+      zoneSelect.innerHTML = html;
+      zoneSelect.value = current;
+    };
 
     function setControlsEnabled(enabled) {
       manualMode = !!enabled;
@@ -278,6 +286,8 @@ export default component({
     subscribeDashboard('manualMode', () => {
       setControlsEnabled(!!getDashboardValue('manualMode'));
     });
+    subscribeLanguage(() => { rebuildZoneOptions(); localize(el); });
+    localize(el);
 
     motorTargetInput?.addEventListener('change', (e) => {
       if (!manualMode) return;

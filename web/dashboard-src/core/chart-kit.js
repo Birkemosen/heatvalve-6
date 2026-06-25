@@ -87,8 +87,16 @@ const css = `
   fill: var(--chart-axis); font-size: 9px; letter-spacing: .8px;
   text-transform: uppercase; opacity: .75;
 }
-/* matches the zone-state-history axis labels: small, non-bold, faint blue */
-.chart-hour { fill: rgba(202,219,248,.78); font-size: 9px; font-weight: 400; }
+/* Time labels use tabular Montserrat digits: equal width, no slashed zero. */
+.chart-hour {
+  fill: rgba(202,219,248,.78);
+  font-family: "Montserrat", sans-serif;
+  font-size: 9px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: 0;
+}
 .chart-hour.now { fill: var(--series-solar); }
 .chart-hour.day2 { fill: rgba(202,219,248,.5); }
 .chart-empty { fill: var(--text-faint); font-size: 12px; letter-spacing: .3px; }

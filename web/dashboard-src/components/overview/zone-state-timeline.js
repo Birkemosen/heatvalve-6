@@ -3,6 +3,7 @@ import { injectStyle } from '../../core/style.js';
 import { ev, es, getDashboardValue, getForecastHours, isEntityOn, subscribeDashboard, NZ } from '../../core/store.js';
 import { key, gkey } from '../../utils/keys.js';
 import { computeForecastPreheat, forecastPreheatSubscriptions } from '../../utils/forecast-preload.js';
+import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 
 // ========================================
 // State palette
@@ -11,15 +12,15 @@ import { computeForecastPreheat, forecastPreheatSubscriptions } from '../../util
 // 0xFF (255) = unknown/empty slot → transparent
 // ========================================
 const STATE_PALETTE = {
-  0:   { label: 'Off',             color: '#2c4875' },
-  1:   { label: 'Manual',          color: '#d07bb5' },
-  2:   { label: 'Calibrating',     color: '#ffd380' },
-  3:   { label: 'Wait Cal.',        color: '#6B5C84' },
-  4:   { label: 'Wait Temp',       color: '#6B5C84' },
-  5:   { label: 'Heating',         color: '#ff8531' },
-  6:   { label: 'Idle',            color: '#39354c' },
-  7:   { label: 'Overheated',      color: '#ff6361' },
-  255: { label: '',                color: 'transparent' },
+  0:   { labelKey: 'state.off',         color: '#2c4875' },
+  1:   { labelKey: 'state.manual',      color: '#d07bb5' },
+  2:   { labelKey: 'state.calibrating', color: '#ffd380' },
+  3:   { labelKey: 'state.waitCal',     color: '#6B5C84' },
+  4:   { labelKey: 'state.waitTemp',    color: '#6B5C84' },
+  5:   { labelKey: 'state.heating',     color: '#ff8531' },
+  6:   { labelKey: 'state.idle',        color: '#39354c' },
+  7:   { labelKey: 'state.overheated',  color: '#ff6361' },
+  255: { labelKey: '',                  color: 'transparent' },
 };
 
 const PAST_WINDOW_S   = 24 * 3600;  // measured history window
@@ -33,7 +34,7 @@ const PAD_TOP    = 4;
 const BAND_H     = 10;          // preheat-absorption band height
 const BAND_GAP   = 6;           // gap between zone rows and the absorption band
 const ABSORB_COLOR = '#bc5090'; // magenta — distinct from heating (orange) / idle (blue)
-const FORECAST_PRELOAD_COLOR = '#ffa600';
+const FORECAST_PRELOAD_COLOR = '#38b2ff'; // blue — distinct from heating and clearly forecast preload
 const DEFAULT_COMFORT_BAND_C = 0.5;
 const OBSERVED_BAR_H = 9;
 const EXPECTED_BAR_H = 6;
@@ -140,7 +141,7 @@ injectStyle('zone-state-timeline', css);
 const template = () => `
   <div class="timeline-card">
     <div class="timeline-head">
-      <span>Zone State</span>
+      <span data-i18n="overview.timeline.title">Zone State</span>
       <strong>-24 h / +12 h</strong>
     </div>
     <div class="tl-body"></div>
@@ -421,7 +422,7 @@ function renderTimeline(histData, currentUptimeS, forecastData) {
     bandLabel.setAttribute('font-size', '8.5');
     bandLabel.setAttribute('font-family', 'Montserrat, sans-serif');
     bandLabel.setAttribute('font-weight', '600');
-    bandLabel.textContent = 'Absorb';
+    bandLabel.textContent = t('overview.timeline.absorb');
     svg.appendChild(bandLabel);
 
     const aEntries = entries
@@ -475,7 +476,11 @@ function renderTimeline(histData, currentUptimeS, forecastData) {
     lbl.setAttribute('text-anchor', 'end');
     lbl.setAttribute('fill', isCurrent ? 'rgba(255,211,128,.95)' : 'rgba(202,219,248,.72)');
     lbl.setAttribute('font-size', '9');
-    lbl.setAttribute('font-family', 'Montserrat, sans-serif');
+    lbl.setAttribute('font-family', '"Montserrat", sans-serif');
+    lbl.setAttribute('font-weight', '500');
+    lbl.setAttribute('font-variant-numeric', 'tabular-nums lining-nums');
+    lbl.setAttribute('font-feature-settings', '"tnum" 1, "lnum" 1');
+    lbl.setAttribute('letter-spacing', '0');
     lbl.setAttribute('transform', `rotate(-45 ${x.toFixed(1)} ${AXIS_Y})`);
     lbl.textContent = hour;
     svg.appendChild(lbl);
@@ -509,25 +514,25 @@ function renderLegend(el) {
     div.className = 'tl-legend-item';
     div.innerHTML =
       '<span class="tl-legend-dot" style="background:' + item.color + '"></span>' +
-      item.label;
+      (item.labelKey ? t(item.labelKey) : '');
     el.appendChild(div);
   }
   const absorb = document.createElement('div');
   absorb.className = 'tl-legend-item';
   absorb.innerHTML =
-    '<span class="tl-legend-dot" style="background:' + ABSORB_COLOR + '"></span>Preheat absorption';
+    '<span class="tl-legend-dot" style="background:' + ABSORB_COLOR + '"></span>' + t('overview.timeline.preheatAbsorption');
   el.appendChild(absorb);
 
   const expected = document.createElement('div');
   expected.className = 'tl-legend-item';
   expected.innerHTML =
-    '<span class="tl-legend-dot expected" style="background:' + STATE_PALETTE[5].color + '"></span>Expected state';
+    '<span class="tl-legend-dot expected" style="background:' + STATE_PALETTE[5].color + '"></span>' + t('overview.timeline.expectedState');
   el.appendChild(expected);
 
   const forecast = document.createElement('div');
   forecast.className = 'tl-legend-item';
   forecast.innerHTML =
-    '<span class="tl-legend-dot" style="background:' + FORECAST_PRELOAD_COLOR + '"></span>Preload boost';
+    '<span class="tl-legend-dot" style="background:' + FORECAST_PRELOAD_COLOR + '"></span>' + t('overview.timeline.weatherPreload');
   el.appendChild(forecast);
 }
 
@@ -557,7 +562,7 @@ export default component({
       if (!hist || !hist.entries || hist.entries.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'timeline-empty';
-        empty.textContent = 'No history yet — data accumulates every 5 minutes.';
+        empty.textContent = t('overview.timeline.noHistory');
         body.appendChild(empty);
         return;
       }
@@ -571,6 +576,7 @@ export default component({
     subscribeDashboard('zoneStateHistory', update);
     subscribeDashboard('zoneNames', update);
     subscribeDashboard('forecastHours', update);
+    subscribeLanguage(() => { localize(el); renderLegend(legend); update(); });
     forecastPreheatSubscriptions(subscribe, update);
     subscribe(gkey.drivers, update);
     for (let zone = 1; zone <= NZ; zone++) {
@@ -580,6 +586,7 @@ export default component({
       subscribe(key.setpoint(zone), update);
       subscribe(key.preheatAdvance(zone), update);
     }
+    localize(el);
     update();
   }
 });

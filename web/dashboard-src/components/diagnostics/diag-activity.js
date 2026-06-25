@@ -1,6 +1,7 @@
 import { component } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
 import { getActivityLog, subscribeDashboard } from '../../core/store.js';
+import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 
 // ========================================
 // CSS
@@ -54,14 +55,14 @@ injectStyle('diag-activity', css);
 // ========================================
 const template = () => `
   <div class="diag-activity">
-    <div class="card-title">General Activity / Log</div>
+    <div class="card-title" data-i18n="diagnostics.activity.title">General Activity / Log</div>
     <div class="diag-log"></div>
   </div>
 `;
 
 function renderLog(el, items) {
   if (!items || !items.length) {
-    el.innerHTML = '<div class="diag-log-empty">No activity yet.</div>';
+    el.innerHTML = '<div class="diag-log-empty">' + t('diagnostics.activity.empty') + '</div>';
     return;
   }
 
@@ -90,6 +91,8 @@ export default component({
     }
 
     subscribeDashboard('activityLog', update);
+    subscribeLanguage(() => { localize(el); update(); });
+    localize(el);
     update();
   }
 });

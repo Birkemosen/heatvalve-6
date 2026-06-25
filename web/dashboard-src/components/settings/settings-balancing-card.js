@@ -1,9 +1,10 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { cardForm, helpBadge } from '../../core/ui-kit.js';
+import { cardForm, helpBadgeI18n } from '../../core/ui-kit.js';
 import { es, ev, setEntity } from '../../core/store.js';
 import { setGlobalSelect, setGlobalNumber, resetBalancing } from '../../core/api.js';
 import { key, gkey } from '../../utils/keys.js';
+import { localize, subscribeLanguage } from '../../core/i18n.js';
 
 const ZONES = [1, 2, 3, 4, 5, 6];
 
@@ -32,7 +33,7 @@ injectStyle('settings-balancing-card', css);
 // ========================================
 const zoneRow = (z) => `
   <tr data-zone="${z}">
-    <td>Zone ${z}</td>
+    <td><span data-i18n="common.zone">Zone</span> ${z}</td>
     <td class="bal-static">—</td>
     <td class="bal-adapt">—</td>
     <td class="bal-eff eff">—</td>
@@ -42,48 +43,48 @@ const zoneRow = (z) => `
 
 const template = () => `
   <div class="ui-card settings-balancing-card">
-    <div class="ui-card-title"><span class="ui-title-text">Hydraulic Balancing${helpBadge('Scales raw valve positions by pipe length and zone area so long loops get proportionally more flow. Adaptive mode tunes the factors over time.')}</span></div>
+    <div class="ui-card-title"><span class="ui-title-text"><span data-i18n="settings.balancing.title">Hydraulic Balancing</span>${helpBadgeI18n('settings.balancing.help')}</span></div>
 
     <div class="ui-row">
-      <span class="ui-label">Balancing mode</span>
+      <span class="ui-label" data-i18n="settings.balancing.mode">Balancing mode</span>
       <span class="ui-field"><select class="ui-select bal-mode">
-        <option>Static</option>
-        <option>Adaptive</option>
+        <option value="Static" data-i18n="settings.balancing.static">Static</option>
+        <option value="Adaptive" data-i18n="settings.balancing.adaptive">Adaptive</option>
       </select></span>
     </div>
-    <div class="ui-note">Static splits flow from the resistance-aware design model (area, pipe, floor). Adaptive adds a slow room-temperature correction on top — no return probes — nudging chronically cold loops open and over-served loops closed over days. It only redistributes flow between loops, never raises total demand.</div>
+    <div class="ui-note" data-i18n="settings.balancing.note">Static splits flow from the resistance-aware design model (area, pipe, floor). Adaptive adds a slow room-temperature correction on top - no return probes - nudging chronically cold loops open and over-served loops closed over days. It only redistributes flow between loops, never raises total demand.</div>
 
-    <div class="ui-section">Per-zone factors</div>
+    <div class="ui-section" data-i18n="settings.balancing.perZone">Per-zone factors</div>
     <table class="zone-table">
       <thead>
-        <tr><th>Zone</th><th>Prior</th><th>Learned</th><th>Effective</th><th>Error</th></tr>
+        <tr><th data-i18n="common.zone">Zone</th><th data-i18n="settings.balancing.prior">Prior</th><th data-i18n="settings.balancing.learned">Learned</th><th data-i18n="settings.balancing.effective">Effective</th><th data-i18n="settings.balancing.error">Error</th></tr>
       </thead>
       <tbody class="bal-zone-body">
         ${ZONES.map(zoneRow).join('')}
       </tbody>
     </table>
-    <div class="ui-note">Prior = static design factor · Learned = adaptive multiplier · Effective = prior × learned (the valve scale applied). Error is the long-window setpoint−room average a cold (+) loop is boosted on, a warm (−) loop throttled.</div>
+    <div class="ui-note" data-i18n="settings.balancing.factorNote">Prior = static design factor · Learned = adaptive multiplier · Effective = prior × learned (the valve scale applied). Error is the long-window setpoint-room average a cold (+) loop is boosted on, a warm (-) loop throttled.</div>
 
     <div class="gated-body bal-adaptive-body">
-      <div class="ui-section">Adaptive tuning</div>
+      <div class="ui-section" data-i18n="settings.balancing.tuning">Adaptive tuning</div>
       <div class="ui-row">
-        <span class="ui-label">Update interval (s)</span>
+        <span class="ui-label" data-i18n="settings.balancing.interval">Update interval (s)</span>
         <span class="ui-field"><input class="ui-input bal-interval" type="number" min="60" max="86400" step="60" placeholder="3600" /></span>
       </div>
       <div class="ui-row">
-        <span class="ui-label">Step (k)</span>
+        <span class="ui-label" data-i18n="settings.balancing.step">Step (k)</span>
         <span class="ui-field"><input class="ui-input bal-step" type="number" min="0.001" max="0.2" step="0.01" placeholder="0.02" /></span>
       </div>
       <div class="ui-row">
-        <span class="ui-label">Min factor</span>
+        <span class="ui-label" data-i18n="settings.balancing.minFactor">Min factor</span>
         <span class="ui-field"><input class="ui-input bal-min" type="number" min="0.1" max="1" step="0.05" placeholder="0.5" /></span>
       </div>
       <div class="ui-row">
-        <span class="ui-label">Max factor</span>
+        <span class="ui-label" data-i18n="settings.balancing.maxFactor">Max factor</span>
         <span class="ui-field"><input class="ui-input bal-max" type="number" min="1" max="3" step="0.05" placeholder="1.5" /></span>
       </div>
-      <button class="ui-btn warn bal-reset" type="button">Reset balancing</button>
-      <div class="ui-note">Reset clears every loop's learned multiplier back to 1.0 (relearns over days). The step bounds the per-update move; convergence is intentionally slow to match the slab's thermal lag.</div>
+      <button class="ui-btn warn bal-reset" type="button" data-i18n="settings.balancing.reset">Reset balancing</button>
+      <div class="ui-note" data-i18n="settings.balancing.resetNote">Reset clears every loop's learned multiplier back to 1.0 (relearns over days). The step bounds the per-update move; convergence is intentionally slow to match the slab's thermal lag.</div>
     </div>
   </div>
 `;
@@ -160,6 +161,8 @@ export default component({
       subscribe(key.balanceFactor(z), updateZones);
       subscribe(key.adaptErr(z), updateZones);
     });
+    subscribeLanguage(() => localize(el));
+    localize(el);
 
     form.refresh();
     gate(es(gkey.balanceMode) || 'Static');

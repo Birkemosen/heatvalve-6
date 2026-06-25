@@ -2,6 +2,7 @@ import { component } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
 import { getDashboardValue, subscribeDashboard, NZ } from '../../core/store.js';
 import { svgEl, smoothPath, attachTooltip } from '../../core/chart-kit.js';
+import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 
 // Wide viewBox scaled to 100% width with a uniform aspect ratio (meet) so axis
 // text stays crisp and proportional instead of stretching with the column width.
@@ -31,7 +32,7 @@ const css = `
 .graph-widgets { display: grid; gap: 12px; }
 .graph-widgets .chart-card svg {
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(138,80,143,.10), rgba(0,32,46,.34));
+  background: rgba(0,32,46,.34);
 }
 .graph-widgets .gw-controls {
   display: flex;
@@ -83,16 +84,16 @@ injectStyle('graph-widgets', css);
 // TEMPLATE
 // ========================================
 const flowCard = () =>
-  `<div class="chart-card"><div class="chart-head"><span class="chart-title">Flow / Return / Demand</span><span class="chart-sub gw-dt">—</span></div>` +
-  `<div class="gw-controls" role="toolbar" aria-label="Flow chart layers">` +
-    `<button type="button" class="gw-toggle" data-layer="flow" aria-pressed="true">Flow</button>` +
-    `<button type="button" class="gw-toggle" data-layer="return" aria-pressed="true">Return</button>` +
-    `<button type="button" class="gw-toggle" data-layer="demand" aria-pressed="true">Demand</button>` +
+  `<div class="chart-card"><div class="chart-head"><span class="chart-title" data-i18n="overview.graph.flowReturnDemand">Flow / Return / Demand</span><span class="chart-sub gw-dt">—</span></div>` +
+  `<div class="gw-controls" role="toolbar" data-i18n-label="overview.graph.layers.forecast" aria-label="Flow chart layers">` +
+    `<button type="button" class="gw-toggle" data-layer="flow" aria-pressed="true" data-i18n="overview.graph.layers.flow">Flow</button>` +
+    `<button type="button" class="gw-toggle" data-layer="return" aria-pressed="true" data-i18n="overview.graph.layers.return">Return</button>` +
+    `<button type="button" class="gw-toggle" data-layer="demand" aria-pressed="true" data-i18n="overview.graph.layers.demand">Demand</button>` +
   `</div>` +
   `<svg class="gw-flow"></svg></div>`;
 
 const demandCard = () =>
-  `<div class="chart-card"><div class="chart-head"><span class="chart-title">Demand Index</span><span class="chart-sub gw-demand-text">—</span></div>` +
+  `<div class="chart-card"><div class="chart-head"><span class="chart-title" data-i18n="overview.graph.demandIndex">Demand Index</span><span class="chart-sub gw-demand-text">—</span></div>` +
   `<svg class="gw-demand"></svg></div>`;
 
 const template = (ctx) => {
@@ -214,11 +215,11 @@ function drawChart(svg, card, defs, entries, windowStart, uptime) {
   svg.appendChild(svgEl('line', { x1: PAD_LEFT, y1: PLOT_B, x2: PAD_LEFT + PLOT_W, y2: PLOT_B, class: 'chart-axis' }));
   if (defs.some((d) => d.unit === 'C')) {
     svg.appendChild(svgEl('text', { x: 9, y: PAD_TOP + PLOT_H / 2,
-      transform: `rotate(-90 9 ${(PAD_TOP + PLOT_H / 2).toFixed(1)})`, 'text-anchor': 'middle', class: 'chart-axis-label' }, 'Temp'));
+      transform: `rotate(-90 9 ${(PAD_TOP + PLOT_H / 2).toFixed(1)})`, 'text-anchor': 'middle', class: 'chart-axis-label' }, t('overview.graph.axis.temp')));
   }
   if (defs.some((d) => d.unit === '%')) {
     svg.appendChild(svgEl('text', { x: CHART_W - 9, y: PAD_TOP + PLOT_H / 2,
-      transform: `rotate(90 ${CHART_W - 9} ${(PAD_TOP + PLOT_H / 2).toFixed(1)})`, 'text-anchor': 'middle', class: 'chart-axis-label' }, 'Demand'));
+      transform: `rotate(90 ${CHART_W - 9} ${(PAD_TOP + PLOT_H / 2).toFixed(1)})`, 'text-anchor': 'middle', class: 'chart-axis-label' }, t('overview.graph.axis.demand')));
   }
 
   drawHourlyAxis(svg, windowStart, uptime);
@@ -291,9 +292,9 @@ export default component({
 
     function combinedDefs() {
       const defs = [];
-      if (visible.flow) defs.push({ index: FLOW_INDEX, color: FLOW_LINE, label: 'Flow', unit: 'C', width: 2.4 });
-      if (visible.return) defs.push({ index: RETURN_INDEX, color: RETURN_LINE, label: 'Return', unit: 'C', width: 2 });
-      if (visible.demand) defs.push({ index: DEMAND_INDEX, color: DEMAND_LINE, label: 'Demand', unit: '%', width: 1.8, fill: 'rgba(255,193,77,.10)' });
+      if (visible.flow) defs.push({ index: FLOW_INDEX, color: FLOW_LINE, label: t('overview.graph.layers.flow'), unit: 'C', width: 2.4 });
+      if (visible.return) defs.push({ index: RETURN_INDEX, color: RETURN_LINE, label: t('overview.graph.layers.return'), unit: 'C', width: 2 });
+      if (visible.demand) defs.push({ index: DEMAND_INDEX, color: DEMAND_LINE, label: t('overview.graph.layers.demand'), unit: '%', width: 1.8, fill: 'rgba(255,193,77,.10)' });
       return defs;
     }
 
@@ -320,7 +321,7 @@ export default component({
         const ld = lastVal(entries, DEMAND_INDEX, windowStart);
         demandTextEl.textContent = ld != null ? Math.round(ld) + '%' : '—';
         demandTeardown = drawChart(demandSvg, demandSvg.closest('.chart-card'),
-          [{ index: DEMAND_INDEX, color: DEMAND_LINE, label: 'Demand', unit: '%', width: 2.2, fill: 'var(--series-cool-fill)' }],
+          [{ index: DEMAND_INDEX, color: DEMAND_LINE, label: t('overview.graph.layers.demand'), unit: '%', width: 2.2, fill: 'var(--series-cool-fill)' }],
           entries, windowStart, uptime);
       }
     }
@@ -336,6 +337,8 @@ export default component({
     });
 
     subscribeDashboard('zoneStateHistory', update);
+    subscribeLanguage(() => { localize(el); update(); });
+    localize(el);
     paintControls();
     update();
   }

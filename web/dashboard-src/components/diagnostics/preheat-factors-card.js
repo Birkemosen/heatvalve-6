@@ -2,6 +2,7 @@ import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
 import { ev, subscribeDashboard, zoneLabel } from '../../core/store.js';
 import { key } from '../../utils/keys.js';
+import { localize, subscribeLanguage } from '../../core/i18n.js';
 
 const MAX_ADVANCE_C = 0.8;
 
@@ -67,9 +68,9 @@ const template = () => {
 
   return `
     <div class="ui-card preheat-factors-card">
-      <div class="ui-card-title"><span>Preheat Factors</span></div>
+      <div class="ui-card-title"><span data-i18n="diagnostics.preheatFactors.title">Preheat Factors</span></div>
       <div class="pf-list">${rows}</div>
-      <div class="ui-note">Learned simple-preheat head-start per zone. The control runs automatically; these values show how much earlier each room starts calling for heat.</div>
+      <div class="ui-note" data-i18n="diagnostics.preheatFactors.note">Learned simple-preheat head-start per zone. The control runs automatically; these values show how much earlier each room starts calling for heat.</div>
     </div>
   `;
 };
@@ -97,6 +98,8 @@ export default component({
 
     for (let zone = 1; zone <= 6; zone++) subscribe(key.preheatAdvance(zone), update);
     subscribeDashboard('zoneNames', update);
+    subscribeLanguage(() => localize(el));
+    localize(el);
     update();
   }
 });

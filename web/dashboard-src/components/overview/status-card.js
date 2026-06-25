@@ -3,6 +3,7 @@ import { injectStyle } from '../../core/style.js';
 import { getDashboardValue, isEntityOn, subscribeDashboard } from '../../core/store.js';
 import { setDriversEnabled } from '../../core/api.js';
 import { gkey } from '../../utils/keys.js';
+import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 
 // ========================================
 // CSS
@@ -99,10 +100,10 @@ injectStyle('status-card', css);
 // ========================================
 const template = (ctx) => `
   <div class="card status-card">
-    <div class="card-title">Status</div>
+    <div class="card-title" data-i18n="overview.status.title">Status</div>
     <table class="st">
       <tr>
-        <td>Motor Drivers</td>
+        <td data-i18n="overview.status.motorDrivers">Motor Drivers</td>
         <td>
           <div class="drv-toggle">
             <span id="sys-drv">${ctx.motorDrivers}</span>
@@ -111,11 +112,11 @@ const template = (ctx) => `
         </td>
       </tr>
       <tr>
-        <td>Motor Fault</td>
+        <td data-i18n="overview.status.motorFault">Motor Fault</td>
         <td id="sys-fault">${ctx.motorFault}</td>
       </tr>
       <tr>
-        <td>Connection</td>
+        <td data-i18n="overview.status.connection">Connection</td>
         <td id="sys-conn"><span class="dot ${ctx.connOn ? 'on' : ''}" id="sys-dot"></span></td>
       </tr>
     </table>
@@ -137,8 +138,8 @@ export default component({
   methods: {
     update(refs) {
       this.motorDriversOn = isEntityOn(gkey.drivers);
-      this.motorDrivers = this.motorDriversOn ? 'ON' : 'OFF';
-      this.motorFault = isEntityOn(gkey.fault) ? 'FAULT' : 'OK';
+      this.motorDrivers = this.motorDriversOn ? t('common.on') : t('common.off');
+      this.motorFault = isEntityOn(gkey.fault) ? t('common.fault') : t('common.ok');
       this.connOn = getDashboardValue('live') === true;
 
       refs.drv.textContent = this.motorDrivers;
@@ -163,9 +164,11 @@ export default component({
     subscribe(gkey.drivers, update);
     subscribe(gkey.fault, update);
     subscribeDashboard('live', update);
+    subscribeLanguage(() => { localize(el); update(); });
     refs.sw.onclick = () => {
       setDriversEnabled(!ctx.motorDriversOn);
     };
+    localize(el);
     update();
   }
 });

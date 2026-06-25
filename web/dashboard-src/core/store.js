@@ -175,8 +175,9 @@ export function setDashboardValue(key, value) {
 }
 
 export function setSection(section) {
-  if (D.section === section) return;
-  D.section = section;
+  const next = section === 'logs' ? 'diagnostics' : section;
+  if (D.section === next) return;
+  D.section = next;
   notify(dashboardKey('section'));
 }
 
