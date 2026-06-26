@@ -48,6 +48,16 @@ export function fmtWifi(v) {
   return v + " dBm ░░░░";
 }
 
+export function fmtTimeFromAge(ageS) {
+  if (ageS == null || isNaN(ageS)) return 'hh:mm';
+
+  const epoch = Math.round(Date.now() / 1000 - ageS);
+  const date = new Date(epoch * 1000);
+  const pad = (value) => String(value).padStart(2, '0');
+
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 // =======================
 // SAFE PARSERS (OPTIONAL)
 // =======================

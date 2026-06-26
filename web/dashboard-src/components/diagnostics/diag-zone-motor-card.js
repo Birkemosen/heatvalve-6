@@ -3,6 +3,7 @@ import { injectStyle } from '../../core/style.js';
 import { ev, getDashboardValue, subscribeDashboard } from '../../core/store.js';
 import { key } from '../../utils/keys.js';
 import { setMotorTarget, openMotorTimed, closeMotorTimed, stopMotor, setManualMode } from '../../core/api.js';
+import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 
 // ========================================
 // CSS
@@ -27,13 +28,15 @@ const css = `
   border-bottom: 1px solid var(--panel-border);
 }
 .diag-zone-motor .cfg-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(104px, 140px) minmax(0, 1fr);
   gap: 10px;
   margin-bottom: 12px;
   align-items: center;
+  min-width: 0;
 }
 .diag-zone-motor .cfg-row.manual-row {
-  justify-content: space-between;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   padding: 8px 0 12px;
   border-bottom: 1px solid var(--panel-border);
@@ -43,11 +46,12 @@ const css = `
   color: var(--text-secondary);
   font-size: .82rem;
   font-weight: 600;
+  min-width: 0;
 }
 .diag-zone-motor .lbl {
   font-weight: 600;
   color: var(--text);
-  min-width: 140px;
+  min-width: 0;
 }
 .diag-zone-motor .mn-wrap {
   display: flex;
@@ -62,13 +66,14 @@ const css = `
   color: var(--text);
   font-family: var(--mono);
   font-size: .95rem;
-  min-width: 140px;
+  width: 100%;
+  min-width: 0;
   transition: border-color .15s ease;
 }
 .diag-zone-motor .sel:focus {
-  outline: 2px solid rgba(124,155,208,.6);
+  outline: 2px solid var(--focus-ring-soft);
   outline-offset: 1px;
-  border-color: rgba(124,155,208,.55);
+  border-color: var(--focus-border);
 }
 .diag-zone-motor .mn-inp {
   background: var(--control-bg);
@@ -82,9 +87,9 @@ const css = `
   transition: border-color .15s ease;
 }
 .diag-zone-motor .mn-inp:focus {
-  outline: 2px solid rgba(124,155,208,.6);
+  outline: 2px solid var(--focus-ring-soft);
   outline-offset: 1px;
-  border-color: rgba(124,155,208,.55);
+  border-color: var(--focus-border);
 }
 .diag-zone-motor .mn-unit {
   color: var(--muted);
@@ -113,17 +118,17 @@ const css = `
 }
 .diag-zone-motor .btn:hover {
   background: var(--control-bg-hover);
-  border-color: rgba(255,133,49,.5);
-  color: #ffe8ba;
+  border-color: var(--accent-border-hover);
+  color: var(--accent-text-soft);
 }
 .diag-zone-motor .btn.warn {
-  background: rgba(255,118,118,.2);
-  border-color: rgba(255,118,118,.4);
-  color: #FFD9D9;
+  background: var(--danger-bg);
+  border-color: var(--danger-border-soft);
+  color: var(--danger-text);
 }
 .diag-zone-motor .btn.warn:hover {
-  background: linear-gradient(135deg, rgba(255,100,100,.3), rgba(255,100,100,.15));
-  border-color: rgba(255,100,100,.5);
+  background: linear-gradient(135deg, var(--danger-bg-strong), var(--danger-bg-soft));
+  border-color: var(--danger-border);
 }
 .diag-zone-motor .sw {
   width: 50px;
@@ -144,16 +149,16 @@ const css = `
   width: 20px;
   height: 20px;
   border-radius: 999px;
-  background: #efe6dd;
+  background: var(--control-knob);
   transition: .2s ease;
 }
 .diag-zone-motor .sw.on {
   background: var(--blue);
-  border-color: rgba(124,155,208,.4);
+  border-color: var(--control-border-strong);
 }
 .diag-zone-motor .sw.on::after {
   transform: translateX(22px);
-  background: #042a3b;
+  background: var(--text-on-accent);
 }
 .diag-zone-motor .gated {
   transition: opacity .18s ease;
@@ -177,31 +182,31 @@ const template = (ctx) => {
   const zone = ctx.zone || getDashboardValue('selectedZone') || 1;
   let zoneOptions = '';
   for (let z = 1; z <= 6; z++) {
-    zoneOptions += '<option value="' + z + '"' + (z === zone ? ' selected' : '') + '>Zone ' + z + '</option>';
+    zoneOptions += '<option value="' + z + '"' + (z === zone ? ' selected' : '') + '>' + t('common.zone') + ' ' + z + '</option>';
   }
   return `
     <div class="diag-zone-motor">
-      <div class="card-title">Motor Control</div>
+      <div class="card-title" data-i18n="diagnostics.motor.title">Motor Control</div>
       <div class="cfg-row manual-row">
-        <span class="manual-note">Enable manual mode to suspend automatic management and unlock motor controls.</span>
-        <div class="sw manual-mode-toggle" role="switch" aria-checked="false" tabindex="0"></div>
+        <span class="manual-note" data-i18n="diagnostics.motor.manualNote">Enable manual mode to suspend automatic management and unlock motor controls.</span>
+        <div class="sw manual-mode-toggle" role="switch" data-i18n-label="diagnostics.motor.manualNote" aria-checked="false" tabindex="0"></div>
       </div>
       <div class="gated motor-gated locked">
         <div class="cfg-row">
-          <span class="lbl">Motor</span>
+          <span class="lbl" data-i18n="diagnostics.motor.motor">Motor</span>
           <select class="sel motor-zone-select">${zoneOptions}</select>
         </div>
         <div class="cfg-row">
-          <span class="lbl">Motor Target</span>
+          <span class="lbl" data-i18n="diagnostics.motor.target">Motor Target</span>
           <div class="mn-wrap">
             <input type="number" class="mn-inp motor-target-input" min="0" max="100" step="1" value="0">
             <span class="mn-unit">%</span>
           </div>
         </div>
         <div class="btn-row">
-          <button class="btn motor-open-btn">Open 10s</button>
-          <button class="btn motor-close-btn">Close 10s</button>
-          <button class="btn warn motor-stop-btn">Stop</button>
+          <button class="btn motor-open-btn" data-i18n="diagnostics.motor.open10">Open 10s</button>
+          <button class="btn motor-close-btn" data-i18n="diagnostics.motor.close10">Close 10s</button>
+          <button class="btn warn motor-stop-btn" data-i18n="diagnostics.motor.stop">Stop</button>
         </div>
       </div>
     </div>
@@ -224,6 +229,13 @@ export default component({
     const openBtn = el.querySelector('.motor-open-btn');
     const closeBtn = el.querySelector('.motor-close-btn');
     const stopBtn = el.querySelector('.motor-stop-btn');
+    const rebuildZoneOptions = () => {
+      const current = zoneSelect.value || String(zone);
+      let html = '';
+      for (let z = 1; z <= 6; z++) html += '<option value="' + z + '">' + t('common.zone') + ' ' + z + '</option>';
+      zoneSelect.innerHTML = html;
+      zoneSelect.value = current;
+    };
 
     function setControlsEnabled(enabled) {
       manualMode = !!enabled;
@@ -278,6 +290,8 @@ export default component({
     subscribeDashboard('manualMode', () => {
       setControlsEnabled(!!getDashboardValue('manualMode'));
     });
+    subscribeLanguage(() => { rebuildZoneOptions(); localize(el); });
+    localize(el);
 
     motorTargetInput?.addEventListener('change', (e) => {
       if (!manualMode) return;

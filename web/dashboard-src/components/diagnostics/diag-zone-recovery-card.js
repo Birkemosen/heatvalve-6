@@ -2,6 +2,7 @@ import { component } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
 import { getDashboardValue, subscribeDashboard, zoneLabel } from '../../core/store.js';
 import { resetMotorFault, resetMotorLearnedFactors, resetMotorAndRelearn } from '../../core/api.js';
+import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 
 // ========================================
 // CSS
@@ -69,9 +70,9 @@ const css = `
   transition: border-color .15s ease;
 }
 .diag-zone-recovery .sel:focus {
-  outline: 2px solid rgba(124,155,208,.6);
+  outline: 2px solid var(--focus-ring-soft);
   outline-offset: 1px;
-  border-color: rgba(124,155,208,.55);
+  border-color: var(--focus-border);
 }
 .diag-zone-recovery .btn {
   flex: 1;
@@ -89,17 +90,17 @@ const css = `
 }
 .diag-zone-recovery .btn:hover {
   background: var(--control-bg-hover);
-  border-color: rgba(255,133,49,.5);
-  color: #ffe8ba;
+  border-color: var(--accent-border-hover);
+  color: var(--accent-text-soft);
 }
 .diag-zone-recovery .btn.warn {
-  background: rgba(255,118,118,.2);
-  border-color: rgba(255,118,118,.4);
-  color: #FFD9D9;
+  background: var(--danger-bg);
+  border-color: var(--danger-border-soft);
+  color: var(--danger-text);
 }
 .diag-zone-recovery .btn.warn:hover {
-  background: linear-gradient(135deg, rgba(255,100,100,.3), rgba(255,100,100,.15));
-  border-color: rgba(255,100,100,.5);
+  background: linear-gradient(135deg, var(--danger-bg-strong), var(--danger-bg-soft));
+  border-color: var(--danger-border);
 }
 `;
 
@@ -110,12 +111,12 @@ injectStyle('diag-zone-recovery', css);
 // ========================================
 const template = () => `
     <div class="diag-zone-recovery">
-      <div class="card-title">Faults &amp; Relearn</div>
-      <div class="recovery-note">Recover the selected zone's motor after a fault or bad calibration.</div>
+      <div class="card-title" data-i18n="diagnostics.recovery.title">Faults &amp; Relearn</div>
+      <div class="recovery-note" data-i18n="diagnostics.recovery.note">Recover the selected zone's motor after a fault or bad calibration.</div>
       <div class="btn-row">
-        <button class="btn recovery-fault-btn">Reset Fault</button>
-        <button class="btn warn recovery-factors-btn">Reset Factors</button>
-        <button class="btn accent recovery-relearn-btn">Reset + Relearn</button>
+        <button class="btn recovery-fault-btn" data-i18n="diagnostics.recovery.resetFault">Reset Fault</button>
+        <button class="btn warn recovery-factors-btn" data-i18n="diagnostics.recovery.resetFactors">Reset Factors</button>
+        <button class="btn accent recovery-relearn-btn" data-i18n="diagnostics.recovery.resetRelearn">Reset + Relearn</button>
       </div>
       <div class="recovery-status" role="status"></div>
     </div>
@@ -153,25 +154,27 @@ export default component({
       showStatus(sentMsg, true);
       if (p && typeof p.then === 'function') {
         p.then((resp) => {
-          if (resp && resp.ok === false) showStatus('Failed — device rejected the request', false);
-        }).catch(() => showStatus('Failed — could not reach device', false));
+          if (resp && resp.ok === false) showStatus(t('diagnostics.recovery.rejected'), false);
+        }).catch(() => showStatus(t('diagnostics.recovery.unreachable'), false));
       }
     }
 
     faultBtn?.addEventListener('click', () => {
-      run(resetMotorFault, '✓ Fault reset sent for ' + zoneLabel(zone));
+      run(resetMotorFault, '✓ ' + t('diagnostics.recovery.faultSent', { zone: zoneLabel(zone) }));
     });
 
     factorsBtn?.addEventListener('click', () => {
-      if (confirm('Reset learned factors for ' + zoneLabel(zone) + '?')) {
-        run(resetMotorLearnedFactors, '✓ Learned factors reset for ' + zoneLabel(zone));
+      if (confirm(t('diagnostics.recovery.confirmFactors', { zone: zoneLabel(zone) }))) {
+        run(resetMotorLearnedFactors, '✓ ' + t('diagnostics.recovery.factorsReset', { zone: zoneLabel(zone) }));
       }
     });
 
     relearnBtn?.addEventListener('click', () => {
-      if (confirm('Reset + relearn motor for ' + zoneLabel(zone) + '?')) {
-        run(resetMotorAndRelearn, '✓ Relearn started for ' + zoneLabel(zone));
+      if (confirm(t('diagnostics.recovery.confirmRelearn', { zone: zoneLabel(zone) }))) {
+        run(resetMotorAndRelearn, '✓ ' + t('diagnostics.recovery.relearnStarted', { zone: zoneLabel(zone) }));
       }
     });
+    subscribeLanguage(() => localize(el));
+    localize(el);
   }
 });

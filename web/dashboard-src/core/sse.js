@@ -91,10 +91,10 @@ export function connect() {
       if (!logsRefreshTimer) {
         logsRefreshTimer = setInterval(fetchLogs, 3000);
       }
-      // Fetched forecast preview: refresh every 5 minutes.
+      // Fetched forecast preview: refresh once per hour.
       fetchForecastHours();
       if (!forecastRefreshTimer) {
-        forecastRefreshTimer = setInterval(fetchForecastHours, 5 * 60 * 1000);
+        forecastRefreshTimer = setInterval(fetchForecastHours, 60 * 60 * 1000);
       }
       scheduleReconnect();
     })

@@ -342,6 +342,11 @@ bool Hv6AsgardBridge::push_asgard_(const hv6::AsgardConfig &cfg, float value) {
   if (!client)
     return false;
 
+  // The value rides in the query string, so the body is empty — but ESPHome's
+  // esp-idf httpd rejects a POST with no Content-Length (HTTP 411). Setting an
+  // empty post field makes esp_http_client emit "Content-Length: 0".
+  esp_http_client_set_post_field(client, "", 0);
+
   bool ok = false;
   esp_err_t err = esp_http_client_perform(client);
   if (err == ESP_OK) {

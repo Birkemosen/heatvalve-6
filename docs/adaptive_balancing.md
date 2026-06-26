@@ -271,10 +271,10 @@ return probes. `RETURN_TEMP` can be retired once `ADAPTIVE` is validated.
 
 ### Persistence / versioning
 
-- `BalancingConfig` gains fields → bump `CONFIG_VERSION`
+- `BalancingConfig` gains fields → bump `BALANCING_CONFIG_VERSION`
   ([hv6_types.h](../components/hv6_config_store/hv6_types.h)).
 - `balance_adapt` lives in `ZoneConfig`, which is mirrored to the durable `zones` NVS blob —
-  bump `ZONE_CONFIG_VERSION` so the learned correction survives a `CONFIG_VERSION` reset like
+  bump `ZONE_CONFIG_VERSION` so the learned correction survives a legacy main-config reset like
   the rest of the per-room setup (see CLAUDE.md → NVS Config Store).
 - `adapt_i` changes slowly: persist it **on the outer-loop update only when it moved by a
   meaningful delta** (e.g. ≥ 0.01), not every cycle — this respects the no-flash-wear

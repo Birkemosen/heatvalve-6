@@ -34,9 +34,21 @@ class Hv6Forecast : public esphome::Component {
   void set_zone_controller(hv6::Hv6ZoneController *ctrl) { zone_controller_ = ctrl; }
   void set_config_store(hv6::Hv6ConfigStore *store) { config_store_ = store; }
 
+  /// Request an immediate fetch on the next run-loop iteration, bypassing the
+  /// normal fetch interval. Safe to call from any task/context.
+  void trigger_fetch() {
+    force_fetch_ = true;
+    if (task_handle_) xTaskAbortDelay(task_handle_);
+  }
+
   // Diagnostic accessors (consumed by hv6_dashboard; scalar reads)
   const char *get_status_str() const;
-  uint32_t get_forecast_age_s() const;
+  /// Seconds since the last *successful* Open-Meteo fetch (0 = none yet). Drives
+  /// the hourly-refetch gate and the graph's stale colouring.
+  uint32_t get_fetch_age_s() const;
+  /// Absolute wall-clock epoch of the last successful fetch (0 = none). The UI
+  /// formats this as a "last updated HH:MM" timestamp.
+  uint32_t get_last_fetch_epoch() const { return last_fetch_epoch_; }
   uint32_t get_fetch_fail_streak() const { return fetch_fail_streak_; }
   const char *get_last_error() const { return last_error_; }
   float get_zone_offset(uint8_t zone) const {
@@ -77,7 +89,10 @@ class Hv6Forecast : public esphome::Component {
   ForecastHour hours_[FORECAST_HOURS];
   uint8_t hours_count_{0};
   uint32_t hours_base_epoch_{0};  ///< Epoch of hours_[0]; 0 = no data
+  uint32_t last_fetch_epoch_{0};  ///< Wall-clock of last successful fetch (persisted); 0 = none
   SemaphoreHandle_t hours_lock_{nullptr};  ///< Guards hours_/count/base for cross-task reads
+
+  volatile bool force_fetch_{false};  ///< Set by trigger_fetch(); cleared by run_() before each fetch attempt
 
   // Diagnostics (written by task, read by dashboard)
   Status status_{Status::DISABLED};

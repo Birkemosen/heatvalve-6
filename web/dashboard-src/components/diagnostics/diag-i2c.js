@@ -2,6 +2,7 @@ import { component } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
 import { getDashboardValue, subscribeDashboard } from '../../core/store.js';
 import { runI2cScan } from '../../core/api.js';
+import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 
 // ========================================
 // CSS
@@ -50,11 +51,11 @@ injectStyle('diag-i2c', css);
 // ========================================
 const template = () => `
   <div class="diag-i2c">
-    <div class="card-title">I2C Diagnostics</div>
+    <div class="card-title" data-i18n="diagnostics.i2c.title">I2C Diagnostics</div>
     <div class="btn-row">
-      <button class="btn" id="btn-i2c-scan">Scan I2C Bus</button>
+      <button class="btn" id="btn-i2c-scan" data-i18n="diagnostics.i2c.scan">Scan I2C Bus</button>
     </div>
-    <pre id="i2c-result">No scan has been run yet.</pre>
+    <pre id="i2c-result" data-empty="1">No scan has been run yet.</pre>
   </div>
 `;
 
@@ -68,7 +69,7 @@ export default component({
     const resultEl = el.querySelector('#i2c-result');
 
     function update() {
-      resultEl.textContent = getDashboardValue('i2cResult') || 'No scan has been run yet.';
+      resultEl.textContent = getDashboardValue('i2cResult') || t('diagnostics.i2c.empty');
     }
 
     el.querySelector('#btn-i2c-scan').addEventListener('click', () => {
@@ -76,6 +77,8 @@ export default component({
     });
 
     subscribeDashboard('i2cResult', update);
+    subscribeLanguage(() => { localize(el); update(); });
+    localize(el);
     update();
   }
 });

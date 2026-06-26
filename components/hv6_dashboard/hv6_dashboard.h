@@ -79,7 +79,8 @@ struct DashboardSnapshot {
   uint32_t          asgard_push_fail_streak{0};
   uint8_t           asgard_local_zones{0};
   uint8_t           asgard_peer_zones{0};
-  float             min_zone_flow_pct{15.0f};  // per-zone minimum valve opening enforced while bridge active
+  float             min_zone_flow_pct{15.0f};  // per-zone floor while bridge or always-enforce is active
+  bool              minimum_flow_always{false}; // enforce independently of bridge state
 
   // --- Hydraulic balancing (static / adaptive) ---
   hv6::BalancingConfig balancing;                       // mode + adaptive knobs + min flow
@@ -93,6 +94,7 @@ struct DashboardSnapshot {
   char              forecast_status[16];   // "ok"|"no data"|"stale"|"external helios"|"disabled"
   char              forecast_last_error[SNAPSHOT_TEXT_LEN];
   uint32_t          forecast_age_s{0};
+  uint32_t          forecast_fetch_epoch{0};  // wall-clock of last successful fetch
   uint32_t          forecast_fail_streak{0};
   float             forecast_zone_offset_c[hv6::NUM_ZONES]{};
   int8_t            forecast_zone_peak_in_h[hv6::NUM_ZONES]{};

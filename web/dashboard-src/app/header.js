@@ -2,9 +2,10 @@ import { component } from '../core/component.js';
 import { injectStyle } from '../core/style.js';
 import { getDashboardValue, subscribeDashboard, setSection } from '../core/store.js';
 import { ev, es, isEntityOn } from '../core/store.js';
-import { fmtUp, fmtWifi } from '../utils/format.js';
+import { fmtUp, fmtWifi, fmtTimeFromAge } from '../utils/format.js';
 import { gkey } from '../utils/keys.js';
 import { subscribe } from '../core/component.js';
+import { localize, t } from '../core/i18n.js';
 
 // ========================================
 // CSS
@@ -65,7 +66,7 @@ const css = `
   text-decoration: none;
   color: var(--text-secondary);
   border: 1px solid var(--control-border);
-  background: linear-gradient(180deg, rgba(0,63,92,.54), rgba(0,32,46,.46));
+  background: var(--control-bg);
   border-radius: 11px;
   padding: 10px 12px;
   font-size: .78rem;
@@ -77,8 +78,8 @@ const css = `
 
 .menu-link:hover {
   color: var(--text-strong);
-  background: linear-gradient(180deg, rgba(0,84,120,.64), rgba(0,63,92,.54));
-  border-color: rgba(120,146,200,.52);
+  background: var(--control-bg-hover);
+  border-color: var(--control-border-hover);
 }
 
 .menu-link.active {
@@ -110,8 +111,8 @@ const css = `
   height: 34px;
   padding: 4px 10px;
   border-radius: 14px;
-  border: 1px solid rgba(120,146,200,.32);
-  background: linear-gradient(180deg, rgba(0,63,92,.52), rgba(0,32,46,.42));
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
 }
 
 .meta-chip-label {
@@ -130,22 +131,28 @@ const css = `
   color: var(--text-strong);
 }
 
+.meta-chip-values {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .meta-chip-state.synced {
   color: var(--state-ok);
-  border-color: rgba(121,209,126,.25);
-  background: linear-gradient(180deg, rgba(20,52,34,.46), rgba(13,39,27,.36));
+  border-color: var(--success-border-soft);
+  background: var(--success-bg);
 }
 
 .meta-chip-state.saving {
   color: var(--state-warn);
-  border-color: rgba(255,133,49,.35);
-  background: linear-gradient(180deg, rgba(83,56,20,.46), rgba(58,37,12,.36));
+  border-color: var(--accent-border);
+  background: var(--warn-bg-soft);
 }
 
 .meta-chip-state.offline {
   color: var(--text-secondary);
-  border-color: rgba(120,146,200,.24);
-  background: linear-gradient(180deg, rgba(0,63,92,.34), rgba(0,32,46,.28));
+  border-color: var(--panel-border-soft);
+  background: var(--control-bg);
 }
 
 .brand-fw {
@@ -167,12 +174,12 @@ const css = `
 
 .top-dot.on {
   background: var(--state-ok);
-  box-shadow: 0 0 12px rgba(121,209,126,.55);
+  box-shadow: 0 0 12px var(--success-border);
 }
 
 @media (max-width: 860px) {
   .topbar-head { grid-template-columns: 1fr; }
-  /* Stat pills (uptime / wifi / asgard) ride to the very top, above brand + menu. */
+  /* Stat pills (uptime / wifi / heat source) ride to the very top, above brand + menu. */
   .top-meta { order: -2; justify-items: center; }
   .top-brand { order: -1; justify-self: center; justify-content: center; flex-wrap: wrap; }
   .brand-row { justify-content: center; }
@@ -191,10 +198,10 @@ const template = () => `
   <header class="topbar">
     <div class="topbar-head">
       <nav class="top-menu">
-        <a href="#" class="menu-link active" data-section="overview">Monitor</a>
-        <a href="#" class="menu-link" data-section="zones">Zones</a>
-        <a href="#" class="menu-link" data-section="settings">Settings</a>
-        <a href="#" class="menu-link" data-section="logs">Logs</a>
+        <a href="#" class="menu-link active" data-section="overview" data-i18n="nav.monitor">Monitor</a>
+        <a href="#" class="menu-link" data-section="zones" data-i18n="nav.zones">Zones</a>
+        <a href="#" class="menu-link" data-section="settings" data-i18n="nav.settings">Settings</a>
+        <a href="#" class="menu-link" data-section="diagnostics" data-i18n="nav.diagnostics">Diagnostics</a>
       </nav>
       <div class="top-brand">
         <div class="brand-row">
@@ -206,9 +213,12 @@ const template = () => `
         <div class="meta-row">
           <div class="top-dot" id="hdr-dot"></div>
           <span id="hdr-sync" class="meta-chip meta-chip-state synced">Synced</span>
-          <span class="meta-chip"><span class="meta-chip-label">Uptime</span><span class="meta-chip-value" id="hdr-up">---</span></span>
-          <span class="meta-chip"><span class="meta-chip-label">WiFi</span><span class="meta-chip-value" id="hdr-wifi">---</span></span>
-          <span class="meta-chip" id="hdr-asgard" hidden><span class="meta-chip-label">Asgard</span><span class="meta-chip-value" id="hdr-asgard-val">---</span></span>
+          <span class="meta-chip"><span class="meta-chip-label" data-i18n="meta.uptime">Uptime</span><span class="meta-chip-value" id="hdr-up">---</span></span>
+          <span class="meta-chip"><span class="meta-chip-label" data-i18n="meta.wifi">WiFi</span><span class="meta-chip-value" id="hdr-wifi">---</span></span>
+          <span class="meta-chip" id="hdr-asgard" hidden>
+            <span class="meta-chip-label" data-i18n="meta.heatSourceLastPush">Heat Src Last Push</span>
+            <span class="meta-chip-values"><span class="meta-chip-value" id="hdr-asgard-val">---</span><span class="meta-chip-value" id="hdr-asgard-time">--:--</span></span>
+          </span>
         </div>
       </div>
     </div>
@@ -228,6 +238,7 @@ export default component({
     const wifiEl = el.querySelector('#hdr-wifi');
     const asgardEl = el.querySelector('#hdr-asgard');
     const asgardValEl = el.querySelector('#hdr-asgard-val');
+    const asgardTimeEl = el.querySelector('#hdr-asgard-time');
     const fwEl = el.querySelector('#hdr-fw');
     const links = el.querySelectorAll('.menu-link');
 
@@ -246,18 +257,22 @@ export default component({
       dotEl.classList.toggle('on', !!live);
       // Connection status — not a save indicator (per-card Apply owns saving).
       let connLabel, connState;
-      if (pendingWrites > 0) { connLabel = 'Saving…'; connState = 'saving'; }
-      else if (mock) { connLabel = (window.HV6_DASHBOARD_CONFIG.mockLabel || 'Mock'); connState = 'synced'; }
-      else if (live) { connLabel = 'Live'; connState = 'synced'; }
-      else { connLabel = 'Offline'; connState = 'offline'; }
+      if (pendingWrites > 0) { connLabel = t('status.saving'); connState = 'saving'; }
+      else if (mock) { connLabel = (window.HV6_DASHBOARD_CONFIG.mockLabel || t('status.mock')); connState = 'synced'; }
+      else if (live) { connLabel = t('status.live'); connState = 'synced'; }
+      else { connLabel = t('status.offline'); connState = 'offline'; }
       syncEl.textContent = connLabel;
       syncEl.className = 'meta-chip meta-chip-state ' + connState;
       upEl.textContent = fmtUp(ev(gkey.uptime));
       wifiEl.textContent = fmtWifi(ev(gkey.wifi));
       const pushC = ev(gkey.asgardLastPushC);
+      const pushAge = ev(gkey.asgardLastPushAgeS);
       const showAsgard = isEntityOn(gkey.asgardEnabled) && pushC != null && Number.isFinite(pushC);
       asgardEl.hidden = !showAsgard;
-      if (showAsgard) asgardValEl.textContent = pushC.toFixed(2) + '°C';
+      if (showAsgard) {
+        asgardValEl.textContent = pushC.toFixed(2) + '°C';
+        asgardTimeEl.textContent = fmtTimeFromAge(pushAge);
+      }
       const fw = getDashboardValue('firmwareVersion') || es(gkey.firmware);
       fwEl.textContent = fw ? 'FW ' + fw : '';
     }
@@ -276,9 +291,11 @@ export default component({
     subscribe(gkey.uptime, updateMeta);
     subscribe(gkey.wifi, updateMeta);
     subscribe(gkey.asgardLastPushC, updateMeta);
+    subscribe(gkey.asgardLastPushAgeS, updateMeta);
     subscribe(gkey.asgardEnabled, updateMeta);
     subscribe(gkey.firmware, updateMeta);
     updateSection();
+    localize(el);
     updateMeta();
   }
 });

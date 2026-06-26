@@ -24,6 +24,7 @@ def load_libraries():
     cache = ksa.get_symbol_cache()
     for name in (
         "74xx",
+        "4xxx",
         "Amplifier_Current",
         "Amplifier_Operational",
         "Comparator",
@@ -205,15 +206,17 @@ def generate():
         net(u1, pin, "GND")
     net(u1, 2, "+3V3_SYS")
     gpio_nets = {
-        3: "ESP_EN", 4: "ADC_CURRENT", 8: "TACHO_EDGE", 9: "FLIM_PWM",
+        3: "ESP_EN", 4: "ADC_CURRENT", 5: "ADC_BEMF",
+        6: "BEMF_SEL0", 7: "BEMF_SEL1", 8: "TACHO_EDGE", 9: "FLIM_PWM",
         10: "LATCH_ARM_N", 11: "LATCH_STATE", 13: "USB_DM", 14: "USB_DP",
         17: "PH1", 18: "PH2", 19: "PH3", 20: "PH4", 21: "PH5", 22: "PH6",
         24: "EN1", 25: "EN2", 31: "EN3", 32: "EN4", 33: "EN5", 34: "EN6",
-        35: "OW_MCU", 27: "BOOT_N", 38: "I2C_SCL_DNP", 39: "I2C_SDA_DNP",
+        35: "OW_MCU", 27: "BOOT_N", 12: "BEMF_SEL2",
+        38: "I2C_SCL_DNP", 39: "I2C_SDA_DNP",
     }
     for pin, name in gpio_nets.items():
         net(u1, pin, name)
-    for pin in (5, 6, 7, 12, 15, 16, 23, 26, 28, 29, 30, 36, 37):
+    for pin in (15, 16, 23, 26, 28, 29, 30, 36, 37):
         nc(u1, pin)
 
     passive("R7", "10k", (202, 45), "+3V3_SYS", "ESP_EN")
@@ -240,8 +243,8 @@ def generate():
     # ------------------------------------------------------------------
     # Shared shunt, x20 current measurement and protected ADC
     # ------------------------------------------------------------------
-    section("SHARED SHUNT / CURRENT / TACHO", (25, 128))
-    passive("RSH1", "2.2R 1%", (38, 150), "SHUNT", "GND_KELVIN", "Resistor_SMD:R_1206_3216Metric", MPN="2.2R 1206 1%")
+    section("SHARED SHUNT / CURRENT", (25, 128))
+    passive("RSH1", "1.0R 1%", (38, 150), "SHUNT", "GND_KELVIN", "Resistor_SMD:R_1206_3216Metric", MPN="1.0R 1206 1%")
     passive("RSH2", "DNP", (52, 150), "SHUNT", "GND_KELVIN", "Resistor_SMD:R_1206_3216Metric", DNP="yes")
     passive("R13", "0R", (67, 150), "GND_KELVIN", "GND")
     note("RSH1 use true Kelvin pickup. R13 is the single Kelvin-to-plane tie.", (25, 166))
@@ -255,28 +258,77 @@ def generate():
     u13 = add("Diode:BAT54S", "D5", "BAT54S ADC clamp", (158, 150), "Package_TO_SOT_SMD:SOT-23")
     net(u13, 1, "GND"); net(u13, 2, "+3V3_A"); net(u13, 3, "ADC_CURRENT")
     note("INA180 is 3V3-powered (intrinsic rail limit). R14 + D5 limit ADC injection transients.", (90, 185))
-    note("30mA=1.32V, 60mA=2.64V. ADC saturation above ~70mA is intentional.", (90, 191))
+    note("30mA=0.60V, 60mA=1.20V, 150mA=3.00V. Engagement current remains measurable.", (90, 191))
 
-    # Mid-rail and tacho gain use a rail-to-rail MCP6004 at 3.3 V.
+    # Mid-rail reference for the bidirectional differential BEMF front end.
     passive("R15", "10k", (196, 146), "+3V3_A", "VBIAS_DIV")
     passive("R16", "10k", (196, 160), "VBIAS_DIV", "GND")
     decoupling("C14", "1u", (208, 160), "VBIAS_DIV")
     u10a = add("Amplifier_Operational:MCP6004", "U10", "MCP6004", (230, 150), "Package_SO:SOIC-14_3.9x8.7mm_P1.27mm", unit=1, MPN="MCP6004-I/SL")
     net(u10a, 3, "VBIAS_DIV"); net(u10a, 2, "VBIAS"); net(u10a, 1, "VBIAS")
 
-    passive("C15", "100n", (260, 140), "SHUNT", "TAC_IN", "Capacitor_SMD:C_0603_1608Metric")
-    passive("C16", "100n DNP", (260, 153), "SHUNT", "TAC_IN", "Capacitor_SMD:C_0603_1608Metric", DNP="yes")
-    passive("R17", "100k", (273, 153), "TAC_IN", "VBIAS")
-    u10b = add("Amplifier_Operational:MCP6004", "U10", "MCP6004", (300, 150), "Package_SO:SOIC-14_3.9x8.7mm_P1.27mm", unit=2)
-    net(u10b, 5, "TAC_IN"); net(u10b, 6, "TAC_FB"); net(u10b, 7, "TACHO_AMP")
-    passive("R18", "100k", (317, 140), "TACHO_AMP", "TAC_FB")
-    passive("R19", "2.2k", (317, 153), "TAC_FB", "VBIAS")
+    # ------------------------------------------------------------------
+    # Selected differential motor BEMF: independent motion/position channel
+    # ------------------------------------------------------------------
+    section("SELECTED DIFFERENTIAL BEMF / TACHO", (225, 128))
+    mux_fp = "Package_SO:TSSOP-16_4.4x5mm_P0.65mm"
+    bemf_mux = {}
+    for ref, suffix, x in (("U13", "A", 255), ("U14", "B", 300)):
+        mux = add("74xx:74HC4051", ref, "74HC4051", (x, 166), mux_fp,
+                  MPN="74HC4051PW")
+        bemf_mux[suffix] = mux
+        # Common, enable, supplies, then three binary select inputs.
+        net(mux, 3, f"BEMF_MUX_{suffix}")
+        net(mux, 6, "GND"); net(mux, 7, "GND"); net(mux, 8, "GND")
+        net(mux, 9, "BEMF_SEL2"); net(mux, 10, "BEMF_SEL1"); net(mux, 11, "BEMF_SEL0")
+        net(mux, 16, "+3V3_A")
+        # Codes 6/7 are deliberately quiet if firmware selects an invalid channel.
+        net(mux, 2, "GND"); net(mux, 4, "GND")
+    decoupling("C50", "100n", (252, 198), "+3V3_A")
+    decoupling("C51", "100n", (300, 198), "+3V3_A")
+    passive("R60", "100k", (230, 198), "BEMF_SEL0", "GND")
+    passive("R61", "100k", (242, 198), "BEMF_SEL1", "GND")
+    passive("R62", "100k", (266, 198), "BEMF_SEL2", "GND")
 
-    u11a = add("Comparator:LM339", "U11", "LM339B", (356, 150), "Package_SO:SOIC-14_3.9x8.7mm_P1.27mm", unit=1, MPN="LM339BDR")
-    passive("R20", "10k", (338, 142), "TACHO_AMP", "TACHO_CMP")
-    net(u11a, 5, "TACHO_CMP"); net(u11a, 4, "VBIAS"); net(u11a, 2, "TACHO_EDGE")
-    passive("R21", "1M", (374, 141), "TACHO_EDGE", "TACHO_CMP")
-    passive("R22", "10k", (374, 154), "+3V3_SYS", "TACHO_EDGE")
+    # Each exposed motor terminal is current-limited before entering the mux.
+    mux_pins = (13, 14, 15, 12, 1, 5)
+    for idx, pin in enumerate(mux_pins, 1):
+        passive(f"R{68 + idx * 2}", "10k", (235 + idx * 11, 215),
+                f"MOT{idx}_A", f"BEMF_A{idx}")
+        passive(f"R{69 + idx * 2}", "10k", (235 + idx * 11, 226),
+                f"MOT{idx}_B", f"BEMF_B{idx}")
+        net(bemf_mux["A"], pin, f"BEMF_A{idx}")
+        net(bemf_mux["B"], pin, f"BEMF_B{idx}")
+
+    # 10k terminal resistors + 90.9k/47k network give ~0.466 differential gain.
+    u10b = add("Amplifier_Operational:MCP6004", "U10", "MCP6004", (350, 166), "Package_SO:SOIC-14_3.9x8.7mm_P1.27mm", unit=2)
+    passive("R50", "90.9k 1%", (325, 154), "BEMF_MUX_A", "BEMF_DIFF_N")
+    passive("R51", "47k 1%", (369, 154), "BEMF_RAW", "BEMF_DIFF_N")
+    passive("R52", "90.9k 1%", (325, 178), "BEMF_MUX_B", "BEMF_DIFF_P")
+    passive("R53", "47k 1%", (350, 190), "BEMF_DIFF_P", "VBIAS")
+    net(u10b, 5, "BEMF_DIFF_P"); net(u10b, 6, "BEMF_DIFF_N"); net(u10b, 7, "BEMF_RAW")
+
+    # Raw ADC preserves waveforms for calibration; the separate AC path drives PCNT.
+    passive("R54", "1k", (386, 166), "BEMF_RAW", "ADC_BEMF")
+    decoupling("C52", "4.7n", (398, 177), "ADC_BEMF")
+    d7 = add("Diode:BAT54S", "D7", "BAT54S BEMF ADC clamp", (414, 166), "Package_TO_SOT_SMD:SOT-23")
+    net(d7, 1, "GND"); net(d7, 2, "+3V3_A"); net(d7, 3, "ADC_BEMF")
+
+    passive("C53", "100n", (390, 200), "BEMF_RAW", "BEMF_AC",
+            "Capacitor_SMD:C_0603_1608Metric")
+    passive("C54", "100n DNP", (390, 212), "BEMF_RAW", "BEMF_AC",
+            "Capacitor_SMD:C_0603_1608Metric", DNP="yes")
+    passive("R55", "100k", (406, 212), "BEMF_AC", "VBIAS")
+    u10d = add("Amplifier_Operational:MCP6004", "U10", "MCP6004", (440, 205), "Package_SO:SOIC-14_3.9x8.7mm_P1.27mm", unit=4)
+    net(u10d, 12, "BEMF_AC"); net(u10d, 13, "BEMF_GAIN_FB"); net(u10d, 14, "BEMF_TACH_AMP")
+    passive("R56", "10k", (425, 222), "BEMF_GAIN_FB", "VBIAS")
+    passive("R57", "100k", (456, 222), "BEMF_TACH_AMP", "BEMF_GAIN_FB")
+
+    u11a = add("Comparator:LM339", "U11", "LM339B", (480, 205), "Package_SO:SOIC-14_3.9x8.7mm_P1.27mm", unit=1, MPN="LM339BDR")
+    net(u11a, 5, "BEMF_TACH_AMP"); net(u11a, 4, "VBIAS"); net(u11a, 2, "TACHO_EDGE")
+    passive("R58", "1M", (496, 195), "TACHO_EDGE", "BEMF_TACH_AMP")
+    passive("R59", "10k", (496, 212), "+3V3_SYS", "TACHO_EDGE")
+    note("ADC_BEMF is differential motion evidence; TACHO_EDGE counts qualified commutation.", (315, 238))
 
     # ------------------------------------------------------------------
     # PWM threshold, raw-shunt comparator and fail-safe latch
@@ -284,7 +336,7 @@ def generate():
     section("HARDWARE FORCE LIMIT / FAIL-SAFE LATCH", (395, 128))
     passive("R23", "10k", (405, 148), "FLIM_PWM", "FLIM_PWM_RC")
     decoupling("C17", "1u", (418, 158), "FLIM_PWM_RC")
-    passive("R24", "9.1k", (430, 148), "FLIM_PWM_RC", "FLIM_DAC")
+    passive("R24", "18k", (430, 148), "FLIM_PWM_RC", "FLIM_DAC")
     passive("R25", "1k", (442, 158), "FLIM_DAC", "GND")
     u10c = add("Amplifier_Operational:MCP6004", "U10", "MCP6004", (463, 150), "Package_SO:SOIC-14_3.9x8.7mm_P1.27mm", unit=3)
     net(u10c, 10, "FLIM_DAC"); net(u10c, 9, "FLIM_REF"); net(u10c, 8, "FLIM_REF")
@@ -302,9 +354,7 @@ def generate():
     passive("R29", "47k", (565, 178), "DRIVE_PERMIT", "GND")
     note("POR holds nCLR low. Firmware pulses nPRE low to arm. Overcurrent clocks D=0.", (400, 195))
 
-    # Safely terminate unused op-amp/comparator/flip-flop sections and add power units.
-    u10d = add("Amplifier_Operational:MCP6004", "U10", "MCP6004", (300, 184), "Package_SO:SOIC-14_3.9x8.7mm_P1.27mm", unit=4)
-    net(u10d, 12, "VBIAS"); net(u10d, 13, "OP_SPARE"); net(u10d, 14, "OP_SPARE")
+    # Safely terminate unused comparator/flip-flop sections and add power units.
     u10p = add("Amplifier_Operational:MCP6004", "U10", "MCP6004", (330, 184), "Package_SO:SOIC-14_3.9x8.7mm_P1.27mm", unit=5)
     net(u10p, 4, "+3V3_A"); net(u10p, 11, "GND")
     decoupling("C19", "100n", (345, 184), "+3V3_A")
@@ -327,13 +377,13 @@ def generate():
     # ------------------------------------------------------------------
     # Six DRV8837 channels and 4P4C connectors
     # ------------------------------------------------------------------
-    section("6 x DRV8837 / 4P4C MOTOR OUTPUTS", (25, 218))
+    section("6 x DRV8837 / 4P4C MOTOR OUTPUTS", (25, 258))
     driver_x = (55, 145, 235, 325, 415, 505)
     for idx, x in enumerate(driver_x, 1):
         drv_ref = f"U{20 + idx}"
         conn_ref = f"J{1 + idx}"
         drv = add(
-            "Driver_Motor:DRV8837", drv_ref, "DRV8837DSGR", (x, 250),
+            "Driver_Motor:DRV8837", drv_ref, "DRV8837DSGR", (x, 290),
             "Package_SON:WSON-8-1EP_2x2mm_P0.5mm_EP0.9x1.6mm",
             MPN="DRV8837DSGR", LCSC="C39159",
         )
@@ -341,47 +391,47 @@ def generate():
                           (4, "SHUNT"), (5, f"EN{idx}"), (6, f"PH{idx}"),
                           (7, "DRIVE_PERMIT"), (8, "+3V3_SYS"), (9, "SHUNT")):
             net(drv, pin, name)
-        decoupling(f"C{30 + (idx-1)*2}", "100n", (x - 12, 278), "+3V3_SYS", "SHUNT")
-        decoupling(f"C{31 + (idx-1)*2}", "1u", (x + 2, 278), "+3V3_SYS", "SHUNT", "Capacitor_SMD:C_0805_2012Metric")
+        decoupling(f"C{30 + (idx-1)*2}", "100n", (x - 12, 318), "+3V3_SYS", "SHUNT")
+        decoupling(f"C{31 + (idx-1)*2}", "1u", (x + 2, 318), "+3V3_SYS", "SHUNT", "Capacitor_SMD:C_0805_2012Metric")
         conn = add(
             "Connector_Generic:Conn_01x04", conn_ref, f"MOTOR {idx} 4P4C",
-            (x, 310), "Connector_RJ:RJ9_Evercom_5301-440xxx_Horizontal",
+            (x, 350), "Connector_RJ:RJ9_Evercom_5301-440xxx_Horizontal",
             MPN="5301-4P4C", LCSC="C3097715",
         )
         nc(conn, 1); net(conn, 2, f"MOT{idx}_A"); net(conn, 3, f"MOT{idx}_B"); nc(conn, 4)
-    note("Connector pinout: 1 NC, 2 MOT_A, 3 MOT_B, 4 NC (center pair).", (25, 334))
+    note("Connector pinout: 1 NC, 2 MOT_A, 3 MOT_B, 4 NC (center pair).", (25, 365))
 
     # ------------------------------------------------------------------
     # OneWire and DNP I2C expansion
     # ------------------------------------------------------------------
-    section("ONEWIRE / DNP I2C EXPANSION", (25, 348))
-    passive("R40", "33R", (45, 365), "OW_MCU", "OW_BUS")
-    passive("R41", "4.7k", (58, 365), "+3V3_SYS", "OW_BUS")
-    d6 = add("Device:D", "D6", "PESD3V3U1UL", (72, 365), "Diode_SMD:D_SOD-323")
+    section("ONEWIRE / DNP I2C EXPANSION", (25, 372))
+    passive("R40", "33R", (45, 389), "OW_MCU", "OW_BUS")
+    passive("R41", "4.7k", (58, 389), "+3V3_SYS", "OW_BUS")
+    d6 = add("Device:D", "D6", "PESD3V3U1UL", (72, 389), "Diode_SMD:D_SOD-323")
     net(d6, 1, "GND"); net(d6, 2, "OW_BUS")
     for idx, x in enumerate((95, 140, 185), 8):
         conn = add(
-            "Connector_Generic:Conn_01x03", f"J{idx}", f"ONEWIRE {idx-7}", (x, 370),
+            "Connector_Generic:Conn_01x03", f"J{idx}", f"ONEWIRE {idx-7}", (x, 394),
             "TerminalBlock_4Ucon:TerminalBlock_4Ucon_1x03_P3.50mm_Horizontal",
         )
         net(conn, 1, "+3V3_SYS"); net(conn, 2, "OW_BUS"); net(conn, 3, "GND")
 
     i2c = add(
-        "Connector_Generic:Conn_01x04", "J11", "I2C EXPANSION DNP", (260, 370),
+        "Connector_Generic:Conn_01x04", "J11", "I2C EXPANSION DNP", (260, 394),
         "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical", DNP="yes",
     )
     net(i2c, 1, "GND"); net(i2c, 2, "+3V3_SYS"); net(i2c, 3, "I2C_SDA_DNP"); net(i2c, 4, "I2C_SCL_DNP")
-    passive("R42", "2.2k DNP", (290, 360), "+3V3_SYS", "I2C_SDA_DNP", DNP="yes")
-    passive("R43", "2.2k DNP", (305, 360), "+3V3_SYS", "I2C_SCL_DNP", DNP="yes")
-    note("OneWire pinout: 1 +3V3, 2 DQ, 3 GND. J11 pinout: GND, +3V3, SDA, SCL.", (25, 397))
+    passive("R42", "2.2k DNP", (290, 384), "+3V3_SYS", "I2C_SDA_DNP", DNP="yes")
+    passive("R43", "2.2k DNP", (305, 384), "+3V3_SYS", "I2C_SCL_DNP", DNP="yes")
+    note("OneWire pinout: 1 +3V3, 2 DQ, 3 GND. J11 pinout: GND, +3V3, SDA, SCL.", (25, 414))
 
     # Power flags quiet power-input ERC while preserving explicit rail names.
     for idx, (rail, x) in enumerate((("VBUS_FUSED", 340), ("+3V3_SYS", 365), ("+3V3_A", 390), ("GND", 415), ("SHUNT", 440)), 1):
-        flag = add("power:PWR_FLAG", f"#FLG0{idx}", "PWR_FLAG", (x, 370))
+        flag = add("power:PWR_FLAG", f"#FLG0{idx}", "PWR_FLAG", (x, 405))
         net(flag, 1, rail)
 
     sch.save(OUT)
-    # Use A2 landscape so all functional blocks remain legible on one review sheet.
+    # Use A2 landscape so the complete review schematic remains legible on one page.
     text = OUT.read_text()
     text = text.replace('(paper "A4")', '(paper "A2")')
     OUT.write_text(text)

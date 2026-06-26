@@ -1,9 +1,10 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
 import { cardForm } from '../../core/ui-kit.js';
-import { ev, es, getDashboardValue, setZoneName, subscribeDashboard, zoneTag } from '../../core/store.js';
+import { ev, es, getDashboardValue, subscribeDashboard, zoneTag } from '../../core/store.js';
 import { key } from '../../utils/keys.js';
-import { setZoneNumber, setZoneSelect, setZoneText } from '../../core/api.js';
+import { applyZoneName, setZoneNumber, setZoneSelect, setZoneText } from '../../core/api.js';
+import { localize, subscribeLanguage } from '../../core/i18n.js';
 
 // Mirror firmware default_wind_exposure(): wind exposure seeded from wall count.
 const WIND_EXPOSURE_BY_WALLS = [0, 0.5, 0.7, 0.85, 1];
@@ -23,7 +24,6 @@ const css = `
   font-style: italic;
   margin: 2px 0 8px;
 }
-.zone-room-card .wall-lbl-hint::after { content: 'Select all that apply'; }
 
 .zone-room-card .wall-btn-group {
   display: grid;
@@ -63,30 +63,30 @@ injectStyle('zone-room-card', css);
 // ========================================
 const template = () => `
   <div class="ui-card zone-room-card">
-    <div class="ui-card-title">Zone Settings</div>
+    <div class="ui-card-title" data-i18n="zone.room.title">Zone Settings</div>
     <div class="ui-row">
-      <span class="ui-label">Friendly Name</span>
-      <span class="ui-field"><input class="ui-input wide zr-friendly" maxlength="24" placeholder="e.g. Living Room"></span>
+      <span class="ui-label" data-i18n="zone.room.friendlyName">Friendly Name</span>
+      <span class="ui-field"><input class="ui-input wide zr-friendly" maxlength="24" placeholder="e.g. Living Room" data-i18n-placeholder="zone.room.friendlyPlaceholder"></span>
     </div>
     <div class="ui-row">
-      <span class="ui-label">Zone Area (m²)</span>
+      <span class="ui-label" data-i18n="zone.room.area">Zone Area (m²)</span>
       <span class="ui-field"><input class="ui-input zr-area" type="number" min="1" step="0.1" placeholder="m2"></span>
     </div>
     <div class="ui-row">
-      <span class="ui-label">Pipe Spacing C-C (mm)</span>
+      <span class="ui-label" data-i18n="zone.room.spacing">Pipe Spacing C-C (mm)</span>
       <span class="ui-field"><input class="ui-input zr-spacing" type="number" min="50" step="5" placeholder="200"></span>
     </div>
     <div class="ui-row">
-      <span class="ui-label">Pipe Type</span>
+      <span class="ui-label" data-i18n="zone.room.pipeType">Pipe Type</span>
       <span class="ui-field"><select class="ui-select zr-pipe">
         <option>PEX 16mm</option><option>PEX 12mm</option><option>PEX 14mm</option><option>PEX 17mm</option><option>PEX 18mm</option><option>PEX 20mm</option><option>ALUPEX 16mm</option><option>ALUPEX 20mm</option><option>Unknown</option>
       </select></span>
     </div>
 
-    <div class="ui-section">Exterior Walls</div>
-    <div class="wall-lbl-hint"></div>
+    <div class="ui-section" data-i18n="zone.room.exteriorWalls">Exterior Walls</div>
+    <div class="wall-lbl-hint" data-i18n="zone.room.selectAll">Select all that apply</div>
     <div class="wall-btn-group">
-      <button class="wall-btn" data-wall="None">None</button>
+      <button class="wall-btn" data-wall="None" data-i18n="common.none">None</button>
       <button class="wall-btn" data-wall="N">N</button>
       <button class="wall-btn" data-wall="S">S</button>
       <button class="wall-btn" data-wall="E">E</button>
@@ -94,20 +94,20 @@ const template = () => `
     </div>
 
     <div class="ui-divider"></div>
-    <div class="ui-section">Forecast Preload</div>
+    <div class="ui-section" data-i18n="zone.room.forecastPreload">Forecast Preload</div>
     <div class="ui-row">
-      <span class="ui-label">Wind Exposure</span>
+      <span class="ui-label" data-i18n="zone.room.windExposure">Wind Exposure</span>
       <span class="ui-field"><input class="ui-input zr-wind" type="number" min="0" max="1" step="0.05" placeholder="0.5"></span>
     </div>
     <div class="ui-row">
-      <span class="ui-label">Solar Gain</span>
+      <span class="ui-label" data-i18n="zone.room.solarGain">Solar Gain</span>
       <span class="ui-field"><input class="ui-input zr-solar" type="number" min="0" max="1" step="0.05" placeholder="0.3"></span>
     </div>
     <div class="ui-row">
-      <span class="ui-label">Thermal Lead (h)</span>
+      <span class="ui-label" data-i18n="zone.room.thermalLead">Thermal Lead (h)</span>
       <span class="ui-field"><input class="ui-input zr-lead" type="number" min="0" max="48" step="1" placeholder="4"></span>
     </div>
-    <div class="ui-note">Wind exposure (0–1) is auto-seeded from the exterior walls above — edit it for a sheltered or extra-exposed site. Solar (0–1) is the passive sun gain that reduces preload; Lead h is how far ahead to start charging the slab before a forecast cold/wind peak.</div>
+    <div class="ui-note" data-i18n="zone.room.note">Wind exposure (0-1) is auto-seeded from the exterior walls above - edit it for a sheltered or extra-exposed site. Solar (0-1) is the passive sun gain that reduces preload; Lead h is how far ahead to start charging the slab before a forecast cold/wind peak.</div>
   </div>
 `;
 
@@ -133,7 +133,7 @@ export default component({
 
     const form = cardForm(el);
 
-    form.text(nameEl, { read: () => zoneTag(zone()) || '', commit: (v) => setZoneName(zone(), v) });
+    form.text(nameEl, { read: () => zoneTag(zone()) || '', commit: (v) => applyZoneName(zone(), v) });
     form.num(areaEl, { read: () => ev(key.area(zone())), commit: (v) => setZoneNumber(zone(), 'zone_area_m2', v) });
     form.num(spacingEl, { read: () => ev(key.spacing(zone())), commit: (v) => setZoneNumber(zone(), 'zone_pipe_spacing_mm', v || 200) });
     form.select(pipeEl, { read: () => es(key.pipeType(zone())) || 'Unknown', commit: (v) => setZoneSelect(zone(), 'zone_pipe_type', v) });
@@ -201,6 +201,8 @@ export default component({
       subscribe(key.solarGain(z), refreshIfSelectedZone);
       subscribe(key.thermalLeadH(z), refreshIfSelectedZone);
     }
+    subscribeLanguage(() => localize(el));
+    localize(el);
     form.refresh();
   }
 });

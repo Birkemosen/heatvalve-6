@@ -4,7 +4,7 @@ from esphome.const import CONF_ID
 from esphome.components.esp32 import include_builtin_idf_component
 
 DEPENDENCIES = ["network"]
-AUTO_LOAD = []
+AUTO_LOAD = ["json"]  # forecast_model parses Open-Meteo JSON with ArduinoJson
 
 CONF_ZONE_CONTROLLER_ID = "zone_controller_id"
 CONF_CONFIG_STORE_ID = "config_store_id"

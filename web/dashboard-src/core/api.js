@@ -78,7 +78,8 @@ const zoneSelectMap = {
 
 const zoneTextMap = {
   zone_ble_mac: (zone) => key.ble(zone),
-  zone_exterior_walls: (zone) => key.exteriorWalls(zone)
+  zone_exterior_walls: (zone) => key.exteriorWalls(zone),
+  zone_name: (zone) => key.name(zone)
 };
 
 const zoneNumberMap = {
@@ -152,7 +153,11 @@ export function setGlobalText(settingKey, value) {
 }
 
 export function applyZoneName(zone, value) {
-  addActivity('Zone ' + zone + ' renamed to ' + (value || '(blank)'), zone);
+  const name = String(value || '').trim();
+  addActivity('Zone ' + zone + ' renamed to ' + (name || '(blank)'), zone);
+  // Persist device-side; the optimistic setEntity in setZoneText feeds the
+  // text-zone_<n>_name bridge in store.js, which updates D.zoneNames.
+  return setZoneText(zone, 'zone_name', name);
 }
 
 export function markConnected() {

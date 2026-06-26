@@ -417,19 +417,6 @@ switch:
           id(hv6_valves).reload_motor_config();
 
   - platform: template
-    name: "Simple Preheat"
-    id: simple_preheat_enabled
-    icon: "mdi:fire"
-    entity_category: config
-    optimistic: false
-    lambda: |-
-      return id(hv6_zones).is_simple_preheat_enabled();
-    turn_on_action:
-      - lambda: id(hv6_zones).set_simple_preheat_enabled(true);
-    turn_off_action:
-      - lambda: id(hv6_zones).set_simple_preheat_enabled(false);
-
-  - platform: template
     name: "Manual Mode"
     id: manual_mode
     icon: "mdi:hand-back-right"

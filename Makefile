@@ -17,16 +17,15 @@ AUTO_PORT := $(strip $(shell ls /dev/cu.usbmodem* /dev/cu.usbserial* /dev/cu.SLA
 SERIAL_PORT := $(if $(PORT),$(PORT),$(AUTO_PORT))
 DASHBOARD_SRC_DIR ?= web/dashboard-src
 DASHBOARD_OUT_FILE ?= web/dashboard.js
+LANG ?= en
+DASHBOARD_COMPILED_LANG := $(if $(filter en da,$(LANG)),$(LANG),en)
 
-.PHONY: help check config build build-patch build-minor build-major build-verify deploy ota logs discover monitor erase erase-nvs clean dashboard dashboard-tooling dashboard-build dashboard-watch test test-ripple test-forecast test-balance
+.PHONY: help check config build build-verify deploy ota logs discover monitor erase erase-nvs clean dashboard dashboard-tooling dashboard-build dashboard-watch test test-ripple test-forecast test-balance
 
 help:
 	@echo "HeatValve-6 ESPHome tasks"
 	@echo "  make config        Validate YAML"
 	@echo "  make build         Compile firmware (no version bump)"
-	@echo "  make build-patch   Bump patch version + compile firmware"
-	@echo "  make build-minor   Bump minor version + compile firmware"
-	@echo "  make build-major   Bump major version + compile firmware"
 	@echo "  make build-verify  Alias for make build"
 	@echo "  make deploy        Build + upload (USB, OTA, or auto-discover)"
 	@echo "  make ota           Build + upload over network (auto-discover if HOST unset)"
@@ -42,7 +41,6 @@ help:
 	@echo ""
 	@echo "Examples:"
 	@echo "  make build"
-	@echo "  make build-patch"
 	@echo "  make deploy"
 	@echo "  make deploy PORT=/dev/cu.usbmodemXXXX"
 	@echo "  make monitor PORT=/dev/cu.usbmodemXXXX"
@@ -69,18 +67,6 @@ build: check dashboard-build
 	$(ESPHOME) compile --only-generate $(CONFIG)
 	perl -0pi -e 's/" ".join\(cmd\)/" ".join(map(str, cmd))/g' $(BUILD_ROOT)/post_build.py
 	$(PIO) run -d $(BUILD_ROOT)
-
-build-patch: check dashboard-build
-	bash bump_patch_version.sh patch
-	$(MAKE) build
-
-build-minor: check dashboard-build
-	bash bump_patch_version.sh minor
-	$(MAKE) build
-
-build-major: check dashboard-build
-	bash bump_patch_version.sh major
-	$(MAKE) build
 
 build-verify: check dashboard-build
 	$(MAKE) build
@@ -230,6 +216,7 @@ dashboard-build:
 	--target=es2018 \
 	--platform=browser \
 	--define:DEBUG=false \
+	--define:HV6_DASHBOARD_LANG=\"$(DASHBOARD_COMPILED_LANG)\" \
 	--outfile=$(DASHBOARD_OUT_FILE)
 
 dashboard-watch:

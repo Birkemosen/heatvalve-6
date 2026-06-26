@@ -25,10 +25,37 @@ esp32:
       CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP: "y"
       CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: "y"
       CONFIG_BT_ALLOCATION_FROM_SPIRAM_FIRST: "y"
+      # --- Internal-heap relief -------------------------------------------------
+      # BLE(Bluedroid)+WiFi+dashboard leave only ~16 KB free internal heap at
+      # idle, below the forecast's 48 KB TLS-fetch floor and tight enough that
+      # even the plain-HTTP Asgard push fails to allocate a socket
+      # (ESP_ERR_HTTP_CONNECT). ESPHome's psram: component runs SPIRAM in
+      # CAPS_ALLOC mode, so plain malloc()/new always lands in INTERNAL RAM —
+      # only explicit MALLOC_CAP_SPIRAM allocations use PSRAM. We therefore can't
+      # rely on a global malloc threshold; instead push the big *explicit* PSRAM
+      # consumers there and trim BLE's standing footprint.
+      #
+      # Allocate the Bluedroid host environment dynamically (→ PSRAM, per
+      # BT_ALLOCATION_FROM_SPIRAM_FIRST) instead of as static internal BSS.
+      CONFIG_BT_BLE_DYNAMIC_ENV_MEMORY: "y"
+      # BTHome is passive scan-only — we never open a GATT connection. Trim the
+      # controller's BLE activity instances (scan/adv/connect; 828 B each, S3
+      # uses the C3-family BT_CTRL_BLE_MAX_ACT, default 6) and the Bluedroid
+      # host ACL connection count (default 4) to what scan + a margin needs.
+      CONFIG_BT_CTRL_BLE_MAX_ACT: "4"
+      CONFIG_BT_ACL_CONNECTIONS: "1"
       # mDNS is disabled; Helios HTTP uses a 3s socket timeout so 15s is
       # sufficient headroom for DNS + connect + transfer on weak WiFi.
       CONFIG_ESP_TASK_WDT_TIMEOUT_S: "15"
       CONFIG_LWIP_MAX_LISTENING_TCP: "5"
+      # Widen the BSD socket pool. The default of 10 is too tight: the dashboard
+      # httpd can hold up to 7 connections and lwIP reserves 3, which leaves zero
+      # for the native API *and* the outbound esp_http_client (forecast HTTPS /
+      # Asgard) — accept() then floods with ENFILE (errno 23) and Open-Meteo
+      # fetches fail. 16 (the Kconfig max) covers httpd(7) + control(3) + API(1)
+      # + client(2) + headroom. Costs ~2-3 KB internal RAM, freed by dropping the
+      # stock web_server.
+      CONFIG_LWIP_MAX_SOCKETS: "16"
       CONFIG_HTTPD_MAX_URI_LEN: "128"
       # loopTask (ESPHome main loop) runs every component loop() plus the BLE
       # advertise lambda. The 3584 B default left only ~672 B headroom, risking

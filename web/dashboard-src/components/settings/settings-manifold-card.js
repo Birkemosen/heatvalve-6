@@ -1,10 +1,11 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
-import { cardForm } from '../../core/ui-kit.js';
+import { cardForm, helpBadgeI18n } from '../../core/ui-kit.js';
 import { es, ev } from '../../core/store.js';
 import { setGlobalSelect } from '../../core/api.js';
 import { gkey, key } from '../../utils/keys.js';
 import { fmtT } from '../../utils/format.js';
+import { localize, subscribeLanguage } from '../../core/i18n.js';
 
 // ========================================
 // CSS
@@ -58,20 +59,20 @@ const template = () => {
 
   return `
     <div class="ui-card settings-manifold-card">
-      <div class="ui-card-title">Manifold Configuration</div>
+      <div class="ui-card-title"><span class="ui-title-text"><span data-i18n="settings.manifold.title">Manifold Configuration</span>${helpBadgeI18n('settings.manifold.help')}</span></div>
       <div class="ui-row">
-        <span class="ui-label">Manifold Type</span>
-        <span class="ui-field"><select class="ui-select sm-type"><option value="NO (Normally Open)">Normally Open (NO)</option><option value="NC (Normally Closed)">Normally Closed (NC)</option></select></span>
+        <span class="ui-label" data-i18n="settings.manifold.type">Manifold Type</span>
+        <span class="ui-field"><select class="ui-select sm-type"><option value="NO (Normally Open)" data-i18n="settings.manifold.normallyOpen">Normally Open (NO)</option><option value="NC (Normally Closed)" data-i18n="settings.manifold.normallyClosed">Normally Closed (NC)</option></select></span>
       </div>
       <div class="ui-row">
-        <span class="ui-label">Flow Probe</span>
+        <span class="ui-label" data-i18n="settings.manifold.flowProbe">Flow Probe</span>
         <span class="ui-field"><select class="ui-select sm-flow">${probeOptions}</select></span>
       </div>
       <div class="ui-row">
-        <span class="ui-label">Return Probe</span>
+        <span class="ui-label" data-i18n="settings.manifold.returnProbe">Return Probe</span>
         <span class="ui-field"><select class="ui-select sm-ret">${probeOptions}</select></span>
       </div>
-      <div class="ui-section">Probe Temperatures</div>
+      <div class="ui-section" data-i18n="settings.manifold.probeTemps">Probe Temperatures</div>
       <div class="probe-grid">${probes}</div>
     </div>
   `;
@@ -104,6 +105,8 @@ export default component({
     subscribe(gkey.manifoldFlowProbe, form.refresh);
     subscribe(gkey.manifoldReturnProbe, form.refresh);
     for (let probe = 1; probe <= 8; probe++) subscribe(key.probeTemp(probe), updateProbes);
+    subscribeLanguage(() => localize(el));
+    localize(el);
     form.refresh();
     updateProbes();
   }

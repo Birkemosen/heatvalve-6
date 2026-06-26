@@ -10,6 +10,7 @@
 #ifdef USE_HV6_FORECAST
 #include "../hv6_forecast/hv6_forecast.h"
 #endif
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -18,6 +19,7 @@
 #include <ctime>
 #include <esp_http_server.h>
 #include <esp_heap_caps.h>
+#include <esp_system.h>
 
 namespace esphome {
 namespace hv6_dashboard {
@@ -295,7 +297,8 @@ void HV6Dashboard::update_snapshot_() {
     auto *fc = static_cast<hv6_forecast::Hv6Forecast *>(this->forecast_);
     strncpy(s.forecast_status, fc->get_status_str(), sizeof(s.forecast_status) - 1);
     strncpy(s.forecast_last_error, fc->get_last_error(), sizeof(s.forecast_last_error) - 1);
-    s.forecast_age_s = fc->get_forecast_age_s();
+    s.forecast_age_s = fc->get_fetch_age_s();  // "fetched X ago", not the hour offset
+    s.forecast_fetch_epoch = fc->get_last_fetch_epoch();
     s.forecast_fail_streak = fc->get_fetch_fail_streak();
     for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
       s.forecast_zone_offset_c[i] = fc->get_zone_offset(i);
@@ -323,6 +326,7 @@ void HV6Dashboard::update_snapshot_() {
     s.asgard                 = this->config_store_->get_asgard_config();
     s.balancing              = this->config_store_->get_config().balancing;
     s.min_zone_flow_pct      = s.balancing.minimum_flow_pct;
+    s.minimum_flow_always    = s.balancing.modulating_heat_source;
     s.forecast               = this->config_store_->get_forecast_config();
     for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
       s.zones[i]            = this->config_store_->get_zone_config(i);
@@ -752,6 +756,18 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
     appendf(buf, BUF_SIZE, offset,
         "\"text-zone_%u_ble_mac\":{\"state\":\"%s\"},", zn, snap->zone_ble_mac[i]);
 
+    // Friendly zone name — JSON-escape quotes/backslashes/control chars.
+    char name_esc[2 * sizeof(z.name)];
+    size_t nesc = 0;
+    for (size_t j = 0; z.name[j] != '\0' && nesc < sizeof(name_esc) - 2; j++) {
+      char c = z.name[j];
+      if (c == '"' || c == '\\') name_esc[nesc++] = '\\';
+      name_esc[nesc++] = (c >= 0x20) ? c : ' ';
+    }
+    name_esc[nesc] = '\0';
+    appendf(buf, BUF_SIZE, offset,
+        "\"text-zone_%u_name\":{\"state\":\"%s\"},", zn, name_esc);
+
     const uint8_t walls = z.exterior_walls;
     if (walls == hv6::ExteriorWall::NONE) {
       appendf(buf, BUF_SIZE, offset,
@@ -859,7 +875,9 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
       static_cast<unsigned>(snap->asgard.peer_stale_after_s));
   format_float_token(num_buf, sizeof(num_buf), snap->min_zone_flow_pct, 1);
   appendf(buf, BUF_SIZE, offset,
+      "\"switch-minimum_flow_always\":{\"state\":\"%s\"},"
       "\"number-min_zone_flow_pct\":{\"value\":%s},",
+      snap->minimum_flow_always ? "on" : "off",
       num_buf);
   format_float_token(num_buf, sizeof(num_buf), snap->asgard_last_push_c, 2);
   char sp_buf[16];
@@ -893,11 +911,13 @@ void HV6Dashboard::handle_state_(AsyncWebServerRequest *request) {
       "\"text-forecast_status\":{\"state\":\"%s\"},"
       "\"text-forecast_last_error\":{\"state\":\"%s\"},"
       "\"sensor-forecast_age_s\":{\"state\":%lu},"
+      "\"sensor-forecast_fetch_epoch\":{\"state\":%lu},"
       "\"sensor-forecast_fail_streak\":{\"state\":%lu},",
       snap->forecast.enabled ? "on" : "off",
       snap->forecast_status,
       snap->forecast_last_error,
       static_cast<unsigned long>(snap->forecast_age_s),
+      static_cast<unsigned long>(snap->forecast_fetch_epoch),
       static_cast<unsigned long>(snap->forecast_fail_streak));
   format_float_token(num_buf, sizeof(num_buf), snap->forecast.latitude, 4);
   appendf(buf, BUF_SIZE, offset, "\"number-forecast_latitude\":{\"value\":%s},", num_buf);
@@ -1277,6 +1297,13 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
       this->zone_controller_->reset_balancing();
     } else if (strcmp(str_val, "dump_task_stats") == 0) {
       this->dump_task_stats_();
+    } else if (strcmp(str_val, "restart") == 0) {
+      ESP_LOGW(TAG, "Restarting device on dashboard request");
+      esp_restart();
+#ifdef USE_HV6_FORECAST
+    } else if (strcmp(str_val, "trigger_forecast_fetch") == 0 && this->forecast_) {
+      static_cast<hv6_forecast::Hv6Forecast *>(this->forecast_)->trigger_fetch();
+#endif
     }
     // Unknown commands are silently accepted
 
@@ -1307,6 +1334,10 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
     hv6::PipeType pt;
     if (parse_pipe_type(str_val, &pt))
       this->zone_controller_->set_zone_pipe_type(zi, pt);
+
+  // ---- zone_name (friendly name, persisted device-side in ZoneConfig) ----
+  } else if (strcmp(key, "zone_name") == 0 && has_str && zone_valid && this->zone_controller_) {
+    this->zone_controller_->set_zone_name(zi, std::string(str_val));
 
   // ---- zone_ble_mac ----
   } else if (strcmp(key, "zone_ble_mac") == 0 && has_str && zone_valid && this->zone_controller_) {
@@ -1433,11 +1464,16 @@ void HV6Dashboard::dispatch_set_(const DashboardAction &act) {
     asgard_cfg.peer_stale_after_s = static_cast<uint16_t>(std::max(30.0f, std::min(3600.0f, num_val)));
     this->config_store_->update_asgard(asgard_cfg);
 
-  // ---- min_zone_flow_pct (per-zone minimum valve opening while bridge active) ----
+  // ---- min_zone_flow_pct (active when minimum_flow_always is enabled) ----
   } else if (strcmp(key, "min_zone_flow_pct") == 0 && has_num && this->config_store_) {
     auto bal = this->config_store_->get_config().balancing;
     bal.minimum_flow_pct = std::max(0.0f, std::min(50.0f, num_val));
     this->config_store_->update_balancing(bal);
+
+  // ---- minimum_flow_always (modulating source exists independently of Asgard) ----
+  } else if (strcmp(key, "minimum_flow_always") == 0 && has_str && this->zone_controller_) {
+    const bool enabled = (strcasecmp(str_val, "on") == 0 || strcmp(str_val, "1") == 0);
+    this->zone_controller_->set_modulating_heat_source(enabled);
 
   // ---- balance_mode (Static / Adaptive / Return Temp) ----
   } else if (strcmp(key, "balance_mode") == 0 && has_str && this->zone_controller_) {
@@ -1577,6 +1613,13 @@ void HV6Dashboard::sample_history_() {
   entry.return_dc = HISTORY_TEMP_NONE;
   entry.demand_pct = HISTORY_DEMAND_NONE;
 
+  float demand_floor_pct = 0.0f;
+  if (this->config_store_ != nullptr) {
+    const auto cfg = this->config_store_->get_config();
+    if (cfg.balancing.modulating_heat_source)
+      demand_floor_pct = std::max(0.0f, std::min(50.0f, cfg.balancing.minimum_flow_pct));
+  }
+
   if (snapshot_lock_ != nullptr && snapshot_ready_ &&
       xSemaphoreTake(snapshot_lock_, pdMS_TO_TICKS(10)) == pdTRUE) {
     for (uint8_t i = 0; i < hv6::NUM_ZONES; i++)
@@ -1585,13 +1628,14 @@ void HV6Dashboard::sample_history_() {
       entry.flow_dc = static_cast<int16_t>(lroundf(snapshot_.manifold_flow_c * 10.0f));
     if (!std::isnan(snapshot_.manifold_return_c))
       entry.return_dc = static_cast<int16_t>(lroundf(snapshot_.manifold_return_c * 10.0f));
-    // Mean open-valve % over zones that report a position (matches the dashboard's
-    // client-side demand index, but persisted server-side for the 24 h window).
+    // Mean open-valve % above the active minimum-flow floor. This keeps the
+    // demand index focused on extra heat demand instead of the manual baseline
+    // flow held for a modulating heat source.
     float demand_sum = 0.0f;
     uint8_t demand_n = 0;
     for (uint8_t i = 0; i < hv6::NUM_ZONES; i++) {
       if (!std::isnan(snapshot_.zone_valve_pct[i])) {
-        demand_sum += snapshot_.zone_valve_pct[i];
+        demand_sum += std::max(0.0f, snapshot_.zone_valve_pct[i] - demand_floor_pct);
         demand_n++;
       }
     }
@@ -1770,7 +1814,13 @@ void HV6Dashboard::handle_logs_(AsyncWebServerRequest *request) {
   if (!since_arg.empty())
     since = static_cast<uint32_t>(strtoul(since_arg.c_str(), nullptr, 10));
 
-  auto *ring_copy = static_cast<LogLine *>(malloc(sizeof(LogLine) * LOG_SLOTS));
+  // The ring copy is ~12.8 KB; take it from PSRAM so a busy /logs poll never
+  // spikes the (scarce) internal heap. Fall back to internal heap on no-PSRAM
+  // boards. free() routes back to the correct heap for either allocation.
+  auto *ring_copy = static_cast<LogLine *>(
+      heap_caps_malloc(sizeof(LogLine) * LOG_SLOTS, MALLOC_CAP_SPIRAM));
+  if (!ring_copy)
+    ring_copy = static_cast<LogLine *>(malloc(sizeof(LogLine) * LOG_SLOTS));
   if (!ring_copy) {
     httpd_req_t *req_err = *request;
     httpd_resp_set_status(req_err, "503 Service Unavailable");
@@ -1864,12 +1914,14 @@ void HV6Dashboard::handle_forecast_(AsyncWebServerRequest *request) {
   uint8_t count = 0;
   uint32_t base_epoch = 0;
   uint32_t age_s = 0;
+  uint32_t fetch_epoch = 0;
 
 #ifdef USE_HV6_FORECAST
   static hv6_forecast::ForecastHour hours[hv6_forecast::FORECAST_HOURS];
   if (this->forecast_ != nullptr) {
     auto *fc = static_cast<hv6_forecast::Hv6Forecast *>(this->forecast_);
     count = fc->copy_hours(hours, hv6_forecast::FORECAST_HOURS, &base_epoch, &age_s);
+    fetch_epoch = fc->get_last_fetch_epoch();
   }
 #else
   hv6_forecast::ForecastHour *hours = nullptr;
@@ -1877,9 +1929,10 @@ void HV6Dashboard::handle_forecast_(AsyncWebServerRequest *request) {
 #endif
 
   appendf(buf, BUF_SIZE, offset,
-          "{\"base_epoch\":%lu,\"age_s\":%lu,\"count\":%u,\"hours\":[",
+          "{\"base_epoch\":%lu,\"age_s\":%lu,\"fetch_epoch\":%lu,\"count\":%u,\"hours\":[",
           static_cast<unsigned long>(base_epoch),
           static_cast<unsigned long>(age_s),
+          static_cast<unsigned long>(fetch_epoch),
           static_cast<unsigned>(count));
 
 #ifdef USE_HV6_FORECAST
@@ -1894,6 +1947,8 @@ void HV6Dashboard::handle_forecast_(AsyncWebServerRequest *request) {
     format_float_token(num_buf, sizeof(num_buf), hours[i].wind_speed_ms, 1);
     appendf(buf, BUF_SIZE, offset, "%s,", num_buf);
     format_float_token(num_buf, sizeof(num_buf), hours[i].wind_dir_deg, 0);
+    appendf(buf, BUF_SIZE, offset, "%s,", num_buf);
+    format_float_token(num_buf, sizeof(num_buf), hours[i].shortwave_wm2, 0);
     appendf(buf, BUF_SIZE, offset, "%s]", num_buf);
   }
 #else

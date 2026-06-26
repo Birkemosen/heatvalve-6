@@ -1,6 +1,7 @@
 import { component } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
 import { getDeviceLog, clearDeviceLog, subscribeDashboard } from '../../core/store.js';
+import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 
 // ========================================
 // ESPHome log levels → label + color
@@ -10,7 +11,7 @@ const LEVELS = {
   1: { label: 'E', color: '#ff6361' },
   2: { label: 'W', color: '#ffd380' },
   3: { label: 'I', color: '#79d17e' },
-  4: { label: 'C', color: '#8a508f' },
+  4: { label: 'C', color: '#7aa7ce' },
   5: { label: 'D', color: 'rgba(214,228,255,.7)' },
   6: { label: 'V', color: 'rgba(214,228,255,.5)' },
   7: { label: 'VV', color: 'rgba(214,228,255,.4)' },
@@ -99,10 +100,10 @@ injectStyle('logs-view', css);
 const template = () => `
   <div class="logs-view">
     <div class="card-title">
-      <span>Device Logs</span>
+      <span data-i18n="logs.deviceLogs">Device Logs</span>
       <div class="actions">
-        <button class="btn pause-btn" type="button">Pause</button>
-        <button class="btn clear-btn" type="button">Clear</button>
+        <button class="btn pause-btn" type="button" data-i18n="logs.pause">Pause</button>
+        <button class="btn clear-btn" type="button" data-i18n="logs.clear">Clear</button>
       </div>
     </div>
     <div class="logs-stream"></div>
@@ -139,7 +140,7 @@ export default component({
       if (paused) return;
       const items = getDeviceLog();
       if (!items || !items.length) {
-        streamEl.innerHTML = '<div class="logs-empty">Waiting for device logs…</div>';
+        streamEl.innerHTML = '<div class="logs-empty">' + t('logs.waiting') + '</div>';
         return;
       }
       // Stick to the bottom only if the user is already near it.
@@ -150,7 +151,7 @@ export default component({
 
     pauseBtn.addEventListener('click', () => {
       paused = !paused;
-      pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+      pauseBtn.textContent = paused ? t('logs.resume') : t('logs.pause');
       pauseBtn.classList.toggle('on', paused);
       if (!paused) update();
     });
@@ -161,6 +162,12 @@ export default component({
     });
 
     subscribeDashboard('deviceLog', update);
+    subscribeLanguage(() => {
+      localize(el);
+      pauseBtn.textContent = paused ? t('logs.resume') : t('logs.pause');
+      update();
+    });
+    localize(el);
     update();
   }
 });

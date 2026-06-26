@@ -24,7 +24,8 @@ itself is still served at `/dashboard` + `/dashboard.js`.
     `z0..z5` are `ZoneDisplayState` codes (`0xFF` = unknown), `absorbing` is `1` when preheat
     absorption was active at that sample (else `0`), `flow_c`/`return_c` are the manifold
     flow/return temps in °C (`null` if no reading), and `demand_pct` is the mean open-valve %
-    over zones with a reading (`null` if unknown). The trailing `flow_c`/`return_c`/`demand_pct`
+    above the active per-zone minimum-flow floor over zones with a reading (`null` if unknown).
+    The trailing `flow_c`/`return_c`/`demand_pct`
     fields are appended after `absorbing` so index-based consumers (e.g. the zone-state timeline)
     are unaffected. Shape:
     `{"interval_s":300,"uptime_s":N,"count":N,"entries":[[…],…]}`
@@ -72,7 +73,8 @@ Implemented global settings keys (selection/number) relevant to balancing:
 
 - `balance_mode` (select: `Static` | `Adaptive` | `Return Temp`) — hydraulic-balancing strategy
 - `adapt_interval_s`, `adapt_step`, `adapt_min`, `adapt_max` (number) — adaptive outer-loop knobs
-- `min_zone_flow_pct` (number) — per-zone minimum opening with a modulating heat source
+- `min_zone_flow_pct` (number) — per-zone minimum opening used by the manual minimum-flow control
+- `minimum_flow_always` (select: `on` | `off`) — manually enforce that floor for a modulating heat source, independent of the heat-source bridge
 
 ## Response Envelope
 

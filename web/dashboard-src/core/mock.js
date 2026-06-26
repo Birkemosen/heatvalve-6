@@ -52,6 +52,7 @@ function seed() {
     setEntity(key.area(zone), { value: 8 + zone * 3.5 });
     setEntity(key.spacing(zone), { value: [150, 200, 150, 100, 200, 150][index] });
     setEntity(key.ble(zone), { state: 'AA:BB:CC:DD:EE:0' + zone });
+    setEntity(key.name(zone), { state: ['Living Room', 'Kitchen', 'Bedroom', 'Bathroom', 'Office', 'Hallway'][index] || '' });
     setEntity(key.exteriorWalls(zone), { state: ['N', 'E', 'S', 'W', 'N,E', 'S,W'][index] });
     setEntity(key.windExposure(zone), { value: [0.5, 0.5, 0.5, 0.5, 0.7, 0.7][index] });
     setEntity(key.solarGain(zone), { value: 0.3 });
@@ -106,6 +107,7 @@ function seed() {
   setEntity(gkey.adaptMin, { value: 0.5 });
   setEntity(gkey.adaptMax, { value: 1.5 });
   setEntity(gkey.minZoneFlowPct, { value: 15 });
+  setEntity(gkey.minimumFlowAlways, { state: 'off' });
   setEntity(gkey.cpuLoadCore0, { value: 18.5 });
   setEntity(gkey.cpuLoadCore1, { value: 7.2 });
   setEntity(gkey.freeInternalKb, { value: 142 });
@@ -156,9 +158,16 @@ function seed() {
     const temp = 6 - 3 * Math.sin(i / 24 * Math.PI) - (i > 10 && i < 20 ? 2 : 0);
     const wind = 4 + (i > 8 && i < 18 ? 9 * Math.exp(-Math.pow(i - 13, 2) / 12) : 0) + Math.sin(i / 5);
     const dir = (220 + i * 4) % 360;
-    fcHours.push([Number(temp.toFixed(1)), Number(Math.max(0, wind).toFixed(1)), Math.round(dir)]);
+    // Solar bell peaking ~midday each day (W/m²), zero overnight.
+    const hod = i % 24;
+    const solar = Math.max(0, Math.round(820 * Math.sin((hod - 6) / 12 * Math.PI)));
+    fcHours.push([Number(temp.toFixed(1)), Number(Math.max(0, wind).toFixed(1)), Math.round(dir), solar]);
   }
-  setForecastHours({ base_epoch: NOW_S, age_s: 8 * 60, count: 48, hours: fcHours });
+  // Anchor at local midnight so the mock reflects the full-day view (device
+  // anchors hours_[0] at 00:00 local). fetch_epoch ≈ 8 min ago.
+  const d0 = new Date(NOW_S * 1000); d0.setHours(0, 0, 0, 0);
+  const dayStart = Math.floor(d0.getTime() / 1000);
+  setForecastHours({ base_epoch: dayStart, age_s: 8 * 60, fetch_epoch: NOW_S - 8 * 60, count: 48, hours: fcHours });
 
   // Seed the device-log stream with a few lines.
   seedMockLogs(6);
@@ -353,9 +362,11 @@ export function handleMockPost(body) {
   if (k === 'manifold_return_probe') { setEntity(gkey.manifoldReturnProbe, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
   if (k === 'motor_profile_default') { setEntity(gkey.motorProfileDefault, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
   if (k === 'simple_preheat_enabled') { setEntity(gkey.simplePreheatEnabled, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
+  if (k === 'minimum_flow_always') { setEntity(gkey.minimumFlowAlways, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
   if (k === 'balance_mode') { setEntity(gkey.balanceMode, { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v); return; }
 
   // Text settings
+  if (k === 'zone_name' && zone >= 1) { setEntity(key.name(zone), { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
   if (k === 'zone_ble_mac' && zone >= 1) { setEntity(key.ble(zone), { state: String(v) }); addActivity('Setting updated: ' + k + ' = ' + v, zone); return; }
   if (k === 'zone_exterior_walls' && zone >= 1) {
     const walls = String(v) || 'None';

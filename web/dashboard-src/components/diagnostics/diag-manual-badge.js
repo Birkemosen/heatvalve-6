@@ -1,6 +1,7 @@
 import { component } from '../../core/component.js';
 import { subscribeDashboard, getDashboardValue } from '../../core/store.js';
 import { injectStyle } from '../../core/style.js';
+import { localize, subscribeLanguage } from '../../core/i18n.js';
 
 const css = `
 .diag-manual-badge {
@@ -8,8 +9,8 @@ const css = `
   align-items: center;
   gap: 10px;
   margin-bottom: 12px;
-  border: 1px solid rgba(255,118,118,.45);
-  background: linear-gradient(180deg, rgba(83,32,32,.42), rgba(52,21,21,.36));
+  border: 1px solid var(--danger-border-soft);
+  background: var(--danger-bg);
   border-radius: 12px;
   padding: 10px 12px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
@@ -24,11 +25,11 @@ const css = `
   height: 9px;
   border-radius: 999px;
   background: var(--state-danger);
-  box-shadow: 0 0 10px rgba(255,118,118,.6);
+  box-shadow: 0 0 10px var(--danger-border);
 }
 
 .diag-manual-text {
-  color: #FFD9D9;
+  color: var(--danger-text);
   font-size: .8rem;
   font-weight: 700;
   letter-spacing: .35px;
@@ -41,7 +42,7 @@ injectStyle('diag-manual-badge', css);
 const template = () => `
   <div class="diag-manual-badge" role="status" aria-live="polite">
     <span class="diag-manual-dot"></span>
-    <span class="diag-manual-text">Manual Mode Active - Automatic Management Suspended</span>
+    <span class="diag-manual-text" data-i18n="diagnostics.manual">Manual Mode Active - Automatic Management Suspended</span>
   </div>
 `;
 
@@ -57,6 +58,8 @@ export default component({
     }
 
     subscribeDashboard('manualMode', update);
+    subscribeLanguage(() => localize(el));
+    localize(el);
     update();
   }
 });

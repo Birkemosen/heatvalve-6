@@ -1,9 +1,10 @@
 import { component, subscribe } from '../../core/component.js';
 import { injectStyle } from '../../core/style.js';
 import { cardForm } from '../../core/ui-kit.js';
-import { es, getDashboardValue, subscribeDashboard } from '../../core/store.js';
+import { es, getDashboardValue, subscribeDashboard, zoneLabel } from '../../core/store.js';
 import { key } from '../../utils/keys.js';
 import { setZoneSelect, setZoneText } from '../../core/api.js';
+import { localize, subscribeLanguage, t } from '../../core/i18n.js';
 
 // ========================================
 // CSS
@@ -100,6 +101,79 @@ const css = `
   color: var(--text-secondary);
   font-style: italic;
 }
+.zone-sensor-card .merge-visual {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(255,133,49,.24);
+  border-radius: 12px;
+  background: rgba(255,133,49,.08);
+}
+.zone-sensor-card .merge-visual.is-solo {
+  border-color: var(--panel-border);
+  background: rgba(124,155,208,.07);
+}
+.zone-sensor-card .merge-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.zone-sensor-card .merge-pill {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 10px;
+  color: var(--text-strong);
+  font-size: .82rem;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgba(0,19,29,.42);
+}
+.zone-sensor-card .merge-pill.secondary {
+  border-color: rgba(122,167,206,.42);
+}
+.zone-sensor-card .merge-pill.primary {
+  border-color: rgba(255,133,49,.52);
+  color: var(--accent);
+}
+.zone-sensor-card .merge-link {
+  width: 22px;
+  height: 2px;
+  flex: 0 0 22px;
+  background: var(--accent);
+  border-radius: 999px;
+  position: relative;
+  opacity: .9;
+}
+.zone-sensor-card .merge-link::before,
+.zone-sensor-card .merge-link::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 12px rgba(255,133,49,.5);
+}
+.zone-sensor-card .merge-link::before { left: -1px; }
+.zone-sensor-card .merge-link::after { right: -1px; }
+.zone-sensor-card .merge-visual.is-solo .merge-link {
+  background: rgba(120,146,200,.36);
+}
+.zone-sensor-card .merge-visual.is-solo .merge-link::before,
+.zone-sensor-card .merge-visual.is-solo .merge-link::after {
+  background: rgba(120,146,200,.42);
+  box-shadow: none;
+}
+.zone-sensor-card .merge-caption {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: .74rem;
+  line-height: 1.35;
+}
 `;
 
 injectStyle('zone-sensor-card', css);
@@ -108,33 +182,37 @@ injectStyle('zone-sensor-card', css);
 // TEMPLATE
 // ========================================
 const template = () => {
-  let probeOptions = '<option>None</option>';
-  for (let probe = 1; probe <= 8; probe++) probeOptions += '<option>Probe ' + probe + '</option>';
+  let probeOptions = '<option value="None" data-i18n="common.none">None</option>';
+  for (let probe = 1; probe <= 8; probe++) probeOptions += '<option value="Probe ' + probe + '">Probe ' + probe + '</option>';
 
   return `
     <div class="ui-card zone-sensor-card">
-      <div class="ui-card-title">Temperature Sensors / Connectivity</div>
+      <div class="ui-card-title" data-i18n="zone.sensor.title">Temperature Sensors / Connectivity</div>
       <div class="ui-row">
-        <span class="ui-label">Zone Return Temperature Sensor</span>
+        <span class="ui-label" data-i18n="zone.sensor.returnSensor">Zone Return Temperature Sensor</span>
         <span class="ui-field"><select class="ui-select zs-probe">${probeOptions}</select></span>
       </div>
       <div class="ui-row">
-        <span class="ui-label">Temperature Source</span>
+        <span class="ui-label" data-i18n="zone.sensor.tempSource">Temperature Source</span>
         <span class="ui-field"><select class="ui-select zs-source"></select></span>
       </div>
       <div class="zs-row-ble">
-        <div class="ui-section">BLE Sensor</div>
-        <div class="ui-note">Pair a nearby BTHome sensor (Shelly BLU H&T) or enter MAC manually.</div>
+        <div class="ui-section" data-i18n="zone.sensor.bleSensor">BLE Sensor</div>
+        <div class="ui-note" data-i18n="zone.sensor.bleNote">Pair a nearby BTHome sensor (Shelly BLU H&T) or enter MAC manually.</div>
         <div class="ble-row">
           <input class="ble-input zs-ble" maxlength="17" placeholder="AA:BB:CC:DD:EE:FF">
-          <button class="btn-scan zs-scan">Scan</button>
+          <button class="btn-scan zs-scan" data-i18n="zone.sensor.scan">Scan</button>
         </div>
         <div class="ble-scan-list zs-scan-list" style="display:none"></div>
       </div>
       <div class="ui-divider"></div>
       <div class="ui-row">
-        <span class="ui-label">Merge With Zone <span class="ui-sublabel">merge into one room — mean temperature, valves open equally</span></span>
+        <span class="ui-label"><span data-i18n="zone.sensor.mergeWith">Merge With Zone</span> <span class="ui-sublabel" data-i18n="zone.sensor.mergeHelp">merge into one room - mean temperature, valves open equally</span></span>
         <span class="ui-field"><select class="ui-select zs-sync"></select></span>
+      </div>
+      <div class="merge-visual is-solo" aria-live="polite">
+        <div class="merge-rail"></div>
+        <div class="merge-caption"></div>
       </div>
     </div>
   `;
@@ -142,10 +220,10 @@ const template = () => {
 
 function buildSyncOptions(selectEl, zone) {
   const current = selectEl.value;
-  let html = '<option>None</option>';
+  let html = '<option value="None" data-i18n="common.none">' + t('common.none') + '</option>';
   for (let z = 1; z <= 6; z++) {
     if (z === zone) continue;
-    html += '<option>Zone ' + z + '</option>';
+    html += '<option value="Zone ' + z + '">' + t('common.zone') + ' ' + z + '</option>';
   }
   selectEl.innerHTML = html;
   selectEl.value = current || 'None';
@@ -162,11 +240,18 @@ function uiValueToApiValue(value) {
 }
 
 function setSourceOptions(selectEl, value) {
-  const html = '<option>Local Probe</option><option>BLE Sensor</option>';
+  const html =
+    '<option value="Local Probe" data-i18n="zone.sensor.localProbe">' + t('zone.sensor.localProbe') + '</option>' +
+    '<option value="BLE Sensor" data-i18n="zone.sensor.bleSource">' + t('zone.sensor.bleSource') + '</option>';
   if (selectEl.innerHTML !== html) {
     selectEl.innerHTML = html;
   }
   selectEl.value = value;
+}
+
+function zoneFromSyncValue(value) {
+  const match = String(value || '').match(/\d+/);
+  return match ? Number(match[0]) : 0;
 }
 
 // ========================================
@@ -183,6 +268,9 @@ export default component({
     const rowBle = el.querySelector('.zs-row-ble');
     const scanBtn = el.querySelector('.zs-scan');
     const scanList = el.querySelector('.zs-scan-list');
+    const mergeVisual = el.querySelector('.merge-visual');
+    const mergeRail = el.querySelector('.merge-rail');
+    const mergeCaption = el.querySelector('.merge-caption');
     let syncZone = 0;
 
     function selectedZone() {
@@ -195,6 +283,45 @@ export default component({
       rowBle.style.display = sourceEl.value === 'BLE Sensor' ? '' : 'none';
     }
 
+    function paintMergeVisual() {
+      const zone = selectedZone();
+      const target = zoneFromSyncValue(syncEl.value);
+      const incoming = [];
+      for (let z = 1; z <= 6; z++) {
+        if (z !== zone && zoneFromSyncValue(es(key.syncTo(z))) === zone) incoming.push(z);
+      }
+      const follows = target > 0 && target !== zone;
+      const grouped = follows || incoming.length > 0;
+      mergeVisual.classList.toggle('is-solo', !grouped);
+      if (!grouped) {
+        mergeRail.innerHTML =
+          '<span class="merge-pill primary">' + zoneLabel(zone) + '</span>' +
+          '<span class="merge-link"></span>' +
+          '<span class="merge-pill">' + t('zone.sensor.noMerge') + '</span>';
+        mergeCaption.textContent = t('zone.sensor.soloCaption');
+        return;
+      }
+
+      if (follows) {
+        mergeRail.innerHTML =
+          '<span class="merge-pill secondary">' + zoneLabel(zone) + '</span>' +
+          '<span class="merge-link"></span>' +
+          '<span class="merge-pill primary">' + zoneLabel(target) + '</span>';
+        mergeCaption.textContent = t('zone.sensor.followsCaption', { zone: zoneLabel(zone), target: zoneLabel(target) });
+        return;
+      }
+
+      let html = '<span class="merge-pill primary">' + zoneLabel(zone) + '</span>';
+      for (const z of incoming) {
+        html += '<span class="merge-link"></span><span class="merge-pill secondary">' + zoneLabel(z) + '</span>';
+      }
+      mergeRail.innerHTML = html;
+      mergeCaption.textContent = t('zone.sensor.primaryCaption', {
+        zone: zoneLabel(zone),
+        zones: incoming.map(zoneLabel).join(', ')
+      });
+    }
+
     const form = cardForm(el);
     setSourceOptions(sourceEl, 'Local Probe');
     form.select(probeEl, { read: () => es(key.probe(selectedZone())) || undefined, commit: (v) => setZoneSelect(selectedZone(), 'zone_probe', v) });
@@ -202,6 +329,7 @@ export default component({
     form.select(syncEl, { read: () => es(key.syncTo(selectedZone())) || 'None', commit: (v) => setZoneSelect(selectedZone(), 'zone_sync_to', v) });
     const bleField = form.text(bleEl, { read: () => es(key.ble(selectedZone())) || '', commit: (v) => setZoneText(selectedZone(), 'zone_ble_mac', v) });
     sourceEl.addEventListener('change', paintBleRow);
+    syncEl.addEventListener('change', paintMergeVisual);
 
     function update() {
       const zone = selectedZone();
@@ -214,6 +342,7 @@ export default component({
         form.refresh();
       }
       paintBleRow();
+      paintMergeVisual();
     }
 
     function updateIfSelectedZone(id) {
@@ -222,10 +351,12 @@ export default component({
         id === key.probe(zone) ||
         id === key.tempSource(zone) ||
         id === key.syncTo(zone) ||
-        id === key.ble(zone)
+        id === key.ble(zone) ||
+        /^select-zone_\d+_sync_to$/.test(id)
       ) {
         form.refresh();
         paintBleRow();
+        paintMergeVisual();
       }
     }
 
@@ -235,7 +366,7 @@ export default component({
       scanBtn.disabled = true;
       scanBtn.textContent = '…';
       scanList.style.display = '';
-      scanList.innerHTML = '<div class="scan-msg">Scanning…</div>';
+      scanList.innerHTML = '<div class="scan-msg">' + t('zone.sensor.scanning') + '</div>';
 
       const ctrl = new AbortController();
       const timeout = setTimeout(() => ctrl.abort(), 8000);
@@ -248,9 +379,9 @@ export default component({
         .then(data => {
           clearTimeout(timeout);
           scanBtn.disabled = false;
-          scanBtn.textContent = 'Scan';
+          scanBtn.textContent = t('zone.sensor.scan');
           if (!data.ok || !data.sensors || data.sensors.length === 0) {
-            scanList.innerHTML = '<div class="scan-msg">No BTHome sensors found nearby. Make sure sensors have fresh batteries and are within range.</div>';
+            scanList.innerHTML = '<div class="scan-msg">' + t('zone.sensor.noSensors') + '</div>';
             return;
           }
           const zone = selectedZone();
@@ -263,10 +394,12 @@ export default component({
             const name = s.name ? esc(s.name) : '';
             const temp = s.temp_c != null ? s.temp_c.toFixed(1) + '°C' : '—';
             const rssi = s.rssi != null ? s.rssi + ' dBm' : '';
-            const age = s.age_s < 60 ? s.age_s + 's ago' : Math.round(s.age_s / 60) + 'm ago';
+            const age = s.age_s < 60
+              ? t('common.secondsAgo', { value: s.age_s })
+              : t('common.minutesAgo', { value: Math.round(s.age_s / 60) });
             let badge = '';
-            if (mac === currentMac) badge = '<span class="ble-badge">assigned to this zone</span>';
-            else if (s.zone > 0) badge = '<span class="ble-badge">zone ' + s.zone + '</span>';
+            if (mac === currentMac) badge = '<span class="ble-badge">' + t('zone.sensor.assignedThisZone') + '</span>';
+            else if (s.zone > 0) badge = '<span class="ble-badge">' + t('zone.sensor.zoneBadge', { zone: s.zone }) + '</span>';
             // Name as primary line when known, MAC as secondary; MAC alone otherwise.
             const title = name
               ? `<div class="ble-mac">${name}</div><div class="ble-meta">${mac}</div>`
@@ -277,7 +410,7 @@ export default component({
                 <div class="ble-meta">${temp} &nbsp;${rssi} &nbsp;${age}</div>
                 ${badge}
               </div>
-              <button class="btn-assign" data-mac="${mac}">Assign</button>
+              <button class="btn-assign" data-mac="${mac}">${t('zone.sensor.assign')}</button>
             </div>`;
           }
           scanList.innerHTML = html;
@@ -293,10 +426,10 @@ export default component({
         .catch((err) => {
           clearTimeout(timeout);
           scanBtn.disabled = false;
-          scanBtn.textContent = 'Scan';
+          scanBtn.textContent = t('zone.sensor.scan');
           const msg = (err && err.name === 'AbortError')
-            ? 'Scan timed out — device busy or BLE not responding. Try again.'
-            : 'Scan failed. Check device connectivity.';
+            ? t('zone.sensor.scanTimeout')
+            : t('zone.sensor.scanFailed');
           scanList.innerHTML = '<div class="scan-msg">' + msg + '</div>';
         });
     });
@@ -308,6 +441,18 @@ export default component({
       subscribe(key.syncTo(zone), updateIfSelectedZone);
       subscribe(key.ble(zone), updateIfSelectedZone);
     }
+    subscribeLanguage(() => {
+      const sourceValue = sourceEl.value || 'Local Probe';
+      const syncValue = syncEl.value || 'None';
+      setSourceOptions(sourceEl, sourceValue);
+      buildSyncOptions(syncEl, selectedZone());
+      syncEl.value = syncValue;
+      scanBtn.textContent = scanBtn.disabled ? scanBtn.textContent : t('zone.sensor.scan');
+      localize(el);
+      paintBleRow();
+      paintMergeVisual();
+    });
+    localize(el);
     update();
   }
 });

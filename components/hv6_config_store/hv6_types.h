@@ -222,8 +222,12 @@ struct ZoneConfig {
   uint8_t thermal_lead_h = 4;      ///< Hours before a forecast load peak charging must start
   // Adaptive balancing — learned room-temp correction multiplier (adapt_i). Rides
   // on top of the resistance-aware static prior; persisted in the durable zones
-  // blob so it survives a CONFIG_VERSION bump. See docs/adaptive_balancing.md.
+  // blob so it survives legacy main-config resets. See docs/adaptive_balancing.md.
   float balance_adapt = 1.0f;
+  // Simple preheat — learned per-zone head-start (°C above setpoint to start
+  // heating so the zone reaches temperature on time). Adapts over time; persisted
+  // so the device doesn't have to re-learn from zero after every reboot.
+  float preheat_advance_c = 0.0f;
 };
 
 struct ControlConfig {
@@ -268,21 +272,37 @@ struct SensorConfig {
 
 /// Version tag for the standalone sensor-pairing NVS blob. This is persisted
 /// under its own key (separate from the main DeviceConfig blob) so BLE MAC
-/// pairings + temp sources survive a CONFIG_VERSION bump on firmware update.
+/// pairings + temp sources survive legacy main-config resets on firmware update.
 /// Bump only when SensorConfig's layout changes.
 static constexpr uint32_t SENSOR_CONFIG_VERSION = 1;
 
 /// Version tag for the standalone zone-config NVS blob. Persisted under its own
 /// key (separate from the main DeviceConfig blob) so per-zone settings (area,
-/// pipe type/spacing, exterior walls, etc.) survive a CONFIG_VERSION bump on
+/// pipe type/spacing, exterior walls, etc.) survive legacy main-config resets on
 /// firmware update. Bump only when ZoneConfig's layout changes.
 /// v2 adds balance_adapt (learned adaptive-balancing multiplier).
-static constexpr uint32_t ZONE_CONFIG_VERSION = 2;
+/// v3 adds preheat_advance_c (learned simple-preheat head-start per zone).
+static constexpr uint32_t ZONE_CONFIG_VERSION = 3;
+
+/// Per-section durable NVS blob versions. Each global-settings section is mirrored
+/// to its own NVS key (like zones/sensors above) so it survives any discard of
+/// the legacy main `config` blob. Bump an individual
+/// constant ONLY when that one struct's layout changes — that resets just that
+/// section, not the user's whole configuration. See hv6_config_store.cpp.
+static constexpr uint32_t SYSTEM_CONFIG_VERSION = 1;
+static constexpr uint32_t CONTROL_CONFIG_VERSION = 1;
+static constexpr uint32_t PROBE_CONFIG_VERSION = 1;
+static constexpr uint32_t PID_CONFIG_VERSION = 1;
+static constexpr uint32_t MOTOR_CONFIG_VERSION = 1;
+static constexpr uint32_t MANIFOLD_CONFIG_VERSION = 1;
+static constexpr uint32_t BALANCING_CONFIG_VERSION = 1;
+static constexpr uint32_t ASGARD_CONFIG_VERSION = 1;
+static constexpr uint32_t FORECAST_CONFIG_VERSION = 1;
 
 struct BalancingConfig {
   bool dynamic_balancing_enabled = false;   ///< Back-compat alias: true ⇒ mode == RETURN_TEMP
-  bool modulating_heat_source = false;      ///< True when heat source can modulate flow temp (e.g. Ecodan)
-  float minimum_flow_pct = 15.0f;           ///< Per-zone minimum valve opening (only active with modulating source)
+  bool modulating_heat_source = false;      ///< Manually enforce per-zone minimum flow for a modulating heat source
+  float minimum_flow_pct = 15.0f;           ///< Per-zone minimum valve opening while manual minimum flow is active
   float flow_increase_threshold_pct = 80.0f;///< Request higher flow temp when avg zone opening exceeds this
   float flow_decrease_threshold_pct = 30.0f;///< Request lower flow temp when avg zone opening drops below this
   float target_delta_t_c = 5.0f;            ///< Target ΔT (flow − return) for dynamic (RETURN_TEMP) balancing
@@ -478,22 +498,14 @@ struct SystemConfig {
   float supply_temp_c = 35.0f;
 };
 
-/// Bump this whenever a struct layout or default value changes to force
-/// NVS-stored config to be discarded in favour of fresh C++ defaults.
-/// v7 adds per-zone motor endstop current-factor overrides.
-/// v8 updates default probe mapping: zones 1..6 -> probes 1..6, flow=7, return=8.
-/// v9 adds motor profiles, runtime safety preset fields, and learned factor confidence controls.
-/// v15 adds AsgardConfig (Ecodan heat-pump bridge, weighted z1 temperature push).
-/// v16 adds preheat absorption fields to ControlConfig.
-/// v17 adds ForecastConfig and per-zone exposure fields (forecast preload).
-/// v18 baseline.
-/// v19 adds per-direction mean current (MotorTelemetry) + open hard-cap fields
-///     (MotorConfig); tightens open_ripple_limit_factor to 1.10 — fixes motors
-///     clicking past the open endstop during learning.
-/// v20 lowers open_hard_cap_floor_ma 30→20 so low-current motors get a usable
-///     fast open belt (paired with VdMot-style close-first calibration).
-/// v21 adds adaptive balancing fields to BalancingConfig (BalanceMode + adapt_*).
-static constexpr uint32_t CONFIG_VERSION = 21;
+/// Baseline version tag for the legacy all-in-one DeviceConfig blob.
+///
+/// Firmware release bumps must not change this value. User-facing settings are
+/// mirrored into independently versioned NVS section blobs above; bump only the
+/// affected *_CONFIG_VERSION when that section's binary layout is no longer
+/// compatible. The main blob version is kept stable at schema v1.0 and is used
+/// only as a broad fallback/normalization marker.
+static constexpr uint32_t CONFIG_VERSION = 1;
 
 struct DeviceConfig {
   uint32_t config_version = CONFIG_VERSION;

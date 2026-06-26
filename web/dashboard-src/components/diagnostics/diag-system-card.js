@@ -3,6 +3,7 @@ import { injectStyle } from '../../core/style.js';
 import { ev } from '../../core/store.js';
 import { dumpTaskStats } from '../../core/api.js';
 import { gkey } from '../../utils/keys.js';
+import { localize, subscribeLanguage } from '../../core/i18n.js';
 
 // ========================================
 // CSS — mirrors the manifold card's stat-grid language
@@ -44,29 +45,29 @@ injectStyle('diag-system-card', css);
 // ========================================
 const template = () => `
   <div class="ui-card diag-system-card">
-    <div class="ui-card-title"><span>System</span></div>
+    <div class="ui-card-title"><span data-i18n="diagnostics.system.title">System</span></div>
     <div class="sys-grid">
       <div class="sys-cell">
-        <div class="sys-label">CPU Core 0</div>
+        <div class="sys-label" data-i18n="diagnostics.system.cpu0">CPU Core 0</div>
         <div class="sys-value" data-k="cpu0">—</div>
         <div class="sys-bar"><i data-bar="cpu0"></i></div>
       </div>
       <div class="sys-cell">
-        <div class="sys-label">CPU Core 1</div>
+        <div class="sys-label" data-i18n="diagnostics.system.cpu1">CPU Core 1</div>
         <div class="sys-value" data-k="cpu1">—</div>
         <div class="sys-bar"><i data-bar="cpu1"></i></div>
       </div>
       <div class="sys-cell">
-        <div class="sys-label">Free Heap (int)</div>
+        <div class="sys-label" data-i18n="diagnostics.system.heap">Free Heap (int)</div>
         <div class="sys-value" data-k="heap">—</div>
       </div>
       <div class="sys-cell">
-        <div class="sys-label">Free PSRAM</div>
+        <div class="sys-label" data-i18n="diagnostics.system.psram">Free PSRAM</div>
         <div class="sys-value" data-k="psram">—</div>
       </div>
     </div>
-    <button class="ui-btn sys-dump" type="button">Dump task stats to log</button>
-    <div class="ui-note">Per-core load is sampled every 2&nbsp;s. "Dump task stats" logs every task's CPU% and stack headroom to the device log above — use it to find what saturates a core.</div>
+    <button class="ui-btn sys-dump" type="button" data-i18n="diagnostics.system.dump">Dump task stats to log</button>
+    <div class="ui-note" data-i18n="diagnostics.system.note">Per-core load is sampled every 2 s. "Dump task stats" logs every task's CPU% and stack headroom to the device log above - use it to find what saturates a core.</div>
   </div>
 `;
 
@@ -120,6 +121,8 @@ export default component({
     subscribe(gkey.cpuLoadCore1, update);
     subscribe(gkey.freeInternalKb, update);
     subscribe(gkey.freePsramKb, update);
+    subscribeLanguage(() => localize(el));
+    localize(el);
     update();
   }
 });
